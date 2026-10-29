@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #0f1422;
   --panel: #182033;
   --card: #1b2438;
@@ -57,8 +58,7 @@ button:disabled {
 
 .app {
   position: relative;
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   max-width: 480px;
   margin: 0 auto;
   display: flex;
@@ -577,6 +577,12 @@ button:disabled {
 
 .btn.danger {
   color: var(--bad);
+}
+
+.btn.danger.armed {
+  background: #c2344f;
+  border-color: var(--bad);
+  color: #fff;
 }
 
 .cards {

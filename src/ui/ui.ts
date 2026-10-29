@@ -369,6 +369,18 @@ export class UI {
     return b;
   }
 
+  /** 두 번 눌러야 실행되는 버튼 (임베드 환경에선 confirm()이 막혀 있다) */
+  private confirmButton(text: string, confirmText: string, fn: () => void) {
+    let armed = false;
+    const b = this.button(text, 'danger', () => {
+      if (armed) return fn();
+      armed = true;
+      b.textContent = confirmText;
+      b.classList.add('armed');
+    });
+    return b;
+  }
+
   showLevelUp(cards: LevelUpCard[], pick: (card: LevelUpCard | null) => void) {
     const list = h('div', 'cards');
     const choose = (c: LevelUpCard | null) => {
@@ -455,9 +467,7 @@ export class UI {
         this.refresh();
         this.toast('골드를 지급했어요');
       }),
-      this.button('저장 초기화', 'danger', () => {
-        if (confirm('정말 초기화할까요? 진행 상황이 모두 사라져요.')) g.resetSave();
-      }),
+      this.confirmButton('저장 초기화', '한 번 더 누르면 모두 지워져요', () => g.resetSave()),
       this.button('닫기', 'primary', () => this.closeModal()),
     );
   }
