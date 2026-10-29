@@ -5,8 +5,8 @@ import { HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites'
 
 // 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
 
-/** 조이스틱을 이만큼(0~1) 넘게 밀면 달리기 그림 */
-const RUN_K = 0.75;
+/** 실제 이동 속도(px/초)가 이 이상이면 달리기 그림. 기본 속도(액션 110, 방치 90)는 걷기, 신속 Lv2(약 136)부터 달리기 */
+const RUN_SPEED = 135;
 /** 적 반지름 대비 스프라이트 높이 */
 const ENEMY_SPRITE_SCALE = 2.6;
 
@@ -226,8 +226,8 @@ export class Renderer {
       return;
     }
 
-    // 이동 중: 세기에 따라 걷기/달리기 재생 / 멈춤: 걷기 첫 프레임
-    const motion = p.moving && p.moveK > RUN_K ? 'run' : 'walk';
+    // 이동 중: 기본은 걷기, 속도가 붙으면 달리기 / 멈춤: 걷기 첫 프레임
+    const motion = p.moving && p.speed * p.moveK >= RUN_SPEED ? 'run' : 'walk';
     const anim = SPRITES.hero[motion][dir] ?? SPRITES.hero.walk[dir];
     if (!anim) return this.drawPlayerShape(eng);
     const img = p.moving ? frameAt(anim, eng.time * 1000) : anim.frames[0];

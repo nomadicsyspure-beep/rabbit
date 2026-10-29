@@ -111,7 +111,7 @@ export interface Player {
   flash: number;
   dead: boolean;
   moving: boolean;
-  /** 이번 프레임 이동 세기 0~1 (조이스틱을 얼마나 밀었나). 걷기/달리기 그림을 고르는 데 쓴다 */
+  /** 이번 프레임 이동 세기 0~1 (조이스틱을 얼마나 밀었나). 실제 속도 = speed × moveK */
   moveK: number;
 }
 
