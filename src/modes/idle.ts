@@ -7,8 +7,10 @@ import type { Game } from '../game';
 // 방치 화면은 보여주기용이다. 수입은 Game이 최고 스테이지 기준으로 따로 계산하고,
 // 여기서는 토끼가 알아서 싸우는 모습만 돌린다 (적은 플레이어를 다치게 하지 않는다).
 
-const MAX_ALIVE = 6;
-const SPAWN_SEC = 0.7;
+const MAX_ALIVE = 4;
+const SPAWN_SEC = 0.6;
+/** 다트 사거리를 짧게 해서 몹이 조금 걸어 들어온 뒤에 쓰러지게 한다 */
+const DART_RANGE = 120;
 
 export class IdleMode {
   private readonly controller = new AutoController();
@@ -26,7 +28,7 @@ export class IdleMode {
     eng.dropGems = false;
     eng.showDamageText = true;
     eng.controller = this.controller;
-    eng.weapons = [new DartWeapon(this.stats)];
+    eng.weapons = [new DartWeapon(this.stats, DART_RANGE)];
     eng.onKill = (e) => eng.addEffect('burst', e.x, e.y, 14, 0.35, '#ffd166');
     eng.onGem = null;
     eng.onPlayerDead = null;
@@ -75,9 +77,8 @@ export class IdleMode {
 
     const roll = Math.random();
     const kind: EnemyKind = roll < 0.15 ? 'tank' : roll < 0.4 ? 'fast' : 'normal';
-    // 체력은 내 공격력 기준 몇 대 맞으면 쓰러지게: 강해질수록 숫자만 커진다
-    const hits = kind === 'tank' ? 5 : kind === 'fast' ? 1.5 : 2.5;
-    const hp = this.stats.power * hits;
+    // 다트 한 방(탭도 한 번)이면 쓰러진다. 숫자는 내 공격력만큼 커진다
+    const hp = this.stats.power * TAP_DAMAGE_MUL;
     const r = kind === 'tank' ? 13 : kind === 'fast' ? 10 : 11;
     const speed = kind === 'tank' ? 18 : kind === 'fast' ? 46 : 28;
     eng.spawnEnemy({ kind, x, y, hp, r, speed, dmg: 0 });

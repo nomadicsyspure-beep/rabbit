@@ -2,47 +2,51 @@ import type { Controller, Engine, Vec } from './engine';
 
 const ZERO: Vec = { x: 0, y: 0 };
 
-/** 방치 모드: 가까운 적과 거리를 유지하며 알아서 움직인다. */
+/**
+ * 방치 화면(보여주기용): 화면 안을 천천히 돌아다닌다.
+ * 적을 쫓거나 멈췄다 섰다 하지 않고, 방향도 부드럽게 바뀌어서 걷는 모습이 끊기지 않는다.
+ * 공격은 무기가 알아서 한다.
+ */
 export class AutoController implements Controller {
-  private readonly preferred = 100;
+  private readonly margin = 48;
+  private readonly speed = 0.6;
+  private goalX = -1;
+  private goalY = -1;
+  private goalT = 0;
+  private vx = 0;
+  private vy = 0;
+  private lastTime = 0;
 
   getMove(engine: Engine): Vec {
     const p = engine.player;
     const b = engine.bounds;
-    const target = engine.nearestEnemies(p.x, p.y, 1, Infinity)[0];
-    let mx = 0;
-    let my = 0;
+    if (!b) return ZERO;
+    const dt = Math.min(0.05, Math.max(0, engine.time - this.lastTime));
+    this.lastTime = engine.time;
 
-    if (target) {
-      const dx = target.x - p.x;
-      const dy = target.y - p.y;
-      const d = Math.hypot(dx, dy) || 1;
-      if (d > this.preferred + 30) {
-        mx = dx / d;
-        my = dy / d;
-      } else if (d < 55) {
-        mx = -dx / d;
-        my = -dy / d;
-      }
-    } else if (b) {
-      // 적이 없으면 가운데로 돌아간다
-      const dx = b.w / 2 - p.x;
-      const dy = b.h / 2 - p.y;
-      const d = Math.hypot(dx, dy);
-      if (d < 8) return ZERO;
-      mx = dx / d;
-      my = dy / d;
-    }
+    this.goalT -= dt;
+    const gd = Math.hypot(this.goalX - p.x, this.goalY - p.y);
+    if (this.goalX < 0 || gd < 24 || this.goalT <= 0) this.pickGoal(b.w, b.h, p.x, p.y);
 
-    // 벽에 몰리지 않게 가운데 쪽으로 살짝 당긴다
-    if (b) {
-      const margin = 40;
-      if (p.x < margin) mx += 0.8;
-      if (p.x > b.w - margin) mx -= 0.8;
-      if (p.y < margin) my += 0.8;
-      if (p.y > b.h - margin) my -= 0.8;
+    const dx = this.goalX - p.x;
+    const dy = this.goalY - p.y;
+    const d = Math.hypot(dx, dy) || 1;
+    // 목표 방향으로 서서히 돌아선다
+    const k = 1 - Math.exp(-2.5 * dt);
+    this.vx += ((dx / d) * this.speed - this.vx) * k;
+    this.vy += ((dy / d) * this.speed - this.vy) * k;
+    return { x: this.vx, y: this.vy };
+  }
+
+  /** 지금 위치에서 너무 가깝지 않은 화면 안 지점을 고른다 */
+  private pickGoal(w: number, h: number, px: number, py: number) {
+    const m = this.margin;
+    for (let i = 0; i < 8; i++) {
+      this.goalX = m + Math.random() * Math.max(1, w - m * 2);
+      this.goalY = m + Math.random() * Math.max(1, h - m * 2);
+      if (Math.hypot(this.goalX - px, this.goalY - py) > Math.min(w, h) * 0.35) break;
     }
-    return { x: mx * 0.7, y: my * 0.7 };
+    this.goalT = 4 + Math.random() * 2;
   }
 }
 
