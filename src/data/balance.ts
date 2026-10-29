@@ -1,9 +1,8 @@
-// 방치 모드 수치 공식. 밸런스 조정은 이 파일에서만 한다.
+// 수치 공식. 밸런스 조정은 이 파일에서만 한다.
+// 스테이지는 액션 모드로 직접 깨고, 방치는 깬 최고 스테이지 기준으로 재화만 쌓인다.
 
-export const KILLS_PER_STAGE = 10;
 export const BOSS_EVERY = 10;
 export const TAP_DAMAGE_MUL = 0.5;
-export const IDLE_REGEN = 0.04; // 초당 최대 체력 비율
 export const OFFLINE_CAP_SEC = 8 * 60 * 60;
 export const OFFLINE_EFFICIENCY = 0.5;
 
@@ -12,6 +11,11 @@ export const isBossStage = (stage: number) => stage % BOSS_EVERY === 0;
 export const enemyHp = (stage: number) => 10 * Math.pow(1.17, stage - 1);
 export const enemyDmg = (stage: number) => 4 * Math.pow(1.13, stage - 1);
 export const enemyGold = (stage: number) => 3 * Math.pow(1.15, stage - 1);
+
+/** 방치 초당 골드. 아직 아무것도 못 깼어도 1스테이지 기준으로 조금은 쌓인다. */
+export const idleGoldPerSec = (maxStage: number) => enemyGold(Math.max(1, maxStage));
+/** 스테이지 첫 클리어 보상 */
+export const stageClearGold = (stage: number) => enemyGold(stage) * (isBossStage(stage) ? 120 : 40);
 
 // 액션 모드 진입 시 "권장 전투력" 기준. 내 수치 ÷ 권장 수치 = 비율로 액션 밸런스를 맞춘다.
 export const recommendedPower = (stage: number) => enemyHp(stage);

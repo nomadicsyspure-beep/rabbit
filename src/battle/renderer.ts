@@ -1,7 +1,12 @@
 import { enemyColor, type Effect, type Engine, type Enemy } from './engine';
 import type { Joystick } from './controllers';
+import { SPRITES, isReady } from './sprites';
 
-// 임시 도형으로 그리는 렌더러. 나중에 스프라이트를 넣을 땐 이 파일만 바꾸면 된다.
+// 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
+
+const PLAYER_SPRITE_H = 40;
+/** 적 반지름 대비 스프라이트 높이 */
+const ENEMY_SPRITE_SCALE = 2.6;
 
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
@@ -62,13 +67,7 @@ export class Renderer {
       ctx.fill();
     }
 
-    ctx.fillStyle = '#ffd166';
-    for (const pr of eng.projectiles.items) {
-      if (!pr.active) continue;
-      ctx.beginPath();
-      ctx.arc(pr.x, pr.y, pr.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    for (const pr of eng.projectiles.items) if (pr.active) this.drawCarrot(pr.x, pr.y, Math.atan2(pr.vy, pr.vx));
 
     ctx.fillStyle = '#6fdc8c';
     for (const o of eng.orbs) {
@@ -107,11 +106,13 @@ export class Renderer {
     const ctx = this.ctx;
     const w = eng.viewW;
     const h = eng.viewH;
-    ctx.fillStyle = '#1b2233';
+    ctx.fillStyle = '#07080c';
     ctx.fillRect(0, 0, w, h);
+    if (!eng.followCamera) return;
 
+    // 액션 모드: 움직이는 게 보이게 아주 옅은 격자
     const size = 48;
-    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.035)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     const ox = -((eng.camX % size) + size) % size;
@@ -125,16 +126,40 @@ export class Renderer {
       ctx.lineTo(w, y + 0.5);
     }
     ctx.stroke();
+  }
 
-    // 가장자리 어둡게
-    const grad = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.75);
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.45)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
+  /** 발이 (x, footY)에 닿게 스프라이트를 그린다. flash > 0이면 하얗게 번쩍인다. */
+  private drawSprite(img: HTMLImageElement, x: number, footY: number, height: number, flip: boolean, flash: number) {
+    const ctx = this.ctx;
+    const width = (height * img.naturalWidth) / img.naturalHeight;
+    ctx.save();
+    ctx.translate(x, footY);
+    if (flip) ctx.scale(-1, 1);
+    ctx.drawImage(img, -width / 2, -height, width, height);
+    if (flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha *= 0.6;
+      ctx.drawImage(img, -width / 2, -height, width, height);
+    }
+    ctx.restore();
   }
 
   private drawEnemy(eng: Engine, e: Enemy) {
+    const img = SPRITES[e.skin];
+    if (isReady(img)) {
+      this.drawSprite(img, e.x, e.y + e.r, e.r * ENEMY_SPRITE_SCALE, false, e.flash);
+    } else {
+      this.drawEnemyShape(eng, e);
+    }
+    const top = isReady(img) ? e.y + e.r - e.r * ENEMY_SPRITE_SCALE : e.y - e.r;
+    const showBar = !eng.followCamera || (e.kind === 'tank' && e.hp < e.maxHp);
+    if (showBar && e.kind !== 'boss') {
+      const bw = Math.max(18, e.r * 2);
+      this.bar(e.x - bw / 2, top - 6, bw, 3, e.hp / e.maxHp, '#ff5c6c');
+    }
+  }
+
+  private drawEnemyShape(eng: Engine, e: Enemy) {
     const ctx = this.ctx;
     ctx.fillStyle = e.flash > 0 ? '#ffffff' : enemyColor(e.kind);
     const r = e.r;
@@ -171,25 +196,41 @@ export class Renderer {
     ctx.arc(e.x + ex - r * 0.28, e.y + ey - r * 0.1, er, 0, Math.PI * 2);
     ctx.arc(e.x + ex + r * 0.28, e.y + ey - r * 0.1, er, 0, Math.PI * 2);
     ctx.fill();
-
-    const showBar = !eng.followCamera || ((e.kind === 'tank') && e.hp < e.maxHp);
-    if (showBar && e.kind !== 'boss') {
-      const bw = Math.max(18, r * 2);
-      this.bar(e.x - bw / 2, e.y - r - 8, bw, 3, e.hp / e.maxHp, '#ff5c6c');
-    }
   }
 
   private drawPlayer(eng: Engine) {
     const ctx = this.ctx;
     const p = eng.player;
-    if (p.dead) return;
-    const blink = p.invuln > 0 && Math.floor(eng.time * 20) % 2 === 0;
-    ctx.globalAlpha = blink ? 0.5 : 1;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
     ctx.ellipse(p.x, p.y + p.r, p.r, p.r * 0.35, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    const frame = p.dead
+      ? SPRITES.rabbitDown
+      : p.flash > 0
+        ? SPRITES.rabbitHit
+        : p.moving
+          ? SPRITES.rabbitWalk[Math.floor(eng.time * 8) % 2]
+          : SPRITES.rabbitIdle;
+    if (isReady(frame)) {
+      const blink = p.invuln > 0 && Math.floor(eng.time * 20) % 2 === 0;
+      ctx.globalAlpha = blink ? 0.55 : 1;
+      this.drawSprite(frame, p.x, p.y + p.r + 2, PLAYER_SPRITE_H, p.faceX < 0, 0);
+      ctx.globalAlpha = 1;
+      if (!p.dead) this.bar(p.x - 15, p.y + p.r + 5, 30, 4, p.hp / p.maxHp, '#6fdc8c');
+      return;
+    }
+    if (p.dead) return;
+    this.drawPlayerShape(eng);
+  }
+
+  private drawPlayerShape(eng: Engine) {
+    const ctx = this.ctx;
+    const p = eng.player;
+    const blink = p.invuln > 0 && Math.floor(eng.time * 20) % 2 === 0;
+    ctx.globalAlpha = blink ? 0.5 : 1;
 
     const body = p.flash > 0 ? '#ff9a9a' : '#fbe9dc';
     // 귀 두 개
@@ -219,6 +260,30 @@ export class Renderer {
     ctx.globalAlpha = 1;
 
     this.bar(p.x - 15, p.y + p.r + 5, 30, 4, p.hp / p.maxHp, '#6fdc8c');
+  }
+
+  /** 당근 다트: 진행 방향을 향한 주황 삼각형 + 초록 잎 */
+  private drawCarrot(x: number, y: number, angle: number) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.fillStyle = '#ff9a3c';
+    ctx.beginPath();
+    ctx.moveTo(7, 0);
+    ctx.lineTo(-5, -3.2);
+    ctx.lineTo(-5, 3.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#6fdc8c';
+    ctx.beginPath();
+    ctx.moveTo(-5, 0);
+    ctx.lineTo(-9, -3);
+    ctx.lineTo(-8, 0);
+    ctx.lineTo(-9, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawEffect(fx: Effect) {

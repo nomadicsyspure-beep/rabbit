@@ -4,11 +4,14 @@ import { fmt } from '../core/format';
 // 엔진은 "누가 조종하는지"(Controller)와 "적을 어떻게 내보내는지"(모드)를 모른다.
 
 export type EnemyKind = 'normal' | 'fast' | 'tank' | 'boss';
+/** 그릴 때 쓰는 외형. 행동(kind)과 따로 둔다. */
+export type EnemySkin = 'slime' | 'bat' | 'ghost' | 'demon';
 
 export interface Enemy {
   id: number;
   active: boolean;
   kind: EnemyKind;
+  skin: EnemySkin;
   x: number;
   y: number;
   r: number;
@@ -107,6 +110,7 @@ export interface Player {
   invuln: number;
   flash: number;
   dead: boolean;
+  moving: boolean;
 }
 
 export interface Vec {
@@ -192,6 +196,13 @@ class Grid {
 
 const MAX_ENEMY_R = 30;
 
+const DEFAULT_SKIN: Record<EnemyKind, EnemySkin> = {
+  normal: 'slime',
+  fast: 'bat',
+  tank: 'ghost',
+  boss: 'demon',
+};
+
 export class Engine {
   viewW = 360;
   viewH = 300;
@@ -206,11 +217,11 @@ export class Engine {
 
   readonly player: Player = {
     x: 0, y: 0, r: 12, hp: 100, maxHp: 100, speed: 120, regen: 0, magnet: 60,
-    faceX: 1, faceY: 0, invuln: 0, flash: 0, dead: false,
+    faceX: 1, faceY: 0, invuln: 0, flash: 0, dead: false, moving: false,
   };
 
   readonly enemies = new Pool<Enemy>(() => ({
-    id: 0, active: false, kind: 'normal', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
+    id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
     gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
   }), 400);
   readonly projectiles = new Pool<Projectile>(() => ({
@@ -261,7 +272,7 @@ export class Engine {
     const e = this.enemies.get();
     if (!e) return null;
     Object.assign(e, {
-      r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+      skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
     }, init);
     e.id = this.nextId++;
     e.active = true;
@@ -333,7 +344,7 @@ export class Engine {
 
   damagePlayer(dmg: number) {
     const p = this.player;
-    if (p.dead || p.invuln > 0) return;
+    if (p.dead || p.invuln > 0 || dmg <= 0) return;
     p.hp -= dmg;
     p.invuln = 0.35;
     p.flash = 0.2;
@@ -410,7 +421,8 @@ export class Engine {
     if (!p.dead) {
       const mv = this.controller.getMove(this);
       const len = Math.hypot(mv.x, mv.y);
-      if (len > 0.01) {
+      p.moving = len > 0.01;
+      if (p.moving) {
         const k = Math.min(1, len);
         p.x += (mv.x / len) * k * p.speed * dt;
         p.y += (mv.y / len) * k * p.speed * dt;

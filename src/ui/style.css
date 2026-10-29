@@ -1,6 +1,7 @@
 :root {
   color-scheme: dark;
   --bg: #0f1422;
+  --field: #07080c;
   --panel: #182033;
   --card: #1b2438;
   --card-2: #222c43;
@@ -74,7 +75,7 @@ button:disabled {
   border: 2px solid var(--line-strong);
   border-radius: 10px;
   overflow: hidden;
-  background: #1b2233;
+  background: var(--field);
 }
 
 .view {
@@ -151,7 +152,7 @@ button:disabled {
 .mode-action .panel,
 .mode-action .tabs,
 .mode-action .hud-idle,
-.mode-action .boss-btn.show {
+.mode-action .challenge-btn {
   display: none;
 }
 
@@ -223,22 +224,11 @@ button:disabled {
   text-shadow: 0 1px 2px #000;
 }
 
-.stage-bar {
-  margin-top: 4px;
-  height: 5px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-}
-
-.stage-bar .fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.15s;
-}
-
-.stage-bar .fill.boss {
-  background: var(--bad);
+.income {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
 }
 
 .icon-btn {
@@ -258,29 +248,32 @@ button:disabled {
   height: 20px;
 }
 
-.boss-btn {
+.challenge-btn {
   position: absolute;
   left: 50%;
   bottom: 12px;
   transform: translateX(-50%);
-  padding: 10px 22px;
-  border-radius: 10px;
-  background: #c2344f;
-  border: 2px solid #ff8fa3;
-  font-weight: 800;
-  font-size: 15px;
-  box-shadow: 0 4px 14px rgba(194, 52, 79, 0.5);
-  display: none;
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-.boss-btn.show {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  background: var(--accent);
+  border: 2px solid #79a7ff;
+  font-weight: 800;
+  font-size: 15px;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(79, 140, 255, 0.4);
 }
 
-.boss-btn svg {
+.challenge-btn.boss {
+  background: #c2344f;
+  border-color: #ff8fa3;
+  box-shadow: 0 4px 14px rgba(194, 52, 79, 0.5);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.challenge-btn svg {
   width: 18px;
   height: 18px;
 }

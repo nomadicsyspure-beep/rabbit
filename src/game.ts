@@ -3,7 +3,7 @@ import { Engine } from './battle/engine';
 import { Renderer } from './battle/renderer';
 import { clearSave, loadSave, writeSave, type SaveData } from './core/save';
 import {
-  OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, enemyGold, enemyHp, playerPower, playerStats, type StatId,
+  OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, idleGoldPerSec, type StatId,
 } from './data/balance';
 import { ActionMode } from './modes/action';
 import { IdleMode } from './modes/idle';
@@ -54,9 +54,21 @@ export class Game {
     if (this.mode === 'idle') this.idle.resize(w, h);
   }
 
+  /** 다음에 도전할 스테이지 */
+  get nextStage() {
+    return this.save.maxStage + 1;
+  }
+
+  get goldPerSec() {
+    return idleGoldPerSec(this.save.maxStage);
+  }
+
   private frame(t: number) {
     const dt = this.last ? Math.min((t - this.last) / 1000, 0.05) : 0;
     this.last = t;
+
+    // 방치 수입은 어느 화면에 있든 최고 스테이지 기준으로 계속 쌓인다
+    this.save.gold += this.goldPerSec * dt;
 
     if (this.mode === 'idle') {
       this.idle.update(dt);
@@ -89,12 +101,12 @@ export class Game {
 
   // ---- 모드 전환 ----
 
-  enterAction(stage: number, practice: boolean) {
+  enterAction() {
     this.persist();
     this.mode = 'action';
     this.ui.setMode('action');
     this.resize();
-    this.action.enter(stage, practice);
+    this.action.enter(this.nextStage);
   }
 
   enterIdle() {
@@ -128,14 +140,11 @@ export class Game {
 
   // ---- 오프라인 보상 ----
 
-  /** 자리를 비운 시간 × 예상 초당 골드 × 효율 */
+  /** 자리를 비운 시간 × 초당 골드 × 효율 */
   private grantOffline(since: number) {
     const elapsed = Math.min((Date.now() - since) / 1000, OFFLINE_CAP_SEC);
     if (elapsed < OFFLINE_MIN_SEC) return;
-    const stage = this.idle.farmStage;
-    const killsPerSec = Math.min(playerPower(playerStats(this.save.levels)) / enemyHp(stage), 1.5);
-    const gold = elapsed * killsPerSec * enemyGold(stage) * OFFLINE_EFFICIENCY;
-    if (gold <= 0) return;
+    const gold = elapsed * this.goldPerSec * OFFLINE_EFFICIENCY;
     this.ui.showOffline(elapsed, gold, () => {
       this.save.gold += gold;
       this.persist();

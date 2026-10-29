@@ -1,7 +1,7 @@
 # rabbit
 
 방치형(탭타이탄류) + 뱀서라이크를 합친 모바일 웹 게임 프로토타입.
-평소엔 토끼가 자동사냥으로 성장하고, 보스 스테이지와 던전에서는 직접 조작해서 싸운다.
+스테이지는 직접 조작(뱀서라이크)으로 깨고, 방치 화면에서는 깬 최고 스테이지 기준으로 재화가 쌓인다.
 
 ## 실행
 
@@ -26,16 +26,24 @@ src/
     engine.ts       적·투사체·충돌·피해 처리
     controllers.ts  AutoController(방치) / Joystick(액션)
     weapons.ts      무기 4종
-    renderer.ts     임시 도형 렌더러 (스프라이트로 바꿀 땐 이 파일만 교체)
+    renderer.ts     렌더러 (스프라이트, 못 불러오면 도형으로 대신 그림)
+    sprites.ts      스프라이트 불러오기
   modes/
-    idle.ts      방치 모드: 스테이지 진행, 골드, 탭 공격
-    action.ts    액션 모드: 웨이브, 레벨업 카드, 보스
+    idle.ts      방치 화면 (보여주기용 자동 전투 + 탭 공격)
+    action.ts    스테이지 플레이: 웨이브, 레벨업 카드, 정예/마왕 보스
   data/
     balance.ts   방치 수치 공식과 액션 배율 (밸런스는 여기서 조정)
     skills.ts    레벨업 카드 스킬 정의
+  assets/      캐릭터 시트에서 잘라낸 스프라이트
   core/          저장, 숫자 표기
   ui/            DOM UI (HUD, 패널, 탭, 모달)
   game.ts        모드 전환, 게임 루프, 입력, 오프라인 보상
+```
+
+스프라이트는 `art/source/character-sheet.webp`에서 잘라낸다. 좌표를 바꾸면 다시 만든다 (Pillow 필요).
+
+```bash
+python3 tools/extract_art.py
 ```
 
 기획과 결정 사항은 [docs/PLAN.md](docs/PLAN.md) 참고.

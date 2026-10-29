@@ -1,11 +1,11 @@
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
-  BOSS_EVERY, KILLS_PER_STAGE, STATS, STAT_ORDER, actionRatio, enemyGold, isBossStage, playerPower, playerStats,
-  recommendedPower, type StatId,
+  STATS, STAT_ORDER, actionRatio, isBossStage, playerPower, playerStats, recommendedPower, stageClearGold,
+  type StatId,
 } from '../data/balance';
 import { SKILL_MAX_LEVEL } from '../data/skills';
 import type { Game, Mode } from '../game';
-import { RUN_SECONDS, type LevelUpCard, type RunResult } from '../modes/action';
+import type { LevelUpCard, RunResult } from '../modes/action';
 import { ICONS } from './icons';
 
 type TabId = 'growth' | 'gear' | 'pets' | 'dungeon' | 'shop';
@@ -86,8 +86,9 @@ export class UI {
   private readonly hudIdle: HTMLElement;
   private readonly goldEl: HTMLElement;
   private readonly stageEl: HTMLElement;
-  private readonly stageBar: HTMLElement;
-  private readonly bossBtn: HTMLButtonElement;
+  private readonly incomeEl: HTMLElement;
+  private readonly challengeBtn: HTMLButtonElement;
+  private readonly challengeLabel: HTMLElement;
 
   // 액션 HUD
   private readonly hudAction: HTMLElement;
@@ -120,19 +121,19 @@ export class UI {
     goldBox.append(h('i', 'coin'), this.goldEl);
     const stageBox = h('div', 'stage-box');
     this.stageEl = h('div', 'stage-name');
-    const bar = h('div', 'stage-bar');
-    this.stageBar = h('div', 'fill');
-    bar.append(this.stageBar);
-    stageBox.append(this.stageEl, bar);
+    this.incomeEl = h('div', 'income');
+    stageBox.append(this.stageEl, this.incomeEl);
     const settingsBtn = h('button', 'icon-btn');
     settingsBtn.innerHTML = ICONS.settings;
     settingsBtn.setAttribute('aria-label', '설정');
     settingsBtn.addEventListener('click', () => this.showSettings());
     this.hudIdle.append(goldBox, stageBox, settingsBtn);
 
-    this.bossBtn = h('button', 'boss-btn');
-    this.bossBtn.innerHTML = `${ICONS.atk}<span>보스 도전</span>`;
-    this.bossBtn.addEventListener('click', () => this.game.enterAction(this.game.save.stage, false));
+    this.challengeBtn = h('button', 'challenge-btn');
+    this.challengeBtn.innerHTML = ICONS.atk;
+    this.challengeLabel = h('span');
+    this.challengeBtn.append(this.challengeLabel);
+    this.challengeBtn.addEventListener('click', () => this.game.enterAction());
 
     this.hudAction = h('div', 'hud hud-action');
     const xpBar = h('div', 'xp-bar');
@@ -151,7 +152,7 @@ export class UI {
     this.skillsEl = h('div', 'skill-icons');
     this.hudAction.append(xpBar, row);
 
-    this.battle.append(this.hudIdle, this.bossBtn, this.hudAction, this.skillsEl);
+    this.battle.append(this.hudIdle, this.challengeBtn, this.hudAction, this.skillsEl);
 
     // ---- 하단 패널 / 탭 ----
     this.panel = h('section', 'panel');
@@ -232,51 +233,36 @@ export class UI {
   }
 
   private buildDungeon() {
-    // 보스 도전
-    const boss = h('div', 'card dungeon');
-    const bTitle = h('div', 'title');
-    const bSub = h('div', 'sub');
-    const bRatio = h('div', 'ratio');
-    const bBtn = h('button', 'enter', '도전');
-    bBtn.addEventListener('click', () => this.game.enterAction(this.game.save.stage, false));
-    const bInfo = h('div', 'info');
-    bInfo.append(bTitle, bSub, bRatio);
-    const bIcon = svgIcon(ICONS.boss, '#d04070');
-    boss.append(bIcon, bInfo, bBtn);
+    // 다음 스테이지 도전
+    const card = h('div', 'card dungeon');
+    const icon = svgIcon(ICONS.boss, '#d04070');
+    const title = h('div', 'title');
+    const sub = h('div', 'sub');
+    const ratio = h('div', 'ratio');
+    const info = h('div', 'info');
+    info.append(title, sub, ratio);
+    const btn = h('button', 'enter', '도전');
+    btn.addEventListener('click', () => this.game.enterAction());
+    card.append(icon, info, btn);
+    this.panel.append(card);
 
-    // 연습
-    const practice = h('div', 'card dungeon');
-    const pIcon = svgIcon(ICONS.practice, '#4a7bd6');
-    const pInfo = h('div', 'info');
-    pInfo.append(h('div', 'title', '연습 던전'), h('div', 'sub', '보상 없이 액션 모드를 언제든 체험'));
-    const pBtn = h('button', 'enter', '입장');
-    pBtn.addEventListener('click', () => this.game.enterAction(this.game.idle.farmStage, true));
-    practice.append(pIcon, pInfo, pBtn);
-
-    this.panel.append(boss, practice);
-    for (const [name, sub] of [['일일 던전', '매일 초기화 · 강화석 획득'], ['주간 던전', '매주 초기화 · 스킬북 획득']]) {
+    for (const [name, desc] of [['일일 던전', '매일 초기화 · 강화석 획득'], ['주간 던전', '매주 초기화 · 스킬북 획득']]) {
       const c = h('div', 'card dungeon locked');
-      const icon = svgIcon(ICONS.lock);
       const info = h('div', 'info');
-      info.append(h('div', 'title', name), h('div', 'sub', sub + ' (준비 중)'));
-      c.append(icon, info);
+      info.append(h('div', 'title', name), h('div', 'sub', desc + ' (준비 중)'));
+      c.append(svgIcon(ICONS.lock), info);
       this.panel.append(c);
     }
 
     this.dungeonRefresh = () => {
-      const save = this.game.save;
-      const gate = isBossStage(save.stage);
-      const bossStage = gate ? save.stage : Math.ceil(save.stage / BOSS_EVERY) * BOSS_EVERY;
-      bTitle.textContent = `스테이지 ${bossStage} 보스`;
-      bSub.textContent = gate
-        ? `권장 전투력 ${fmt(recommendedPower(bossStage))} · 클리어 보상 ${fmt(enemyGold(bossStage) * 60)}`
-        : `스테이지 ${bossStage}에 도달하면 도전 가능`;
-      const r = actionRatio(playerStats(save.levels), bossStage);
+      const stage = this.game.nextStage;
+      title.textContent = isBossStage(stage) ? `스테이지 ${stage} · 마왕` : `스테이지 ${stage}`;
+      sub.textContent = `권장 전투력 ${fmt(recommendedPower(stage))} · 클리어 보상 ${fmt(stageClearGold(stage))}`;
+      const r = actionRatio(playerStats(this.game.save.levels), stage);
       const worst = Math.min(r.atk, r.hp);
       const [label, cls] = worst < 0.6 ? ['위험', 'bad'] : worst < 0.9 ? ['도전', 'mid'] : ['여유', 'good'];
-      bRatio.className = 'ratio ' + cls;
-      bRatio.textContent = `${label} · 공격 ×${r.atk.toFixed(2)} · 체력 ×${r.hp.toFixed(2)}`;
-      bBtn.disabled = !gate;
+      ratio.className = 'ratio ' + cls;
+      ratio.textContent = `${label} · 공격 ×${r.atk.toFixed(2)} · 체력 ×${r.hp.toFixed(2)}`;
     };
   }
 
@@ -298,14 +284,14 @@ export class UI {
     const save = g.save;
     if (g.mode === 'idle') {
       this.goldEl.textContent = fmt(save.gold);
-      const gate = isBossStage(save.stage);
-      this.stageEl.textContent = gate ? `스테이지 ${save.stage} · 보스` : `스테이지 ${save.stage}`;
-      this.stageBar.style.width = gate ? '100%' : `${(save.kills / KILLS_PER_STAGE) * 100}%`;
-      this.stageBar.classList.toggle('boss', gate);
-      this.bossBtn.classList.toggle('show', gate);
+      this.stageEl.textContent = save.maxStage > 0 ? `최고 스테이지 ${save.maxStage}` : '스테이지 기록 없음';
+      this.incomeEl.textContent = `초당 +${fmt(g.goldPerSec)}`;
+      const next = g.nextStage;
+      this.challengeLabel.textContent = isBossStage(next) ? `스테이지 ${next} 마왕 도전` : `스테이지 ${next} 도전`;
+      this.challengeBtn.classList.toggle('boss', isBossStage(next));
 
       const st = playerStats(save.levels);
-      if (this.powerEl) this.powerEl.textContent = `전투력 ${fmt(playerPower(st))}  ·  보스 처치 ${save.bossKills}회`;
+      if (this.powerEl) this.powerEl.textContent = `전투력 ${fmt(playerPower(st))}  ·  마왕 처치 ${save.bossKills}회`;
       for (const [id, row] of this.statRows) {
         const def = STATS[id];
         const meta = STAT_META[id];
@@ -321,7 +307,7 @@ export class UI {
       const a = g.action;
       this.xpFill.style.width = `${(a.xp / a.xpNext) * 100}%`;
       this.lvEl.textContent = `Lv ${a.level}`;
-      this.timerEl.textContent = a.bossSpawned ? '보스!' : fmtTime(RUN_SECONDS - a.time);
+      this.timerEl.textContent = a.bossSpawned ? (a.isBossStage ? '마왕!' : '정예!') : fmtTime(a.duration - a.time);
       this.timerEl.classList.toggle('boss', a.bossSpawned);
       this.killsEl.textContent = `처치 ${a.kills}`;
 
@@ -429,9 +415,9 @@ export class UI {
     line('생존 시간', fmtTime(r.time));
     line('처치', String(r.kills));
     line('레벨', String(r.level));
-    if (!r.practice) line('보상', coin(fmt(r.gold)));
-    const title = r.win ? (r.practice ? '연습 클리어!' : `스테이지 ${r.stage} 보스 처치!`) : '쓰러졌어요…';
-    const sub = r.practice ? '연습 던전은 보상이 없어요' : r.win ? '다음 스테이지로 넘어갑니다' : '강화하고 다시 도전해 보세요';
+    line('보상', coin(fmt(r.gold)));
+    const title = r.win ? `스테이지 ${r.stage} 클리어!` : '쓰러졌어요…';
+    const sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
     this.openModal(
       h('div', 'modal-title ' + (r.win ? 'win' : 'lose'), title),
       h('div', 'modal-sub', sub),
@@ -461,9 +447,9 @@ export class UI {
     const g = this.game;
     this.openModal(
       h('div', 'modal-title', '설정'),
-      h('div', 'modal-sub', '프로토타입 v0.1'),
+      h('div', 'modal-sub', '프로토타입 v0.2'),
       this.button('테스트: 골드 지급', '', () => {
-        g.save.gold += enemyGold(g.idle.farmStage) * 500;
+        g.save.gold += g.goldPerSec * 500;
         this.refresh();
         this.toast('골드를 지급했어요');
       }),

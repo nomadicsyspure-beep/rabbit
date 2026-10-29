@@ -18,7 +18,7 @@ export class DartWeapon implements Weapon {
   static readonly COUNT = [1, 2, 2, 3, 3];
   static readonly DMG = [1, 1, 1.3, 1.3, 1.6];
   static readonly PIERCE = [0, 0, 0, 1, 1];
-  static readonly CD = [1, 1, 0.9, 0.9, 0.7];
+  static readonly CD = [0.8, 0.8, 0.7, 0.7, 0.55];
 
   constructor(private readonly stats: WeaponStats, private readonly range = 260) {}
 

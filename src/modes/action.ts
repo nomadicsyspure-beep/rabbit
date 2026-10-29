@@ -1,16 +1,19 @@
 import type { Enemy, EnemyKind, Weapon } from '../battle/engine';
 import type { WeaponStats } from '../battle/weapons';
-import { actionRatio, enemyGold, playerStats, type ActionRatio } from '../data/balance';
+import { actionRatio, enemyGold, isBossStage, playerStats, stageClearGold, type ActionRatio } from '../data/balance';
 import { SKILLS, SKILL_BY_ID, SKILL_MAX_LEVEL, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
-export const RUN_SECONDS = 180;
+// 일반 스테이지: 90초 버티면 정예 몬스터 / 보스 스테이지(10단위): 180초 버티면 마왕 보스
+const NORMAL_SECONDS = 90;
+const BOSS_STAGE_SECONDS = 180;
 const BASE_POWER = 10;
 const BASE_HP = 100;
 const BASE_SPEED = 110;
 const BASE_MAGNET = 55;
 const MAX_ALIVE = 170;
+const ELITE_HP = 900;
 const BOSS_HP = 2600;
 
 export interface LevelUpCard {
@@ -21,7 +24,6 @@ export interface LevelUpCard {
 
 export interface RunResult {
   win: boolean;
-  practice: boolean;
   time: number;
   kills: number;
   level: number;
@@ -34,7 +36,8 @@ export type RunState = 'playing' | 'levelup' | 'paused' | 'ended';
 export class ActionMode {
   state: RunState = 'ended';
   stage = 1;
-  practice = false;
+  /** 이번 판에서 보스가 나오기까지 버텨야 하는 시간 */
+  duration = NORMAL_SECONDS;
   ratio: ActionRatio = { atk: 1, hp: 1 };
   time = 0;
   level = 1;
@@ -47,7 +50,7 @@ export class ActionMode {
   private readonly weapons = new Map<string, Weapon>();
   private pendingLevelUps = 0;
   private spawnAcc = 0;
-  private swarms = [60, 120];
+  private swarms: number[] = [];
   private baseHp = BASE_HP;
   private endT = -1;
 
@@ -61,7 +64,11 @@ export class ActionMode {
     return this.state === 'playing';
   }
 
-  enter(stage: number, practice: boolean) {
+  get isBossStage() {
+    return isBossStage(this.stage);
+  }
+
+  enter(stage: number) {
     const eng = this.game.engine;
     eng.reset();
     eng.bounds = null;
@@ -76,7 +83,7 @@ export class ActionMode {
     };
 
     this.stage = stage;
-    this.practice = practice;
+    this.duration = isBossStage(stage) ? BOSS_STAGE_SECONDS : NORMAL_SECONDS;
     this.ratio = actionRatio(playerStats(this.game.save.levels), stage);
     this.stats.power = BASE_POWER * this.ratio.atk;
     this.baseHp = BASE_HP * this.ratio.hp;
@@ -96,7 +103,8 @@ export class ActionMode {
     this.bossSpawned = false;
     this.pendingLevelUps = 0;
     this.spawnAcc = 0;
-    this.swarms = [60, 120];
+    // 몰려오기 이벤트: 일반 스테이지는 후반 한 번, 보스 스테이지는 두 번
+    this.swarms = this.isBossStage ? [60, 120] : [(this.duration * 2) / 3];
     this.endT = -1;
     this.owned.clear();
     this.weapons.clear();
@@ -116,9 +124,11 @@ export class ActionMode {
 
     this.time += dt;
 
-    if (!this.bossSpawned && this.time >= RUN_SECONDS) this.spawnBoss();
+    if (!this.bossSpawned && this.time >= this.duration) this.spawnBoss();
 
-    const rate = this.bossSpawned ? 1 : 1.2 + (this.time / RUN_SECONDS) * 5.5;
+    // 초당 생성 수: 시간이 지날수록 늘어난다 (보스 스테이지가 더 빽빽하다)
+    const peak = this.isBossStage ? 5.5 : 3.5;
+    const rate = this.bossSpawned ? 1 : 1.2 + (this.time / this.duration) * peak;
     this.spawnAcc += rate * dt;
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
@@ -140,10 +150,10 @@ export class ActionMode {
   }
 
   private pickKind(): EnemyKind {
-    const t = this.time;
+    const k = this.time / this.duration;
     const r = Math.random();
-    const tankW = t > 60 ? 0.15 + (t - 60) / 600 : 0;
-    const fastW = t > 25 ? 0.25 : 0;
+    const tankW = k > 0.33 ? 0.15 + (k - 0.33) * 0.3 : 0;
+    const fastW = k > 0.14 ? 0.25 : 0;
     if (r < tankW) return 'tank';
     if (r < tankW + fastW) return 'fast';
     return 'normal';
@@ -161,13 +171,13 @@ export class ActionMode {
     const s = 1 + (this.time / 60) * 0.6;
     switch (kind) {
       case 'normal':
-        eng.spawnEnemy({ kind, x, y, hp: 10 * s, r: 10, speed: 42, dmg: 8, xp: 1 });
+        eng.spawnEnemy({ kind, x, y, hp: 10 * s, r: 11, speed: 42, dmg: 5 * s, xp: 1 });
         break;
       case 'fast':
-        eng.spawnEnemy({ kind, x, y, hp: 6 * s, r: 9, speed: 78, dmg: 6, xp: 1 });
+        eng.spawnEnemy({ kind, x, y, hp: 6 * s, r: 10, speed: 78, dmg: 4 * s, xp: 1 });
         break;
       case 'tank':
-        eng.spawnEnemy({ kind, x, y, hp: 45 * s, r: 14, speed: 26, dmg: 14, xp: 3 });
+        eng.spawnEnemy({ kind, x, y, hp: 45 * s, r: 14, speed: 26, dmg: 10 * s, xp: 3 });
         break;
       case 'boss':
         break;
@@ -182,8 +192,14 @@ export class ActionMode {
   private spawnBoss() {
     this.bossSpawned = true;
     const { x, y } = this.spawnPos();
-    this.game.engine.spawnEnemy({ kind: 'boss', x, y, hp: BOSS_HP, r: 28, speed: 34, dmg: 22, xp: 0 });
-    this.game.ui.toast('보스 등장!');
+    const eng = this.game.engine;
+    if (this.isBossStage) {
+      eng.spawnEnemy({ kind: 'boss', skin: 'demon', x, y, hp: BOSS_HP, r: 30, speed: 34, dmg: 22, xp: 0 });
+      this.game.ui.toast('마왕 등장!');
+    } else {
+      eng.spawnEnemy({ kind: 'boss', skin: 'slime', x, y, hp: ELITE_HP, r: 22, speed: 38, dmg: 16, xp: 0 });
+      this.game.ui.toast('정예 몬스터 등장!');
+    }
   }
 
   /** 너무 멀어진 적은 플레이어 주변으로 다시 데려온다 (뱀서 방식) */
@@ -296,20 +312,18 @@ export class ActionMode {
     this.state = 'ended';
     this.game.joystick.release();
     const save = this.game.save;
-    let gold = 0;
-    if (!this.practice) {
-      if (win) {
-        gold = enemyGold(this.stage) * 60;
-        save.stage = this.stage + 1;
-        save.kills = 0;
-        save.bossKills++;
-      } else {
-        gold = this.kills * enemyGold(Math.max(1, this.stage - 1)) * 0.1;
-      }
-      save.gold += gold;
+    let gold: number;
+    if (win) {
+      gold = stageClearGold(this.stage);
+      save.maxStage = Math.max(save.maxStage, this.stage);
+      if (this.isBossStage) save.bossKills++;
+    } else {
+      // 실패해도 잡은 만큼은 조금 준다
+      gold = this.kills * enemyGold(this.stage) * 0.1;
     }
+    save.gold += gold;
     const result: RunResult = {
-      win, practice: this.practice, time: this.time, kills: this.kills, level: this.level, gold, stage: this.stage,
+      win, time: this.time, kills: this.kills, level: this.level, gold, stage: this.stage,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }
