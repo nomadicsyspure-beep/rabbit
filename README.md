@@ -16,7 +16,9 @@ npm run dev
 npm run build
 ```
 
-`main` 브랜치에 푸시하면 GitHub Actions가 GitHub Pages로 배포한다. 처음 한 번은 저장소 Settings → Pages → Source를 **GitHub Actions**로 바꿔야 한다.
+`main`에 푸시하면 GitHub Actions가 빌드해서 결과물을 `gh-pages` 브랜치에 올린다. Pages 설정은 Settings → Pages → Source **Deploy from a branch**, Branch **gh-pages / (root)**.
+
+주소: https://nomadicsyspure-beep.github.io/rabbit/
 
 ## 구조
 
