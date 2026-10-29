@@ -87,6 +87,15 @@ button:disabled {
   touch-action: none;
 }
 
+/* 아래로 걷는 GIF: 캔버스 위에 겹쳐 띄우고 위치는 렌더러가 매 프레임 옮긴다 */
+.hero-gif {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  image-rendering: auto;
+}
+
 .panel {
   flex: 1;
   min-height: 0;
