@@ -1,0 +1,683 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1422;
+  --field: #07080c;
+  --panel: #182033;
+  --card: #1b2438;
+  --card-2: #222c43;
+  --line: #34425f;
+  --line-strong: #4a5d84;
+  --text: #e3eaff;
+  --muted: #8d9bbb;
+  --accent: #4f8cff;
+  --gold: #ffd166;
+  --good: #6fdc8c;
+  --mid: #ffcf5a;
+  --bad: #ff6b7a;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+}
+
+#root {
+  height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+/* ---- 레이아웃 ---- */
+
+.app {
+  position: relative;
+  height: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: calc(10px + var(--safe-top)) 10px calc(10px + var(--safe-bottom));
+}
+
+.battle {
+  position: relative;
+  flex: 0 0 38%;
+  min-height: 220px;
+  border: 2px solid var(--line-strong);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--field);
+}
+
+.view {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+.tabs {
+  flex: 0 0 64px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  border-left: 2px solid var(--line);
+}
+
+.tab:first-child {
+  border-left: none;
+}
+
+.tab svg {
+  width: 26px;
+  height: 26px;
+}
+
+.tab.active {
+  color: #a9c6ff;
+  background: #1f2a42;
+}
+
+.tab.locked {
+  opacity: 0.45;
+}
+
+/* 액션 모드: 전투 화면만 꽉 차게 */
+.mode-action {
+  padding: 0;
+  gap: 0;
+}
+
+.mode-action .battle {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+}
+
+.mode-action .panel,
+.mode-action .tabs,
+.mode-action .hud-idle,
+.mode-action .challenge-btn {
+  display: none;
+}
+
+.app:not(.mode-action) .hud-action,
+.app:not(.mode-action) .skill-icons {
+  display: none;
+}
+
+/* ---- HUD ---- */
+
+.hud {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  pointer-events: none;
+}
+
+.hud button {
+  pointer-events: auto;
+}
+
+.hud-idle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mode-action .hud-action {
+  top: calc(8px + var(--safe-top));
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(10, 14, 24, 0.7);
+  border: 1px solid var(--line);
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.coin {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: inset 0 -2px 0 #d9a53a;
+  flex: none;
+}
+
+.gold {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.stage-box {
+  flex: 1;
+  max-width: 170px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px #000;
+}
+
+.income {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(10, 14, 24, 0.7);
+  border: 2px solid var(--line-strong);
+  color: #b8c8ee;
+  font-weight: 800;
+}
+
+.icon-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.challenge-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  background: var(--accent);
+  border: 2px solid #79a7ff;
+  font-weight: 800;
+  font-size: 15px;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(79, 140, 255, 0.4);
+}
+
+.challenge-btn.boss {
+  background: #c2344f;
+  border-color: #ff8fa3;
+  box-shadow: 0 4px 14px rgba(194, 52, 79, 0.5);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.challenge-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+@keyframes pulse {
+  50% {
+    transform: translateX(-50%) scale(1.06);
+  }
+}
+
+.xp-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.xp-bar .fill {
+  height: 100%;
+  background: #4fd1c5;
+}
+
+.action-row {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.action-right {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.timer {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px #000;
+}
+
+.timer.boss {
+  color: var(--bad);
+}
+
+.skill-icons {
+  position: absolute;
+  left: 8px;
+  bottom: calc(10px + var(--safe-bottom));
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.skill-icon {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  border: 2px solid;
+  background: rgba(10, 14, 24, 0.75);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.skill-icon b {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  font-size: 10px;
+  color: var(--text);
+  background: #0f1422;
+  border-radius: 6px;
+  padding: 0 3px;
+}
+
+/* ---- 카드 ---- */
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 10px;
+}
+
+.card .icon,
+.skill-card .icon {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 800;
+  color: #121826;
+  background: var(--card-2);
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.sub {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.lv {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.summary {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #b8c8ee;
+  padding: 4px 0;
+}
+
+.hint {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 0 6px;
+}
+
+.buy,
+.enter {
+  flex: none;
+  min-width: 92px;
+  height: 50px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+}
+
+.buy small {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.buy:active:not(:disabled),
+.enter:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.buy:disabled,
+.enter:disabled {
+  background: #2a3348;
+  color: #6b7896;
+  box-shadow: none;
+}
+
+.enter {
+  min-width: 72px;
+  font-size: 15px;
+}
+
+.ratio {
+  margin-top: 5px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ratio.good {
+  color: var(--good);
+}
+
+.ratio.mid {
+  color: var(--mid);
+}
+
+.ratio.bad {
+  color: var(--bad);
+}
+
+.card.locked {
+  opacity: 0.5;
+}
+
+.locked-card {
+  flex-direction: column;
+  padding: 36px 16px;
+  text-align: center;
+}
+
+.card .icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.card.locked .icon {
+  color: var(--muted);
+}
+
+.lock-icon {
+  color: var(--muted);
+}
+
+.lock-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+/* ---- 모달 ---- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 11, 20, 0.72);
+  padding: 16px;
+}
+
+.overlay.show {
+  display: flex;
+}
+
+.modal {
+  width: min(100%, 360px);
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  background: var(--panel);
+  border: 2px solid var(--line-strong);
+  border-radius: 14px;
+  touch-action: pan-y;
+}
+
+.modal-title {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.modal-title.win {
+  color: var(--gold);
+}
+
+.modal-title.lose {
+  color: var(--bad);
+}
+
+.modal-sub {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: -4px;
+}
+
+.btn {
+  height: 46px;
+  border-radius: 9px;
+  background: var(--card-2);
+  border: 2px solid var(--line);
+  font-weight: 700;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: #79a7ff;
+  color: #fff;
+}
+
+.btn.danger {
+  color: var(--bad);
+}
+
+.btn.danger.armed {
+  background: #c2344f;
+  border-color: var(--bad);
+  color: #fff;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  text-align: left;
+  background: var(--card-2);
+  border: 2px solid var(--line);
+  border-radius: 10px;
+}
+
+.skill-card:active {
+  border-color: var(--accent);
+}
+
+.skill-card .icon {
+  background: #11182a;
+  border: 2px solid;
+}
+
+.tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #33415f;
+  color: #c9d6f5;
+  vertical-align: 2px;
+}
+
+.tag.new {
+  background: #c2344f;
+  color: #fff;
+}
+
+.max {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.result-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--card);
+  border-radius: 10px;
+}
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.result-row span {
+  color: var(--muted);
+}
+
+.big-reward {
+  display: flex;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--gold);
+  padding: 8px 0;
+}
+
+.big-reward .coin {
+  width: 22px;
+  height: 22px;
+}
+
+.toast {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  top: 22%;
+  transform: translate(-50%, -6px);
+  max-width: 88%;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(10, 14, 24, 0.88);
+  border: 1px solid var(--line-strong);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
