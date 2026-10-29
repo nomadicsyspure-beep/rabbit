@@ -15,6 +15,8 @@ export class Renderer {
   private dpr = 1;
   /** 아래로 걷는 GIF. 캔버스 바로 위(HUD 아래)에 겹쳐서 위치만 옮긴다. */
   private readonly walkDownGif: HTMLImageElement;
+  /** 지금 보여주는 8방향 인덱스. 경계에서 그림이 깜빡이지 않게 여유를 두고 바꾼다. */
+  private heroDir = 2;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -228,7 +230,7 @@ export class Renderer {
       return;
     }
 
-    const dir = heroDirIndex(p.faceX, p.faceY);
+    const dir = this.updateHeroDir(p.faceX, p.faceY);
     // 이동 중: 아래는 GIF, 나머지 방향은 PNG를 통통 튀게
     const useGif = p.moving && dir === DOWN_DIR && gif.complete && gif.naturalWidth > 0;
     gif.hidden = !useGif;
@@ -258,6 +260,16 @@ export class Renderer {
       ctx.restore();
     }
     this.bar(p.x - 15, p.y + p.r + 5, 30, 4, p.hp / p.maxHp, '#6fdc8c');
+  }
+
+  private updateHeroDir(fx: number, fy: number) {
+    const a = Math.atan2(fy, fx);
+    const center = (this.heroDir * Math.PI) / 4;
+    let diff = Math.abs(a - center) % (Math.PI * 2);
+    if (diff > Math.PI) diff = Math.PI * 2 - diff;
+    // 칸 경계(22.5°)를 10° 넘게 지나야 다음 방향으로 바꾼다
+    if (diff > Math.PI / 8 + 0.17) this.heroDir = heroDirIndex(fx, fy);
+    return this.heroDir;
   }
 
   private drawPlayerShape(eng: Engine) {
