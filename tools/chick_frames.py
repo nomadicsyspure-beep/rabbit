@@ -6,6 +6,7 @@
 결과는 프레임을 가로로 이어 붙인 PNG 한 장 (256×256 프레임 × N).
 파일 이름: <동작>-<방향>.png  (예: walk-south-east.png)
 """
+import colorsys
 from collections import deque
 from pathlib import Path
 
@@ -20,6 +21,11 @@ OUT = ROOT / "src" / "assets" / "chick"
 # 원본 폴더 이름 → 게임에서 쓰는 동작 이름
 ANIMS = {"walking": "walk", "running": "run"}
 DIRS = ["south-east", "south-west", "north-east", "north-west", "south", "north", "east", "west"]
+
+# 방향별 머리(얼굴) 노란색 밝기 보정. 옆모습 원본이 다른 방향보다 얼굴이 어둡게 나와서 맞춘다
+HEAD_LIGHTEN = {"east": 0.05, "west": 0.05}
+# 이 높이(px)까지는 보정을 다 하고, HEAD_FADE_END까지 점점 줄여 몸통과 경계가 안 생기게 한다
+HEAD_FADE_START, HEAD_FADE_END = 160, 200
 
 
 def dir_of(name: str):
@@ -64,6 +70,24 @@ def clean(frame: Image.Image):
     return frame
 
 
+def lighten_head(frame: Image.Image, amount: float):
+    """노란 깃털만 밝게 한다 (외곽선·눈·부리·볼은 그대로)"""
+    w, h = frame.size
+    px = frame.load()
+    for y in range(min(h, HEAD_FADE_END)):
+        k = 1.0 if y <= HEAD_FADE_START else (HEAD_FADE_END - y) / (HEAD_FADE_END - HEAD_FADE_START)
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                continue
+            hue, light, sat = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+            if not (0.09 < hue < 0.19 and light > 0.35):
+                continue
+            r2, g2, b2 = colorsys.hls_to_rgb(hue, min(1.0, light + amount * k), sat)
+            px[x, y] = (round(r2 * 255), round(g2 * 255), round(b2 * 255), a)
+    return frame
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for folder, anim in ANIMS.items():
@@ -77,7 +101,10 @@ def main():
             strip = Image.new("RGBA", (w * gif.n_frames, h))
             for i in range(gif.n_frames):
                 gif.seek(i)
-                strip.paste(clean(gif.convert("RGBA")), (i * w, 0))
+                frame = clean(gif.convert("RGBA"))
+                if d in HEAD_LIGHTEN:
+                    lighten_head(frame, HEAD_LIGHTEN[d])
+                strip.paste(frame, (i * w, 0))
             strip.save(OUT / f"{anim}-{d}.png", optimize=True)
             print(f"{anim}-{d}.png  {gif.n_frames}프레임")
 
