@@ -5,8 +5,8 @@
 ## 폴더
 | 폴더 | 동작 | 언제 |
 |---|---|---|
-| `walking/` | 걷기 | 조이스틱을 조금 밀 때, 방치 화면. 멈춰 있을 땐 첫 프레임 |
-| `running/` | 달리기 | 조이스틱을 75% 넘게 밀 때 |
+| `walking/` | 걷기 | 기본 이동 (방치 화면 포함). 멈춰 있을 땐 첫 프레임 |
+| `running/` | 달리기 | 이동 속도가 붙었을 때 (신속 스킬 Lv2부터). 기준은 `src/battle/renderer.ts`의 `RUN_SPEED` |
 
 ## 올리는 법
 GitHub에서 해당 폴더 → **Add file → Upload files** → 파일 끌어다 놓기 → **Commit changes**.
