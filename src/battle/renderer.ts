@@ -1,12 +1,12 @@
 import { enemyColor, type Effect, type Engine, type Enemy } from './engine';
 import type { Joystick } from './controllers';
-import { gifFrameAt } from './gif';
-import { HERO_ANIM_SPEED, HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites';
+import { frameAt } from './anim';
+import { HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites';
 
 // 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
 
-/** 쓰러진 토끼 스프라이트 높이 */
-const DOWN_SPRITE_H = 36;
+/** 조이스틱을 이만큼(0~1) 넘게 밀면 달리기 그림 */
+const RUN_K = 0.75;
 /** 적 반지름 대비 스프라이트 높이 */
 const ENEMY_SPRITE_SCALE = 2.6;
 
@@ -212,30 +212,29 @@ export class Renderer {
     ctx.fill();
 
     const footY = p.y + p.r + 2;
+    const dir = this.updateHeroDir(p.faceX, p.faceY);
     if (p.dead) {
-      if (isReady(SPRITES.rabbitDown)) this.drawSprite(SPRITES.rabbitDown, p.x, footY, DOWN_SPRITE_H, p.faceX < 0, 0);
+      // 쓰러짐: 아래 보는 첫 프레임을 옆으로 눕힌다
+      const down = SPRITES.hero.walk[2];
+      if (!down) return;
+      ctx.save();
+      ctx.translate(p.x, footY - HERO_SIZE * 0.36);
+      ctx.rotate(p.faceX < 0 ? -Math.PI / 2 : Math.PI / 2);
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(down.frames[0], -HERO_SIZE / 2, -HERO_SIZE / 2, HERO_SIZE, HERO_SIZE);
+      ctx.restore();
       return;
     }
 
-    // 이동 중: 그 방향 GIF 재생 / 멈춤: 그 방향 PNG
-    const dir = this.updateHeroDir(p.faceX, p.faceY);
-    const walk = p.moving ? SPRITES.heroWalk[dir] : null;
-    const still = SPRITES.heroDirs[dir];
-    let img: CanvasImageSource;
-    let hop = 0;
-    if (walk) {
-      img = gifFrameAt(walk, eng.time * 1000 * HERO_ANIM_SPEED);
-    } else if (isReady(still)) {
-      img = still;
-      // GIF를 아직 못 불러왔으면 PNG를 통통 튀게 해서 걷는 티를 낸다
-      if (p.moving) hop = Math.abs(Math.sin(eng.time * 11)) * 4;
-    } else {
-      return this.drawPlayerShape(eng);
-    }
+    // 이동 중: 세기에 따라 걷기/달리기 재생 / 멈춤: 걷기 첫 프레임
+    const motion = p.moving && p.moveK > RUN_K ? 'run' : 'walk';
+    const anim = SPRITES.hero[motion][dir] ?? SPRITES.hero.walk[dir];
+    if (!anim) return this.drawPlayerShape(eng);
+    const img = p.moving ? frameAt(anim, eng.time * 1000) : anim.frames[0];
 
     const blink = p.invuln > 0 && Math.floor(eng.time * 20) % 2 === 0;
     const left = p.x - HERO_SIZE / 2;
-    const top = footY - hop - HERO_SIZE * HERO_FOOT;
+    const top = footY - HERO_SIZE * HERO_FOOT;
     ctx.save();
     ctx.globalAlpha = blink ? 0.55 : 1;
     ctx.drawImage(img, left, top, HERO_SIZE, HERO_SIZE);

@@ -111,6 +111,8 @@ export interface Player {
   flash: number;
   dead: boolean;
   moving: boolean;
+  /** 이번 프레임 이동 세기 0~1 (조이스틱을 얼마나 밀었나). 걷기/달리기 그림을 고르는 데 쓴다 */
+  moveK: number;
 }
 
 export interface Vec {
@@ -217,7 +219,7 @@ export class Engine {
 
   readonly player: Player = {
     x: 0, y: 0, r: 12, hp: 100, maxHp: 100, speed: 120, regen: 0, magnet: 60,
-    faceX: 1, faceY: 0, invuln: 0, flash: 0, dead: false, moving: false,
+    faceX: 1, faceY: 0, invuln: 0, flash: 0, dead: false, moving: false, moveK: 0,
   };
 
   readonly enemies = new Pool<Enemy>(() => ({
@@ -422,8 +424,9 @@ export class Engine {
       const mv = this.controller.getMove(this);
       const len = Math.hypot(mv.x, mv.y);
       p.moving = len > 0.01;
+      p.moveK = p.moving ? Math.min(1, len) : 0;
       if (p.moving) {
-        const k = Math.min(1, len);
+        const k = p.moveK;
         p.x += (mv.x / len) * k * p.speed * dt;
         p.y += (mv.y / len) * k * p.speed * dt;
         p.faceX = mv.x / len;
