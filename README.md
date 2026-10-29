@@ -36,16 +36,22 @@ src/
   data/
     balance.ts   방치 수치 공식과 액션 배율 (밸런스는 여기서 조정)
     skills.ts    레벨업 카드 스킬 정의
-  assets/      캐릭터 시트에서 잘라낸 스프라이트
+  assets/      몬스터 스프라이트, chick/ 병아리 프레임
   core/          저장, 숫자 표기
   ui/            DOM UI (HUD, 패널, 탭, 모달)
   game.ts        모드 전환, 게임 루프, 입력, 오프라인 보상
 ```
 
-스프라이트는 `art/source/character-sheet.webp`에서 잘라낸다. 좌표를 바꾸면 다시 만든다 (Pillow 필요).
+몬스터 스프라이트는 `art/source/character-sheet.webp`에서 잘라낸다. 좌표를 바꾸면 다시 만든다 (Pillow 필요).
 
 ```bash
 python3 tools/extract_art.py
+```
+
+주인공(병아리)은 `art/source/chick`의 걷기·달리기 GIF를 배경 찌꺼기를 지운 프레임 띠 PNG(`src/assets/chick`)로 바꿔 쓴다. GIF를 새로 올리면 다시 만든다.
+
+```bash
+python3 tools/chick_frames.py
 ```
 
 기획과 결정 사항은 [docs/PLAN.md](docs/PLAN.md) 참고.

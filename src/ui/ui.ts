@@ -434,7 +434,7 @@ export class UI {
     reward.append(coin(fmt(gold)));
     this.openModal(
       h('div', 'modal-title', '돌아오셨군요!'),
-      h('div', 'modal-sub', `자리를 비운 ${fmtDuration(sec)} 동안 토끼가 사냥했어요`),
+      h('div', 'modal-sub', `자리를 비운 ${fmtDuration(sec)} 동안 병아리가 사냥했어요`),
       reward,
       this.button('받기', 'primary', () => {
         this.closeModal();

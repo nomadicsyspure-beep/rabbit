@@ -5,7 +5,7 @@ import { TAP_DAMAGE_MUL, playerStats } from '../data/balance';
 import type { Game } from '../game';
 
 // 방치 화면은 보여주기용이다. 수입은 Game이 최고 스테이지 기준으로 따로 계산하고,
-// 여기서는 토끼가 알아서 싸우는 모습만 돌린다 (적은 플레이어를 다치게 하지 않는다).
+// 여기서는 병아리가 알아서 싸우는 모습만 돌린다 (적은 플레이어를 다치게 하지 않는다).
 
 const MAX_ALIVE = 4;
 const SPAWN_SEC = 0.6;
