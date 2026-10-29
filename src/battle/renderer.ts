@@ -1,10 +1,10 @@
 import { enemyColor, type Effect, type Engine, type Enemy } from './engine';
 import type { Joystick } from './controllers';
-import { HERO_FOOT, HERO_SIZE, HERO_WALK_DOWN_GIF, SPRITES, heroDirIndex, isReady } from './sprites';
+import { gifFrameAt } from './gif';
+import { HERO_ANIM_SPEED, HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites';
 
 // 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
 
-const DOWN_DIR = 2;
 /** 쓰러진 토끼 스프라이트 높이 */
 const DOWN_SPRITE_H = 36;
 /** 적 반지름 대비 스프라이트 높이 */
@@ -13,8 +13,6 @@ const ENEMY_SPRITE_SCALE = 2.6;
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private dpr = 1;
-  /** 아래로 걷는 GIF. 캔버스 바로 위(HUD 아래)에 겹쳐서 위치만 옮긴다. */
-  private readonly walkDownGif: HTMLImageElement;
   /** 지금 보여주는 8방향 인덱스. 경계에서 그림이 깜빡이지 않게 여유를 두고 바꾼다. */
   private heroDir = 2;
 
@@ -22,13 +20,6 @@ export class Renderer {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('canvas 2d not supported');
     this.ctx = ctx;
-    this.walkDownGif = document.createElement('img');
-    this.walkDownGif.src = HERO_WALK_DOWN_GIF;
-    this.walkDownGif.className = 'hero-gif';
-    this.walkDownGif.alt = '';
-    this.walkDownGif.width = this.walkDownGif.height = HERO_SIZE;
-    this.walkDownGif.hidden = true;
-    canvas.after(this.walkDownGif);
   }
 
   resize(w: number, h: number) {
@@ -214,51 +205,46 @@ export class Renderer {
   private drawPlayer(eng: Engine) {
     const ctx = this.ctx;
     const p = eng.player;
-    const gif = this.walkDownGif;
 
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
     ctx.ellipse(p.x, p.y + p.r, p.r, p.r * 0.35, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    const blink = p.invuln > 0 && Math.floor(eng.time * 20) % 2 === 0;
     const footY = p.y + p.r + 2;
-
     if (p.dead) {
-      gif.hidden = true;
       if (isReady(SPRITES.rabbitDown)) this.drawSprite(SPRITES.rabbitDown, p.x, footY, DOWN_SPRITE_H, p.faceX < 0, 0);
       return;
     }
 
+    // 이동 중: 그 방향 GIF 재생 / 멈춤: 그 방향 PNG
     const dir = this.updateHeroDir(p.faceX, p.faceY);
-    // 이동 중: 아래는 GIF, 나머지 방향은 PNG를 통통 튀게
-    const useGif = p.moving && dir === DOWN_DIR && gif.complete && gif.naturalWidth > 0;
-    gif.hidden = !useGif;
-
-    if (useGif) {
-      const left = p.x - eng.camX - HERO_SIZE / 2;
-      const top = footY - eng.camY - HERO_SIZE * HERO_FOOT;
-      gif.style.transform = `translate(${left}px, ${top}px)`;
-      gif.style.opacity = blink ? '0.55' : '1';
-      gif.style.filter = p.flash > 0 ? 'brightness(1.8)' : '';
+    const walk = p.moving ? SPRITES.heroWalk[dir] : null;
+    const still = SPRITES.heroDirs[dir];
+    let img: CanvasImageSource;
+    let hop = 0;
+    if (walk) {
+      img = gifFrameAt(walk, eng.time * 1000 * HERO_ANIM_SPEED);
+    } else if (isReady(still)) {
+      img = still;
+      // GIF를 아직 못 불러왔으면 PNG를 통통 튀게 해서 걷는 티를 낸다
+      if (p.moving) hop = Math.abs(Math.sin(eng.time * 11)) * 4;
     } else {
-      const img = SPRITES.heroDirs[dir];
-      if (!isReady(img)) return this.drawPlayerShape(eng);
-      const hop = p.moving ? Math.abs(Math.sin(eng.time * 11)) * 4 : 0;
-      const tilt = p.moving ? Math.sin(eng.time * 11) * 0.06 : 0;
-      ctx.save();
-      ctx.globalAlpha = blink ? 0.55 : 1;
-      ctx.translate(p.x, footY - hop);
-      ctx.rotate(tilt);
-      const top = -HERO_SIZE * HERO_FOOT;
-      ctx.drawImage(img, -HERO_SIZE / 2, top, HERO_SIZE, HERO_SIZE);
-      if (p.flash > 0) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha *= 0.6;
-        ctx.drawImage(img, -HERO_SIZE / 2, top, HERO_SIZE, HERO_SIZE);
-      }
-      ctx.restore();
+      return this.drawPlayerShape(eng);
     }
+
+    const blink = p.invuln > 0 && Math.floor(eng.time * 20) % 2 === 0;
+    const left = p.x - HERO_SIZE / 2;
+    const top = footY - hop - HERO_SIZE * HERO_FOOT;
+    ctx.save();
+    ctx.globalAlpha = blink ? 0.55 : 1;
+    ctx.drawImage(img, left, top, HERO_SIZE, HERO_SIZE);
+    if (p.flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha *= 0.6;
+      ctx.drawImage(img, left, top, HERO_SIZE, HERO_SIZE);
+    }
+    ctx.restore();
     this.bar(p.x - 15, p.y + p.r + 5, 30, 4, p.hp / p.maxHp, '#6fdc8c');
   }
 

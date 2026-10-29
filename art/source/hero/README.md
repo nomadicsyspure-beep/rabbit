@@ -6,14 +6,20 @@
 GitHub에서 이 폴더 → **Add file → Upload files** → 파일 끌어다 놓기 → **Commit changes**
 
 ## 파일 이름
-동작이 드러나게 짓는다. 한 파일에 동작 하나.
+게임은 파일 이름 속 **방향 단어**로 그림을 찾는다. 그 단어만 들어 있으면 나머지 이름은 자유. 같은 방향을 바꾸려면 새 파일을 올리고 예전 파일은 지운다.
 
-- `hero-idle.gif` 대기
-- `hero-walk.gif` 걷기
-- `hero-attack.gif` 공격
-- `hero-hit.gif` 피격
-- `hero-down.gif` 쓰러짐
-- `hero-front.png` 정면 일러스트 등 정지 이미지
+| 방향 | 멈춤 PNG (`bunny-…`) | 이동 GIF |
+|---|---|---|
+| 아래 | `front` | `south` |
+| 오른쪽 아래 | `front-right` | `south-east` |
+| 오른쪽 | `right` | `east` |
+| 오른쪽 위 | `back-right` | `north-east` |
+| 위 | `back` | `north` |
+| 왼쪽 위 | `back-left` | `north-west` |
+| 왼쪽 | `left` | `west` |
+| 왼쪽 아래 | `front-left` | `south-west` |
+
+GIF는 게임에서 원본의 2배 속도로 재생한다 (`src/battle/sprites.ts`의 `HERO_ANIM_SPEED`).
 
 ## 있으면 좋은 것
 - 배경이 투명하거나 한 가지 단색
