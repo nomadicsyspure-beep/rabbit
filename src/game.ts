@@ -701,6 +701,20 @@ export class Game {
     return c;
   }
 
+  /** 가방 속 상자 하나 열기 (결과 화면에서): 보상을 저장에 넣고 돌려준다. 없으면 null */
+  openOneChest(grade: ChestGrade, stage: number) {
+    const s = this.save;
+    const key = `${grade}:${stage}`;
+    if (!s.chestBag[key]) return null;
+    if (--s.chestBag[key] <= 0) delete s.chestBag[key];
+    const reward = openChest(grade, stage, enemyGold(stage));
+    this.grantReward(reward);
+    s.stats.chests++;
+    addDaily(s, 'chests');
+    this.persist();
+    return reward;
+  }
+
   /** 가방 속 상자를 모두 연다: 상자마다 보상 (이미 저장에 넣은 상태로 돌려준다) */
   openAllChests() {
     const s = this.save;

@@ -1,5 +1,5 @@
 import { sfx } from '../audio/sfx';
-import { CHEST_NAMES } from '../data/items';
+import { CHEST_NAMES, rewardText, type ChestGrade } from '../data/items';
 import { regionOf, stageRule } from '../data/world';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
@@ -845,11 +845,9 @@ export class UI implements UIHost {
       row.append(h('span', '', k), typeof v === 'string' ? h('b', '', v) : v);
       stats.append(row);
     };
-    line('생존 시간', fmtTime(r.time));
-    line('처치', String(r.kills));
-    line('최고 콤보', String(r.bestCombo));
-    line('경험치', `+${r.xp}` + (r.levelUps > 0 ? ` (레벨 업 ${r.levelUps}번!)` : ''));
-    line('보상', coin(fmt(r.gold)));
+    // 기록(시간·처치·콤보)은 빼고 받은 것만
+    line('골드', coin(fmt(r.gold)));
+    if (r.levelUps > 0) line('레벨 업', `Lv ${this.game.save.level}!`);
     if (r.kind === 'raid') {
       line('보스의 정수', `🔮 +${r.essence}`);
       const boss = this.game.action.raidBoss;
@@ -859,7 +857,7 @@ export class UI implements UIHost {
     let sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
     if (r.kind === 'material') {
       title = r.win ? '재료 던전 완료!' : '재료 던전 끝';
-      sub = '주운 상자는 가방 탭에서 열어요';
+      sub = '주운 상자를 열어 보세요';
     } else if (r.kind === 'raid') {
       title = r.win ? '레이드 성공!' : '레이드 실패…';
       sub = r.win ? '보스의 정수로 전설 장비를 만들어요' : '보스 체력을 절반 넘게 깎으면 정수 1개';
@@ -868,14 +866,8 @@ export class UI implements UIHost {
       sub = `최고 기록 ${fmtTime(this.game.save.infiniteBest)}`;
     }
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
-    // 주운 상자는 가방으로 (가방 탭에서 한꺼번에 연다)
-    if (r.chests.length > 0) {
-      const n = [0, 1, 2].map((g) => r.chests.filter((c) => c === g).length);
-      const text = n.map((k, g) => (k ? `${CHEST_NAMES[g]} ×${k}` : '')).filter(Boolean).join(' · ');
-      stats.append(h('div', 'result-row'));
-      stats.lastElementChild!.append(h('span', '', '주운 상자'), h('b', '', text));
-      parts.push(h('div', 'modal-sub', '🎒 상자는 가방 탭에서 한꺼번에 열어요'));
-    }
+    // 주운 상자: 예전처럼 상자를 하나씩 보여 주고 눌러서 연다 (안 연 상자는 가방에 남는다)
+    if (r.chests.length > 0) parts.push(this.chestOpener(r.chests, r.stage));
     parts.push(
       this.button('돌아가기', 'primary', () => {
         this.closeModal();
@@ -883,6 +875,42 @@ export class UI implements UIHost {
       }),
     );
     this.openModal(...parts);
+  }
+
+  /** 결과 화면 상자: 누르면 흔들리다 펑 하고 재료가 나온다. 안 연 상자는 가방에 그대로 */
+  private chestOpener(chests: ChestGrade[], stage: number) {
+    const box = h('div', 'chests');
+    const title = h('div', 'chests-title', `주운 상자 ${chests.length}개! 눌러서 열기`);
+    const row = h('div', 'chest-row');
+    const log = h('div', 'chest-log');
+    const opens: (() => void)[] = [];
+    // 좋은 상자부터
+    [...chests].sort((a, b) => b - a).forEach((grade, i) => {
+      const el = h('button', `chest-item grade-${grade} pop`);
+      el.style.animationDelay = `${i * 0.08}s`;
+      el.append(art('chest'), h('span', '', CHEST_NAMES[grade]));
+      let opened = false;
+      const open = () => {
+        if (opened) return;
+        opened = true;
+        el.classList.add('shake');
+        setTimeout(() => {
+          const reward = this.game.openOneChest(grade, stage);
+          el.classList.remove('shake');
+          el.classList.add('opened');
+          sfx.chest();
+          el.querySelector('span')!.textContent = '열림!';
+          if (reward) log.append(h('div', 'chest-line', `${CHEST_NAMES[grade]}: ${rewardText(reward) || '골드'} · 골드 +${fmt(reward.gold)}`));
+          this.refresh();
+        }, 450);
+      };
+      el.addEventListener('click', open);
+      opens.push(open);
+      row.append(el);
+    });
+    const all = this.button('모두 열기', '', () => opens.forEach((o, i) => setTimeout(o, i * 160)));
+    box.append(title, row, all, log, h('div', 'chest-hint', '안 연 상자는 가방에 들어가요'));
+    return box;
   }
 
   showOffline(sec: number, gold: number, claim: () => void) {
