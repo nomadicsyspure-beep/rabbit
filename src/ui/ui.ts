@@ -21,6 +21,9 @@ import { ICONS } from './icons';
 import { skillPreview } from './preview';
 import { Tutorial } from './tutorial';
 
+/** 자동 진행: 결과 화면에서 이만큼(초) 기다린 뒤 다음 스테이지 */
+const AUTO_NEXT_SEC = 3;
+
 type TabId = 'growth' | 'skill' | 'gear' | 'craft' | 'dungeon' | 'shop';
 
 const TABS: { id: TabId; name: string; locked: boolean }[] = [
@@ -97,6 +100,8 @@ export class UI implements UIHost {
   private readonly slotsEl: HTMLElement;
   private readonly autoBtn: HTMLButtonElement;
   private readonly rotateBtn: HTMLButtonElement;
+  /** 스테이지를 깨면 다음 스테이지 자동 진행 켜기/끄기 */
+  private readonly autoNextBtn: HTMLButtonElement;
   private readonly comboEl: HTMLElement;
   private readonly feverFill: HTMLElement;
   private readonly feverBanner: HTMLElement;
@@ -205,8 +210,14 @@ export class UI implements UIHost {
     const rotateBtn = this.rotateBtn;
     const left = h('div', 'action-left');
     left.append(player, this.autoBtn);
+    this.autoNextBtn = h('button', 'text-btn auto-next');
+    this.autoNextBtn.addEventListener('click', () => {
+      this.game.save.autoNext = !this.game.save.autoNext;
+      this.toast(this.game.save.autoNext ? '자동 진행 켜짐: 깨면 다음 스테이지로 바로' : '자동 진행 꺼짐');
+      this.refreshToggles();
+    });
     const right = h('div', 'action-right');
-    right.append(kills, pauseBtn, rotateBtn);
+    right.append(kills, pauseBtn, rotateBtn, this.autoNextBtn);
     this.hudAction.append(left, center, right);
 
     // 하단: 스킬 칸 (수동일 땐 눌러서 발동) + 스킬 자동/수동 전환
@@ -272,6 +283,8 @@ export class UI implements UIHost {
     const save = this.game.save;
     this.rotateBtn.textContent = this.game.landscapeLocked ? '세로' : '가로';
     this.autoBtn.classList.toggle('on', save.autoMove);
+    this.autoNextBtn.textContent = save.autoNext ? '자동 진행 ON' : '자동 진행 OFF';
+    this.autoNextBtn.classList.toggle('on', save.autoNext);
   }
 
   /** 스테이지에서 스킬 칸을 누르면: 전투를 멈추고 그 스킬 설명만 (강화는 메인 화면에서, 닫으면 이어서) */
@@ -902,8 +915,43 @@ export class UI implements UIHost {
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
     // 주운 상자: 하나씩 튀어나오는 연출만 (가방에 들어갔다)
     if (r.chests.length > 0) parts.push(this.chestShow(r.chests));
+    // 자동 진행: 스테이지를 깼으면 몇 초 뒤 다음 스테이지 (지거나 다른 판이면 멈춘다)
+    let timer = 0;
+    const g = this.game;
+    if (r.win && r.kind === 'stage' && g.save.autoNext) {
+      let left = AUTO_NEXT_SEC;
+      const count = h('div', 'auto-next-count');
+      const tick = () => {
+        count.textContent = `⏩ ${left}초 뒤 스테이지 ${g.nextStage} 자동 시작`;
+        if (left-- <= 0) {
+          this.closeModal();
+          g.enterAction();
+          return;
+        }
+        timer = window.setTimeout(tick, 1000);
+      };
+      tick();
+      parts.push(
+        count,
+        this.button('자동 진행 멈추기', '', () => {
+          clearTimeout(timer);
+          g.save.autoNext = false;
+          this.refreshToggles();
+          count.textContent = '자동 진행을 껐어요';
+        }),
+      );
+    } else if (r.kind === 'stage') {
+      const label = () => `자동 진행 ${g.save.autoNext ? 'ON' : 'OFF'} (깨면 다음 스테이지로)`;
+      const toggle = this.button(label(), '', () => {
+        g.save.autoNext = !g.save.autoNext;
+        this.refreshToggles();
+        toggle.textContent = label();
+      });
+      parts.push(toggle);
+    }
     parts.push(
       this.button('돌아가기', 'primary', () => {
+        clearTimeout(timer);
         this.closeModal();
         done();
       }),

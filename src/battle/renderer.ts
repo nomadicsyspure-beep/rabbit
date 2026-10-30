@@ -453,15 +453,6 @@ export class Renderer {
     ctx.ellipse(p.x, p.y + p.r, p.r, p.r * 0.35, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // 발밑 은은한 빛: 어두운 몹 사이에서 병아리가 눈에 띄게
-    const glow = ctx.createRadialGradient(p.x, p.y - 6, 4, p.x, p.y - 6, 34);
-    glow.addColorStop(0, 'rgba(255,240,170,0.32)');
-    glow.addColorStop(1, 'rgba(255,240,170,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y - 6, 34, 0, Math.PI * 2);
-    ctx.fill();
-
     // 피버: 병아리 둘레에 금빛 기운이 일렁인다
     if (eng.fever > 0) {
       const pulse = 1 + 0.15 * Math.sin(eng.time * 16);
