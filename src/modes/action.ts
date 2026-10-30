@@ -23,7 +23,7 @@ const MOB_HP = 1.25;
 const MOB_DMG = 1.1;
 /** 몹 수·구성이 최대로 짙어지기까지 걸리는 시간(초) */
 const RAMP_SEC = 90;
-/** 피버: 콤보 FEVER_NEED마다 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
+/** 피버: 게이지(처치 수, 콤보와 상관없이 쌓임)가 FEVER_NEED만큼 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
 export const FEVER_NEED = 500;
 export const FEVER_SEC = 10;
 const FEVER_BONUS = 5;
@@ -108,14 +108,12 @@ export class ActionMode {
   private bonusGold = 0;
   /** 피버 남은 시간 / 피버 중 처치 수 (골드 2배) */
   fever = 0;
-  /** 다음 피버가 터지는 콤보 수 */
-  nextFeverAt = FEVER_NEED;
+  /** 피버 게이지: 피버가 아닐 때 처치할 때마다 1씩 찬다 (콤보가 끊겨도 안 줄어든다) */
+  feverGauge = 0;
 
-  /** 피버 게이지 0~1: 지금 콤보가 다음 피버까지 얼마나 찼나 (콤보가 끊겼으면 0) */
+  /** 피버 게이지 0~1 */
   get feverProgress() {
-    const alive = this.game.engine.time - this.lastKillAt <= COMBO_SEC;
-    if (!alive) return 0;
-    return Math.max(0, Math.min(1, 1 - (this.nextFeverAt - this.combo) / FEVER_NEED));
+    return Math.min(1, this.feverGauge / FEVER_NEED);
   }
   private feverKills = 0;
 
@@ -165,7 +163,7 @@ export class ActionMode {
     this.kills = 0;
     this.feverKills = 0;
     this.fever = 0;
-    this.nextFeverAt = FEVER_NEED;
+    this.feverGauge = 0;
     this.combo = 0;
     this.bestCombo = 0;
     this.lastKillAt = -1;
@@ -477,12 +475,8 @@ export class ActionMode {
       eng.burst(p.x, p.y - 20, 24, ['#ffe066', '#ffb347', '#ffffff'], 260, 0.7, 300, 3.5);
       eng.addText(p.x, p.y - 64, `${this.combo} COMBO!`, '#ffb347', 22);
     }
-    // 콤보 FEVER_NEED마다 피버 (500, 1000, ...). 콤보가 끊기면 처음부터
-    if (this.combo === 1) this.nextFeverAt = FEVER_NEED;
-    if (this.combo >= this.nextFeverAt) {
-      this.nextFeverAt += FEVER_NEED;
-      if (this.fever <= 0) this.startFever();
-    }
+    // 피버 게이지: 다 차면 피버, 끝나면 다시 0부터
+    if (this.fever <= 0 && ++this.feverGauge >= FEVER_NEED) this.startFever();
     if (e.kind === 'boss') this.finish(true);
   }
 
@@ -507,6 +501,7 @@ export class ActionMode {
 
   private endFever() {
     this.fever = 0;
+    this.feverGauge = 0;
     this.game.engine.fever = 0;
     this.game.engine.player.speed /= FEVER_MOVE;
     for (const s of this.equipped) {
