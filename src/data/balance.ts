@@ -73,7 +73,7 @@ export const STATS: Record<StatId, StatDef> = {
 export const STAT_ORDER: StatId[] = ['atk', 'hp', 'aps', 'spd'];
 
 // 캐릭터 레벨: 스테이지에서 모은 경험치 보석으로 영구히 오른다. 레벨마다 공격력·체력 +5%
-export const xpToNext = (level: number) => Math.round(20 * Math.pow(1.2, level - 1));
+export const xpToNext = (level: number) => Math.round(40 * Math.pow(1.2, level - 1));
 export const levelBonus = (level: number) => 1 + 0.05 * (level - 1);
 
 export interface PlayerStats {

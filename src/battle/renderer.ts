@@ -5,8 +5,8 @@ import { HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites'
 
 // 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
 
-/** 실제 이동 속도(px/초)가 이 이상이면 달리기 그림. 기본 속도(액션 110, 방치 90)는 걷기, 이동 속도 강화를 올리면 달리기 */
-const RUN_SPEED = 135;
+/** 출발해서 가속하다 지금 속도가 최고 속도의 이 비율을 넘으면 달리기 그림 (방치 화면은 천천히 걸어서 안 넘는다) */
+const RUN_RATIO = 0.8;
 /** 적 반지름 대비 스프라이트(정사각형 칸) 높이 */
 const ENEMY_SPRITE_SCALE = 3;
 /** 오른쪽을 보고 있는 몬스터: 플레이어가 왼쪽에 있으면 뒤집는다 */
@@ -40,8 +40,11 @@ export class Renderer {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.drawBackground(eng);
 
+    // 화면 흔들림: 카메라를 조금씩 무작위로 비튼다
+    const sx = eng.shake > 0 ? (Math.random() - 0.5) * 2 * eng.shake : 0;
+    const sy = eng.shake > 0 ? (Math.random() - 0.5) * 2 * eng.shake : 0;
     ctx.save();
-    ctx.translate(-eng.camX, -eng.camY);
+    ctx.translate(-eng.camX + sx, -eng.camY + sy);
 
     this.drawDecorations(eng);
 
@@ -116,8 +119,11 @@ export class Renderer {
     ctx.lineJoin = 'round';
     for (const t of eng.texts.items) {
       if (!t.active) continue;
-      ctx.globalAlpha = Math.min(1, t.life / t.maxLife * 2);
-      ctx.font = `900 ${t.size}px system-ui, sans-serif`;
+      const k = t.life / t.maxLife;
+      ctx.globalAlpha = Math.min(1, k * 2);
+      // 처음 잠깐 크게 튀어나왔다가 원래 크기로
+      const pop = k > 0.8 ? 1 + (k - 0.8) * 3 : 1;
+      ctx.font = `900 ${Math.round(t.size * pop)}px system-ui, sans-serif`;
       ctx.lineWidth = 3.5;
       ctx.strokeStyle = '#3a1d0b';
       ctx.strokeText(t.text, t.x, t.y);
@@ -297,7 +303,7 @@ export class Renderer {
     }
 
     // 이동 중: 기본은 걷기, 속도가 붙으면 달리기 / 멈춤: 걷기 첫 프레임
-    const motion = p.moving && p.speed * p.moveK >= RUN_SPEED ? 'run' : 'walk';
+    const motion = p.moving && p.curSpeed >= p.speed * RUN_RATIO ? 'run' : 'walk';
     const anim = SPRITES.hero[motion][dir] ?? SPRITES.hero.walk[dir];
     if (!anim) return this.drawPlayerShape(eng);
     const img = p.moving ? frameAt(anim, eng.time * 1000) : anim.frames[0];
