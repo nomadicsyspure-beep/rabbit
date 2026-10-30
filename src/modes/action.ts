@@ -3,7 +3,7 @@ import type { WeaponStats } from '../battle/weapons';
 import {
   actionRatio, enemyGold, isBossStage, playerStats, stageClearGold, stageSkins, type ActionRatio,
 } from '../data/balance';
-import { SKILL_BY_ID, type SkillDef } from '../data/skills';
+import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
@@ -17,11 +17,16 @@ const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
 const ELITE_HP = 900;
 const BOSS_HP = 2600;
+/** 이 시간 안에 다음 처치가 없으면 콤보가 끊긴다 */
+export const COMBO_SEC = 2;
+/** 처치 1마리당 골드 = 그 스테이지 몹 골드 × 이 값 (이기든 지든) */
+const KILL_GOLD = 0.3;
 
 export interface RunResult {
   win: boolean;
   time: number;
   kills: number;
+  bestCombo: number;
   /** 이번 판에 모은 경험치와 오른 캐릭터 레벨 수 */
   xp: number;
   levelUps: number;
@@ -34,7 +39,6 @@ export type RunState = 'playing' | 'paused' | 'ended';
 /** HUD에 보여 줄 장착 스킬 */
 export interface EquippedSkill {
   def: SkillDef;
-  level: number;
   weapon: Weapon;
 }
 
@@ -46,6 +50,10 @@ export class ActionMode {
   ratio: ActionRatio = { atk: 1, hp: 1 };
   time = 0;
   kills = 0;
+  /** 연속 처치: 마지막 처치 후 COMBO_SEC 안에 또 잡으면 이어진다 */
+  combo = 0;
+  bestCombo = 0;
+  lastKillAt = -1;
   bossSpawned = false;
   /** 이번 판에 모은 경험치 / 오른 레벨 수 (결과 화면용) */
   xpGained = 0;
@@ -100,6 +108,9 @@ export class ActionMode {
 
     this.time = 0;
     this.kills = 0;
+    this.combo = 0;
+    this.bestCombo = 0;
+    this.lastKillAt = -1;
     this.xpGained = 0;
     this.levelUps = 0;
     this.bossSpawned = false;
@@ -112,11 +123,11 @@ export class ActionMode {
     this.equipped = [];
     for (const id of save.equipped) {
       const def = SKILL_BY_ID[id];
-      const level = save.skills[id] ?? 0;
-      if (!def || level <= 0) continue;
-      const weapon = def.createWeapon(this.stats, level);
+      const tree = save.skills[id];
+      if (!def || !tree) continue;
+      const weapon = createSkill(def, this.stats, tree);
       eng.weapons.push(weapon);
-      this.equipped.push({ def, level, weapon });
+      this.equipped.push({ def, weapon });
     }
     this.state = 'playing';
   }
@@ -137,7 +148,9 @@ export class ActionMode {
 
     // 초당 생성 수: 시간이 지날수록 늘어난다 (보스 스테이지가 더 빽빽하다)
     const peak = this.isBossStage ? 18 : 14;
-    const rate = this.bossSpawned ? 6 : 8 + (this.time / this.duration) * peak;
+    // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
+    const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
+    const rate = (this.bossSpawned ? 6 : 8 + (this.time / this.duration) * peak) * crowd;
     this.spawnAcc += rate * dt;
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
@@ -229,6 +242,10 @@ export class ActionMode {
 
   private onKill(e: Enemy) {
     this.kills++;
+    const now = this.game.engine.time;
+    this.combo = now - this.lastKillAt <= COMBO_SEC ? this.combo + 1 : 1;
+    this.bestCombo = Math.max(this.bestCombo, this.combo);
+    this.lastKillAt = now;
     if (e.kind === 'boss') this.finish(true);
   }
 
@@ -261,18 +278,16 @@ export class ActionMode {
     this.state = 'ended';
     this.game.joystick.release();
     const save = this.game.save;
-    let gold: number;
+    // 잡은 만큼 골드 + 이기면 클리어 보상
+    let gold = this.kills * enemyGold(this.stage) * KILL_GOLD;
     if (win) {
-      gold = stageClearGold(this.stage);
+      gold += stageClearGold(this.stage);
       save.maxStage = Math.max(save.maxStage, this.stage);
       if (this.isBossStage) save.bossKills++;
-    } else {
-      // 실패해도 잡은 만큼은 조금 준다
-      gold = this.kills * enemyGold(this.stage) * 0.1;
     }
     save.gold += gold;
     const result: RunResult = {
-      win, time: this.time, kills: this.kills, xp: this.xpGained, levelUps: this.levelUps, gold, stage: this.stage,
+      win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps, gold, stage: this.stage,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }

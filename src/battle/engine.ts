@@ -34,7 +34,7 @@ export interface Enemy {
   dashY: number;
 }
 
-export type ProjectileKind = 'feather' | 'fireball' | 'egg';
+export type ProjectileKind = 'feather' | 'fireball' | 'egg' | 'meteor';
 
 export interface Projectile {
   active: boolean;
@@ -50,7 +50,7 @@ export interface Projectile {
   hit: number[];
   /** 0보다 크면 맞거나(알은 떨어지면) 이 반경으로 폭발 */
   blast: number;
-  /** 던진 알: 날아가는 전체 시간 (그릴 때 포물선 높이 계산용) */
+  /** 던진 알·떨어지는 별: 날아가는 전체 시간 (그릴 때 높이 계산용) */
   flight: number;
 }
 
@@ -67,6 +67,11 @@ export interface Zone {
   maxLife: number;
   sprite: string;
   nextHit: Map<number, number>;
+  /** 0보다 크면 반경 3배 안의 적을 이 속도(px/초)로 빨아들인다 (블랙홀) */
+  pull: number;
+  /** 사라질 때 이 피해로 blastR 반경 폭발 */
+  blast: number;
+  blastR: number;
 }
 
 export interface EnemyBullet {
@@ -158,7 +163,6 @@ export interface Controller {
 
 export interface Weapon {
   id: string;
-  level: number;
   update(engine: Engine, dt: number): void;
   /** 쿨다운 진행도 0~1 (1 = 준비됨). HUD 막대용 */
   ready?(): number;
@@ -271,7 +275,8 @@ export class Engine {
   }), 400);
   readonly zones = new Pool<Zone>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 20, dmg: 1, life: 0, maxLife: 1, sprite: '', nextHit: new Map(),
-  }), 30);
+    pull: 0, blast: 0, blastR: 0,
+  }), 60);
   readonly bullets = new Pool<EnemyBullet>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
   }), 300);
@@ -434,12 +439,12 @@ export class Engine {
     pr.flight = 0;
   }
 
-  /** 알 던지기: (tx, ty)에 flight초 뒤 떨어져 blast 반경으로 폭발. 날아가는 동안은 아무것도 맞히지 않는다 */
-  lobEgg(x: number, y: number, tx: number, ty: number, flight: number, dmg: number, blast: number) {
+  /** 알 던지기·별똥별: (tx, ty)에 flight초 뒤 떨어져 blast 반경으로 폭발. 날아가는 동안은 아무것도 맞히지 않는다 */
+  lobEgg(x: number, y: number, tx: number, ty: number, flight: number, dmg: number, blast: number, kind: 'egg' | 'meteor') {
     const pr = this.projectiles.get();
     if (!pr) return;
     pr.active = true;
-    pr.kind = 'egg';
+    pr.kind = kind;
     pr.x = x;
     pr.y = y;
     pr.vx = (tx - x) / flight;
@@ -452,24 +457,35 @@ export class Engine {
     pr.blast = blast;
   }
 
-  /** 반경 안 모든 적에게 피해 + 바깥으로 밀기 */
+  /** 폭발 그림 + 반경 피해 */
   explode(x: number, y: number, r: number, dmg: number, sprite: string) {
     this.addSprite(sprite, x, y, r, 0.35);
     this.addShake(2.5);
+    this.blast(x, y, r, dmg, 120);
+  }
+
+  /** 반경 안 모든 적에게 피해 + 바깥으로 knock만큼 밀기. 맞은 적을 돌려준다 */
+  blast(x: number, y: number, r: number, dmg: number, knock: number): Enemy[] {
+    const hit: Enemy[] = [];
     for (const e of [...this.queryEnemies(x, y, r)]) {
       const dx = e.x - x;
       const dy = e.y - y;
       const d = Math.hypot(dx, dy) || 1;
       if (d > r + e.r) continue;
-      this.damageEnemy(e, dmg, (dx / d) * 120, (dy / d) * 120);
+      hit.push(e);
+      this.damageEnemy(e, dmg, (dx / d) * knock, (dy / d) * knock);
     }
+    return hit;
   }
 
   addShake(v: number) {
     this.shake = Math.min(MAX_SHAKE, Math.max(this.shake, v));
   }
 
-  addZone(x: number, y: number, vx: number, vy: number, r: number, life: number, dmg: number, sprite: string) {
+  addZone(
+    x: number, y: number, vx: number, vy: number, r: number, life: number, dmg: number, sprite: string,
+    pull = 0, blast = 0, blastR = 0,
+  ) {
     const z = this.zones.get();
     if (!z) return;
     z.active = true;
@@ -482,6 +498,9 @@ export class Engine {
     z.dmg = dmg;
     z.sprite = sprite;
     z.nextHit.clear();
+    z.pull = pull;
+    z.blast = blast;
+    z.blastR = blastR;
   }
 
   fireBullet(x: number, y: number, angle: number, speed: number, dmg: number) {
@@ -693,9 +712,10 @@ export class Engine {
       if (pr.life <= 0) {
         pr.active = false;
         if (pr.kind === 'egg') this.explode(pr.x, pr.y, pr.blast, pr.dmg, 'star-burst');
+        else if (pr.kind === 'meteor') this.explode(pr.x, pr.y, pr.blast, pr.dmg, 'fire-burst');
         continue;
       }
-      if (pr.kind === 'egg') continue;
+      if (pr.kind === 'egg' || pr.kind === 'meteor') continue;
       for (const e of this.queryEnemies(pr.x, pr.y, pr.r)) {
         if (pr.hit.includes(e.id)) continue;
         if ((e.x - pr.x) ** 2 + (e.y - pr.y) ** 2 > (e.r + pr.r) ** 2) continue;
@@ -723,7 +743,20 @@ export class Engine {
       z.life -= dt;
       if (z.life <= 0) {
         z.active = false;
+        if (z.blast > 0) this.explode(z.x, z.y, z.blastR, z.blast, 'purple-burst');
         continue;
+      }
+      if (z.pull > 0) {
+        for (const e of this.queryEnemies(z.x, z.y, z.r * 3)) {
+          if (e.kind === 'boss') continue;
+          const dx = z.x - e.x;
+          const dy = z.y - e.y;
+          const d = Math.hypot(dx, dy);
+          if (d < 4 || d > z.r * 3) continue;
+          const step = Math.min(d, z.pull * dt);
+          e.x += (dx / d) * step;
+          e.y += (dy / d) * step;
+        }
       }
       for (const e of [...this.queryEnemies(z.x, z.y, z.r)]) {
         if ((e.x - z.x) ** 2 + (e.y - z.y) ** 2 > (e.r + z.r) ** 2) continue;

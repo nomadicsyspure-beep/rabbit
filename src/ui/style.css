@@ -162,7 +162,8 @@ button:disabled {
 }
 
 .app:not(.mode-action) .hud-action,
-.app:not(.mode-action) .skill-slots {
+.app:not(.mode-action) .skill-slots,
+.app:not(.mode-action) .combo {
   display: none;
 }
 
@@ -432,14 +433,15 @@ button:disabled {
 .skill-slots {
   position: absolute;
   left: 8px;
+  right: 8px;
   bottom: calc(10px + var(--safe-bottom));
   display: flex;
-  gap: 6px;
+  gap: 4px;
   pointer-events: none;
 }
 
 .slot {
-  width: 46px;
+  width: 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -447,10 +449,45 @@ button:disabled {
 }
 
 .slot-icon {
-  width: 46px;
-  height: 46px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   filter: brightness(0.7);
+}
+
+/* 이펙트 그림 아이콘: 네모 나무 틀 안에 */
+.fx-icon {
+  display: grid;
+  place-items: center;
+  background: var(--art-btn-frame) center / 100% 100% no-repeat;
+}
+
+.fx-icon img {
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+}
+
+/* 콤보 (화면 오른쪽) */
+.combo {
+  position: absolute;
+  right: 12px;
+  top: 30%;
+  font-size: 26px;
+  font-weight: 900;
+  font-style: italic;
+  color: #ffe066;
+  -webkit-text-stroke: 5px var(--stroke);
+  paint-order: stroke fill;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform-origin: right center;
+}
+
+.combo.hot {
+  color: #ff8a3c;
+  font-size: 32px;
 }
 
 .slot.ready .slot-icon {
@@ -738,6 +775,48 @@ button:disabled {
 
 .equip:disabled {
   opacity: 0.4;
+}
+
+.skill-row .info {
+  cursor: pointer;
+}
+
+/* 스킬 트리 창 */
+.tree-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tree-head .modal-title {
+  text-align: left;
+  font-size: 18px;
+}
+
+.tree-head .modal-sub {
+  text-align: left;
+  margin-top: 2px;
+}
+
+.tree-gold {
+  display: flex;
+  justify-content: flex-end;
+  font-weight: 800;
+  color: var(--gold);
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.tree-row .buy {
+  min-width: 84px;
+  height: 44px;
 }
 
 .result-stats {

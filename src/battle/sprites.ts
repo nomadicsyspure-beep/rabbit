@@ -27,6 +27,11 @@ export const UI_URLS: Record<string, string> = Object.fromEntries(
   Object.entries(uiFiles).map(([path, url]) => [baseName(path), url]),
 );
 
+/** 이펙트 그림 이름 → URL (스킬 아이콘으로도 쓴다) */
+export const FX_URLS: Record<string, string> = Object.fromEntries(
+  Object.entries(fxFiles).map(([path, url]) => [baseName(path), url]),
+);
+
 /** 폴더의 그림을 이름 → Image로 */
 function loadAll(files: Record<string, string>) {
   const out: Record<string, HTMLImageElement> = {};

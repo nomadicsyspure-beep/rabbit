@@ -373,6 +373,27 @@ export class Renderer {
   private drawProjectile(pr: Projectile) {
     const ctx = this.ctx;
     const angle = Math.atan2(pr.vy, pr.vx);
+    if (pr.kind === 'meteor') {
+      // 오른쪽 위 하늘에서 비스듬히 떨어진다. 떨어질 자리에 그림자가 커진다
+      const t = 1 - pr.life / pr.flight;
+      const k = 1 - t;
+      ctx.fillStyle = `rgba(0,0,0,${0.15 + 0.25 * t})`;
+      ctx.beginPath();
+      ctx.ellipse(pr.x, pr.y, 8 + 10 * t, 3 + 4 * t, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const img = SPRITES.fx.fireball;
+      if (!isReady(img)) return;
+      const fx = pr.x + 90 * k;
+      const fy = pr.y - 260 * k;
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.rotate(Math.atan2(260, -90) + Math.PI);
+      const w = 40;
+      const h = (w * img.naturalHeight) / img.naturalWidth;
+      ctx.drawImage(img, -w * 0.3, -h / 2, w, h);
+      ctx.restore();
+      return;
+    }
     if (pr.kind === 'egg') {
       const t = 1 - pr.life / pr.flight;
       const lift = Math.sin(Math.PI * t) * 46;
@@ -424,7 +445,12 @@ export class Renderer {
     const ctx = this.ctx;
     const fade = Math.min(1, z.life / 0.3, (z.maxLife - z.life) / 0.15);
     ctx.globalAlpha = Math.max(0, fade);
-    if (isReady(img)) {
+    if (isReady(img) && z.pull > 0) {
+      // 블랙홀: 바닥에 깔린 구멍이 맥박치듯 커졌다 작아진다
+      const w = z.r * 3.2 * (1 + 0.08 * Math.sin(eng.time * 14));
+      const h = (w * img.naturalHeight) / img.naturalWidth;
+      ctx.drawImage(img, z.x - w / 2, z.y - h * 0.62, w, h);
+    } else if (isReady(img)) {
       const h = z.r * 2.6;
       const w = (h * img.naturalWidth) / img.naturalHeight;
       const wob = Math.sin(eng.time * 18 + z.x) * 2;

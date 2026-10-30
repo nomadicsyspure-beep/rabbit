@@ -27,7 +27,7 @@ src/
   battle/      공용 전투 엔진 (두 모드가 같이 씀)
     engine.ts       적·투사체·충돌·피해 처리
     controllers.ts  AutoController(방치) / Joystick(액션)
-    weapons.ts      스킬 8종의 동작
+    weapons.ts      스킬 13종의 동작 (스킬 트리: 피해·발동 속도·개수)
     renderer.ts     렌더러 (스프라이트, 못 불러오면 도형으로 대신 그림)
     sprites.ts      스프라이트 불러오기
   modes/
@@ -35,7 +35,7 @@ src/
     action.ts    스테이지 플레이: 웨이브, 장착 스킬 발동, 경험치, 정예/마왕 보스
   data/
     balance.ts   방치 수치 공식과 액션 배율 (밸런스는 여기서 조정)
-    skills.ts    스킬 정의 (골드로 배우고 강화, 4개 장착)
+    skills.ts    스킬 정의 (골드로 배우고 가지별 강화, 8개 장착)
   assets/      chick/ 병아리 프레임, monsters/ fx/ ground/ ui/ 시트에서 잘라낸 그림
   core/          저장, 숫자 표기
   ui/            DOM UI (HUD, 패널, 탭, 모달)

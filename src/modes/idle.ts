@@ -2,6 +2,7 @@ import { AutoController } from '../battle/controllers';
 import type { EnemyKind } from '../battle/engine';
 import { FeatherWeapon, type WeaponStats } from '../battle/weapons';
 import { TAP_DAMAGE_MUL, playerStats, stageSkins } from '../data/balance';
+import { SKILL_BY_ID, emptyTree } from '../data/skills';
 import type { Game } from '../game';
 
 // 방치 화면은 보여주기용이다. 수입은 Game이 최고 스테이지 기준으로 따로 계산하고,
@@ -28,7 +29,7 @@ export class IdleMode {
     eng.dropGems = false;
     eng.showDamageText = true;
     eng.controller = this.controller;
-    eng.weapons = [new FeatherWeapon(this.stats, 1, FEATHER_RANGE)];
+    eng.weapons = [new FeatherWeapon(this.stats, SKILL_BY_ID.feather, emptyTree(), FEATHER_RANGE)];
     eng.onKill = null;
     eng.onGem = null;
     eng.onPlayerDead = null;
