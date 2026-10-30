@@ -144,6 +144,21 @@ export interface Effect {
   follow: boolean;
 }
 
+/** 작은 파편 (맞을 때 불꽃, 쓰러질 때 조각, 보석 반짝임, 투사체 꼬리) */
+export interface Particle {
+  active: boolean;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: string;
+  /** 아래로 끌리는 힘 (px/초²). 0이면 둥둥 */
+  grav: number;
+}
+
 export interface Orb {
   x: number;
   y: number;
@@ -260,6 +275,21 @@ class Grid {
 }
 
 const MAX_ENEMY_R = 30;
+/** 치명타 확률·배율 (숫자가 크게 주황색으로) */
+const CRIT_CHANCE = 0.15;
+const CRIT_MUL = 2;
+/** 몬스터 외형별 쓰러질 때 튀는 조각 색 */
+const BURST_COLOR: Record<EnemySkin, string[]> = {
+  slime: ['#8bd34b', '#c8f07a', '#5aa62e'],
+  mushroom: ['#e8743b', '#ffd0a8', '#b84a22'],
+  sprout: ['#c9a46a', '#7cc35a', '#f2d69a'],
+  bat: ['#7b4fb3', '#b48be0', '#4a2a78'],
+  angel: ['#9fd8ff', '#ffffff', '#5aa8e6'],
+  golem: ['#8a7a6a', '#b8a896', '#5e5246'],
+  snail: ['#e0b37a', '#8a5a32', '#f6dcb0'],
+  rabbit: ['#f2d6c0', '#ffffff', '#c9a48a'],
+  devil: ['#8a3fc8', '#c47aff', '#ff5a8a'],
+};
 /** 출발 속도(목표 속도 대비)와 가속 세기. 0.45 → 0.8까지 약 0.4초 */
 const START_SPEED = 0.45;
 const ACCEL = 2.5;
@@ -319,6 +349,9 @@ export class Engine {
     active: false, kind: 'ring', x: 0, y: 0, x2: 0, y2: 0, r: 0, life: 0, maxLife: 1, color: '#fff', sprite: '', follow: false,
   }), 500);
 
+  readonly particles = new Pool<Particle>(() => ({
+    active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 2, color: '#fff', grav: 0,
+  }), 900);
   readonly orbs: Orb[] = [];
   weapons: Weapon[] = [];
   controller: Controller = { getMove: () => ({ x: 0, y: 0 }) };
@@ -341,6 +374,7 @@ export class Engine {
     this.chests.clear();
     this.texts.clear();
     this.effects.clear();
+    this.particles.clear();
     this.orbs.length = 0;
     this.weapons = [];
     this.time = 0;
@@ -404,14 +438,41 @@ export class Engine {
 
   damageEnemy(e: Enemy, dmg: number, kx = 0, ky = 0) {
     if (!e.active) return;
+    const crit = Math.random() < CRIT_CHANCE;
+    if (crit) dmg *= CRIT_MUL;
     e.hp -= dmg;
-    e.flash = 0.08;
+    e.flash = 0.1;
     if (e.kind !== 'boss') {
-      e.kx += kx;
-      e.ky += ky;
+      e.kx += kx * (crit ? 1.6 : 1);
+      e.ky += ky * (crit ? 1.6 : 1);
     }
-    if (this.showDamageText) this.addText(e.x + (Math.random() - 0.5) * 8, e.y - e.r - 4, fmt(dmg), '#ffe066', 12);
+    // 맞은 자리에 작은 불꽃
+    this.burst(e.x, e.y - e.r * 0.4, crit ? 5 : 2, crit ? ['#ffb347', '#fff3a0'] : ['#fff3a0', '#ffffff'], 120, 0.22, 0);
+    if (this.showDamageText) {
+      const x = e.x + (Math.random() - 0.5) * 8;
+      if (crit) this.addText(x, e.y - e.r - 8, fmt(dmg) + '!', '#ff8a3c', 17);
+      else this.addText(x, e.y - e.r - 4, fmt(dmg), '#ffe066', 12);
+    }
     if (e.hp <= 0) this.killEnemy(e);
+  }
+
+  /** 파편 n개를 사방으로 튀긴다 */
+  burst(x: number, y: number, n: number, colors: string[], speed: number, life: number, grav: number, size = 2.5) {
+    for (let i = 0; i < n; i++) {
+      const pt = this.particles.get();
+      if (!pt) return;
+      const a = Math.random() * Math.PI * 2;
+      const v = speed * (0.4 + Math.random() * 0.8);
+      pt.active = true;
+      pt.x = x;
+      pt.y = y;
+      pt.vx = Math.cos(a) * v;
+      pt.vy = Math.sin(a) * v - grav * 0.25;
+      pt.life = pt.maxLife = life * (0.7 + Math.random() * 0.6);
+      pt.size = size * (0.7 + Math.random() * 0.6);
+      pt.color = colors[i % colors.length];
+      pt.grav = grav;
+    }
   }
 
   private killEnemy(e: Enemy) {
@@ -420,6 +481,8 @@ export class Engine {
     if (fx) fx.sprite = e.skin;
     this.addSprite('dust', e.x, e.y + e.r * 0.4, e.r * 1.3, 0.35);
     this.addSprite('sparkle', e.x, e.y - e.r * 0.3, e.r * 0.9, 0.2);
+    // 몸 색 조각이 튀어 오른다
+    this.burst(e.x, e.y - e.r * 0.3, e.kind === 'boss' ? 30 : e.kind === 'tank' ? 10 : 7, BURST_COLOR[e.skin], e.kind === 'boss' ? 260 : 170, 0.5, 420, e.kind === 'boss' ? 4 : 3);
     this.addShake(e.kind === 'boss' ? MAX_SHAKE : 0.8);
     if (this.dropGems && e.xp > 0) {
       const g = this.gems.get();
@@ -667,6 +730,19 @@ export class Engine {
     this.updateGems(dt);
     this.updateChests(dt);
 
+    for (const pt of this.particles.items) {
+      if (!pt.active) continue;
+      pt.life -= dt;
+      if (pt.life <= 0) {
+        pt.active = false;
+        continue;
+      }
+      pt.vy += pt.grav * dt;
+      pt.vx *= 1 - 2 * dt;
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+    }
+
     for (const t of this.texts.items) {
       if (!t.active) continue;
       t.life -= dt;
@@ -791,6 +867,9 @@ export class Engine {
       if (!pr.active) continue;
       pr.x += pr.vx * dt;
       pr.y += pr.vy * dt;
+      // 꼬리: 화염구는 불씨, 깃털은 빛 가루
+      if (pr.kind === 'fireball' && Math.random() < 0.8) this.trail(pr.x, pr.y, ['#ff7a2a', '#ffd166'], 0.3, 3);
+      else if (pr.kind === 'feather' && Math.random() < 0.35) this.trail(pr.x, pr.y, ['#fff3a0'], 0.2, 2);
       pr.life -= dt;
       if (pr.life <= 0) {
         pr.active = false;
@@ -816,6 +895,20 @@ export class Engine {
         }
       }
     }
+  }
+
+  private trail(x: number, y: number, colors: string[], life: number, size: number) {
+    const pt = this.particles.get();
+    if (!pt) return;
+    pt.active = true;
+    pt.x = x + (Math.random() - 0.5) * 4;
+    pt.y = y + (Math.random() - 0.5) * 4;
+    pt.vx = (Math.random() - 0.5) * 20;
+    pt.vy = -10 - Math.random() * 15;
+    pt.life = pt.maxLife = life;
+    pt.size = size;
+    pt.color = colors[Math.floor(Math.random() * colors.length)];
+    pt.grav = 0;
   }
 
   private updateZones(dt: number) {
@@ -883,6 +976,7 @@ export class Engine {
         g.y += (dy / d) * sp * dt;
         if (d < p.r + 4) {
           g.active = false;
+          this.burst(g.x, g.y, 2, g.value >= 3 ? ['#7cf2a0', '#ffffff'] : ['#7ad7ff', '#ffffff'], 60, 0.25, 0, 2);
           this.onGem?.(g.value);
         }
       }

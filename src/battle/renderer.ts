@@ -135,6 +135,17 @@ export class Renderer {
       if (fx.active && fx.kind !== 'telegraph' && fx.kind !== 'corpse') this.drawEffect(fx);
     }
 
+    // 파편: 작은 네모가 줄어들며 사라진다
+    for (const pt of eng.particles.items) {
+      if (!pt.active) continue;
+      const k = pt.life / pt.maxLife;
+      const sz = pt.size * (0.4 + 0.6 * k);
+      ctx.globalAlpha = Math.min(1, k * 1.5);
+      ctx.fillStyle = pt.color;
+      ctx.fillRect(pt.x - sz / 2, pt.y - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
@@ -247,8 +258,12 @@ export class Renderer {
     if (anim) {
       const img = frameAt(anim, eng.time * 1000 + e.id * 97);
       const flip = FACES_RIGHT.has(e.skin) && eng.player.x < e.x;
+      // 맞으면 옆으로 퍼지고 납작해졌다가 돌아온다
+      const hit = Math.max(0, e.flash) / 0.1;
+      const sx = 1 + 0.18 * hit;
+      const sy = 1 - 0.15 * hit;
       // 칸 아래쪽에 1px 여백이 있다
-      this.drawSprite(img, e.x, e.y + e.r + 1, size, size, flip, e.flash);
+      this.drawSprite(img, e.x, e.y + e.r + 1, size * sx, size * sy, flip, e.flash);
     } else {
       this.drawEnemyShape(eng, e);
     }
@@ -521,16 +536,24 @@ export class Renderer {
         ctx.fill();
         break;
       case 'bolt': {
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(fx.x, fx.y);
-        const segs = 5;
+        // 번개: 같은 지그재그를 넓고 흐린 빛 + 가는 흰 심으로 두 번 긋는다
+        const segs = 6;
+        const pts: number[] = [fx.x, fx.y];
         for (let i = 1; i < segs; i++) {
           const k = i / segs;
-          ctx.lineTo(fx.x + (fx.x2 - fx.x) * k + (Math.random() - 0.5) * 12, fx.y + (fx.y2 - fx.y) * k + (Math.random() - 0.5) * 12);
+          pts.push(fx.x + (fx.x2 - fx.x) * k + (Math.random() - 0.5) * 14, fx.y + (fx.y2 - fx.y) * k + (Math.random() - 0.5) * 14);
         }
-        ctx.lineTo(fx.x2, fx.y2);
-        ctx.stroke();
+        pts.push(fx.x2, fx.y2);
+        ctx.lineJoin = 'round';
+        for (const [w, color, a] of [[7, fx.color, 0.35], [2, '#ffffff', 1]] as const) {
+          ctx.globalAlpha = Math.max(0, t) * a;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = w;
+          ctx.beginPath();
+          ctx.moveTo(pts[0], pts[1]);
+          for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+          ctx.stroke();
+        }
         break;
       }
       case 'sprite': {
