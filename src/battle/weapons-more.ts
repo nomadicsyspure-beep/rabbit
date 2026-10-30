@@ -26,7 +26,7 @@ export class BoomerangWeapon extends SkillWeapon {
     for (let i = 0; i < n; i++) {
       const a = base + (i - (n - 1) / 2) * 0.45;
       engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y + Math.sin(a), 560, this.power, 1500, 999, 'slash', 0, {
-        back: true, r: 12 * FX, scale: 1.1,
+        back: true, r: 18 * FX, scale: 1.3,
       });
     }
     return true;
@@ -220,7 +220,7 @@ export class VampireWeapon extends SkillWeapon {
       engine.addEffect('bolt', t.x, t.y, 0, 0.2, '#ff4d8d', p.x, p.y - 10);
       engine.damageEnemy(t, this.power);
     }
-    const heal = p.maxHp * 0.008 * targets.length;
+    const heal = p.maxHp * 0.005 * targets.length;
     if (p.hp < p.maxHp) {
       p.hp = Math.min(p.maxHp, p.hp + heal);
       engine.addText(p.x, p.y - p.r - 14, '+' + Math.ceil(heal), '#ff8db0', 12);
