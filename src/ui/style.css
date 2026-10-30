@@ -2644,3 +2644,8 @@ button:disabled {
   color: var(--gold);
   animation: pvPulse 1s ease-in-out infinite;
 }
+
+/* 자동 진행 버튼은 자기 줄에 (오른쪽 위 칸이 넓어져 스테이지 표지판을 가리지 않게) */
+.action-right .auto-next {
+  grid-column: 1 / -1;
+}
