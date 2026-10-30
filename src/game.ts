@@ -11,7 +11,7 @@ import {
 } from './data/skills';
 import { GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
 import { type Reward } from './data/items';
-import { PET_BY_ID, PET_MAX, petValue } from './data/pets';
+import { PET_BY_ID, PET_MAX, PET_SLOTS, petValue } from './data/pets';
 import { BOX_BY_ID, boxCost, rollBox, type BoxId } from './data/skillbox';
 import { CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, rollGear, rollPet, skinPrice, summonCost } from './data/shop';
 import {
@@ -144,7 +144,7 @@ export class Game {
   }
 
   /** 스테이지·던전 입장. 던전은 최고 스테이지 난이도로, 하루 횟수가 남아 있어야 한다 */
-  enterAction(kind: RunKind = 'stage') {
+  enterAction(kind: RunKind = 'stage', raidId?: string) {
     if ((kind === 'material' || kind === 'raid') && this.entriesLeft(kind) <= 0) {
       this.ui.toast('오늘 입장 횟수를 다 썼어요');
       return;
@@ -155,7 +155,7 @@ export class Game {
     this.ui.setMode('action');
     sfx.setCombat(true);
     this.resize();
-    this.action.enter(kind === 'stage' ? this.nextStage : Math.max(1, this.save.maxStage), kind);
+    this.action.enter(kind === 'stage' ? this.nextStage : Math.max(1, this.save.maxStage), kind, raidId);
   }
 
   enterIdle() {
@@ -272,7 +272,7 @@ export class Game {
     const hat = this.worn('hat');
     if (hat) b.hp *= 1 + hat.def.hp! * gearScale(hat.plus);
     // 장신구·등 장비 효과
-    for (const slot of ['acc', 'back'] as const) {
+    for (const slot of ['gloves', 'shoes', 'bag', 'acc'] as const) {
       const it = this.worn(slot);
       if (!it) continue;
       const v = it.def.value! * gearScale(it.plus);
@@ -284,8 +284,7 @@ export class Game {
       else if (it.def.effect === 'crit') b.crit += v;
       else if (it.def.effect === 'speed') b.speed += v;
     }
-    const pet = this.petInfo;
-    if (pet) {
+    for (const pet of this.petsInfo) {
       const v = petValue(pet.def, pet.level);
       const a = pet.def.ability;
       if (a === 'magnet') b.magnet += v;
@@ -293,6 +292,7 @@ export class Game {
       else if (a === 'chest') b.chest += v;
       else if (a === 'hp') b.hp *= 1 + v;
       else if (a === 'crit') b.crit += v;
+      else if (a === 'speed') b.speed += v;
       else if (a === 'fever') b.fever += v;
     }
     return b;
@@ -312,7 +312,9 @@ export class Game {
   }
 
   /** 처음 잡은 몹 등록 */
-  seeMonster(skin: string) {
+  seeMonster(skinName: string) {
+    // 색 바꾼 몹은 같은 몬스터로 친다
+    const skin = skinName.split('@')[0];
     if (!this.save.seen.monsters.includes(skin)) {
       this.save.seen.monsters.push(skin);
       this.ui.toast(`도감 등록: 새 몬스터! (공격력·체력 +${Math.round(COLLECTION_BONUS * 100)}%)`);
@@ -357,17 +359,22 @@ export class Game {
 
   // ---- 동료 ----
 
-  /** 데리고 다니는 동료와 레벨 */
-  get petInfo() {
-    const id = this.save.pet;
-    return id && PET_BY_ID[id] && this.save.pets[id] ? { def: PET_BY_ID[id], level: this.save.pets[id] } : null;
+  /** 데리고 다니는 동료들과 레벨 (최대 PET_SLOTS) */
+  get petsInfo() {
+    return this.save.petsOn.filter((id) => PET_BY_ID[id] && this.save.pets[id]).map((id) => ({ def: PET_BY_ID[id], level: this.save.pets[id] }));
   }
 
-  /** 데리고 다니기 / 같은 걸 다시 누르면 집에 두기 */
-  togglePet(id: string) {
-    if (!this.save.pets[id]) return;
-    this.save.pet = this.save.pet === id ? null : id;
+  /** 데리고 다니기 / 같은 걸 다시 누르면 집에 두기. 칸이 가득이면 replace와 바꾼다 (없으면 false) */
+  togglePet(id: string, replace?: string): boolean {
+    const on = this.save.petsOn;
+    if (!this.save.pets[id]) return false;
+    const i = on.indexOf(id);
+    if (i >= 0) on.splice(i, 1);
+    else if (on.length < PET_SLOTS) on.push(id);
+    else if (replace && on.includes(replace)) on[on.indexOf(replace)] = id;
+    else return false;
     if (this.mode === 'idle') this.idle.enter();
+    return true;
   }
 
   /** 동료 하나 얻기: 새로 얻으면 Lv 1, 겹치면 레벨 업 (최대면 다이아로) */
@@ -376,7 +383,7 @@ export class Game {
     const lv = s.pets[def.id];
     if (!lv) {
       s.pets[def.id] = 1;
-      if (!s.pet) s.pet = def.id;
+      if (s.petsOn.length < PET_SLOTS) s.petsOn.push(def.id);
       return { def, text: 'NEW!', isNew: true };
     }
     if (lv < PET_MAX) {
@@ -444,7 +451,7 @@ export class Game {
   /** 엔진에 몸에 보이는 장비를 알려 준다 */
   applyLook() {
     const w = this.save.wear;
-    this.engine.look = { hat: w.hat ?? '', back: w.back ?? '', hand: w.weapon ?? '' };
+    this.engine.look = { hat: w.hat ?? '', back: '', hand: w.weapon ?? '' };
   }
 
   /** 엔진에 지금 색을 알려 준다 (그리는 쪽이 읽는다) */
@@ -457,11 +464,10 @@ export class Game {
 
   /** 엔진에 동료를 태운다. power = 이 화면의 공격력 */
   applyPet(power: number) {
-    const pet = this.petInfo;
     const p = this.engine.player;
-    this.engine.pet = pet
-      ? { skin: pet.def.skin, ability: pet.def.ability, value: petValue(pet.def, pet.level), power, x: p.x - 20, y: p.y, t: 1 }
-      : null;
+    this.engine.pets = this.petsInfo.map((pet, i) => ({
+      skin: pet.def.skin, ability: pet.def.ability, value: petValue(pet.def, pet.level), power, x: p.x - 20, y: p.y, t: 1 + i * 0.4, idx: i,
+    }));
   }
 
   // ---- 미션 · 출석 · 업적 · 패스 ----

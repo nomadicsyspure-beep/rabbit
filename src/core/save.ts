@@ -45,7 +45,7 @@ export interface SaveData {
   bestStageEver: number;
   /** 동료: 가진 동료 → 레벨 / 데리고 다니는 동료 */
   pets: Record<string, number>;
-  pet: string | null;
+  petsOn: string[];
   /** 소환권 (출석 보상) */
   tickets: { pet: number; gear: number };
   /** 꾸미기: 가진 색과 쓰는 색 */
@@ -85,7 +85,7 @@ export function newSave(): SaveData {
     essence: 0,
     bestStageEver: 0,
     pets: {},
-    pet: null,
+    petsOn: [],
     tickets: { pet: 0, gear: 0 },
     skins: { chick: ['basic'], fx: ['basic'], chickOn: 'basic', fxOn: 'basic' },
     daily: emptyDaily(),
@@ -149,7 +149,7 @@ export function loadSave(): SaveData {
       essence: data.essence ?? 0,
       bestStageEver: Math.max(data.bestStageEver ?? 0, data.maxStage ?? 0),
       pets: { ...data.pets },
-      pet: data.pet ?? null,
+      petsOn: [...(data.petsOn ?? ((data as { pet?: string }).pet ? [(data as { pet?: string }).pet!] : []))],
       tickets: { ...base.tickets, ...data.tickets },
       skins: { ...base.skins, ...data.skins },
       daily: data.daily

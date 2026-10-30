@@ -82,3 +82,45 @@ export function holdRepeat(el: HTMLElement, fn: () => boolean) {
   });
   for (const ev of ['pointerup', 'pointerleave', 'pointercancel'] as const) el.addEventListener(ev, stop);
 }
+
+/** 몬스터(동료) 첫 프레임 그림. 그림이름@색상이면 색을 바꿔서 */
+export function monsterPic(skin: string, size = 44, cls = 'pet-pic') {
+  const c = h('canvas', cls);
+  c.width = c.height = size * 2;
+  c.style.width = c.style.height = `${size}px`;
+  const [name, hue] = skin.split('@');
+  const draw = () => {
+    const anim = SPRITES.monsters[name];
+    if (!anim) return false;
+    const src = anim.frames[0];
+    c.getContext('2d')!.drawImage(hue ? recolored(src, hueRecolor(Number(hue))) : src, 0, 0, c.width, c.height);
+    return true;
+  };
+  if (!draw()) setTimeout(draw, 600);
+  return c;
+}
+
+/** 병아리 정면 그림 (장비 탭 가운데) */
+export function chickPic(size = 96) {
+  const c = h('canvas', 'chick-pic');
+  c.width = c.height = size * 2;
+  c.style.width = c.style.height = `${size}px`;
+  const draw = () => {
+    const src = SPRITES.hero.walk[2]?.frames[0];
+    if (!src) return false;
+    const ctx = c.getContext('2d')!;
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(src, 0, 0, c.width, c.height);
+    return true;
+  };
+  if (!draw()) setTimeout(draw, 600);
+  return c;
+}
+
+/** 깔끔한 아이콘 틀 (CSS로 그림): 안에 글자 아이콘이나 그림 */
+export function ibox(content: string | HTMLElement, cls = '') {
+  const b = h('div', 'ibox' + (cls ? ' ' + cls : ''));
+  if (typeof content === 'string') b.textContent = content;
+  else b.append(content);
+  return b;
+}

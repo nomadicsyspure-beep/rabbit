@@ -71,7 +71,7 @@ export class IdleMode {
     this.stats.aps = st.aps;
     const p = this.game.engine.player;
     p.maxHp = p.hp = st.hp;
-    if (this.game.engine.pet) this.game.engine.pet.power = st.atk;
+    for (const pet of this.game.engine.pets) pet.power = st.atk;
   }
 
   update(dt: number) {

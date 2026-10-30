@@ -1,11 +1,12 @@
 import type { SkillId } from './skills';
 import type { MatId } from './world';
 
-// 장비: 무기 / 모자 / 등 / 장신구. 재료 + 골드로 만들고 +15까지 강화한다.
-// 무기·모자·등은 병아리 몸에 보인다 (무기는 옆에 둥둥, 모자는 머리 위, 등은 몸 뒤).
-// 그림이 생기기 전까지 아이콘은 임시 글자, 등 장비는 코드로 그린 모양.
+// 장비 6칸: 무기 / 모자 / 장갑 / 신발 / 가방 / 장신구. 재료 + 골드로 만들고 +15까지 강화한다.
+// 몸에는 무기만 보인다 (옆에 둥둥). 그림이 생기기 전까지 아이콘은 임시 글자.
 
-export type GearSlot = 'weapon' | 'hat' | 'back' | 'acc';
+export type GearSlot = 'weapon' | 'hat' | 'gloves' | 'shoes' | 'bag' | 'acc';
+/** 장비 칸 순서 (장비 탭: 왼쪽 3칸 · 오른쪽 3칸) */
+export const GEAR_SLOTS: GearSlot[] = ['weapon', 'gloves', 'shoes', 'hat', 'bag', 'acc'];
 export type AccEffect = 'magnet' | 'chest' | 'combo' | 'fever' | 'gold' | 'crit' | 'speed';
 /** 등 장비 임시 모양 (그림이 오기 전) */
 export type BackShape = 'wings' | 'cape' | 'bag';
@@ -51,12 +52,24 @@ export const GEAR: GearDef[] = [
   { id: 'hat_ice', slot: 'hat', name: '얼음 왕관', icon: '👑', mat: 'ice', matCost: 15, goldCost: 5000, hp: 0.35, desc: '체력' },
   { id: 'hat_fire', slot: 'hat', name: '불꽃 투구', icon: '⛑️', mat: 'lava', matCost: 18, goldCost: 20000, hp: 0.45, desc: '체력' },
   { id: 'hat_demon', slot: 'hat', name: '마왕의 왕관', icon: '😈', mat: 'shadow', matCost: 38, goldCost: 300000, essence: 8, hp: 0.9, desc: '전설: 체력' },
-  // 등
-  { id: 'bag_leather', slot: 'back', name: '가죽 가방', icon: '🎒', mat: 'feather', matCost: 9, goldCost: 400, effect: 'gold', value: 0.15, shape: 'bag', color: '#9a6a3a', desc: '골드' },
-  { id: 'cape_red', slot: 'back', name: '빨간 망토', icon: '🧣', mat: 'spore', matCost: 12, goldCost: 1600, effect: 'speed', value: 0.08, shape: 'cape', color: '#d8433a', desc: '이동 속도' },
-  { id: 'wings_bat', slot: 'back', name: '박쥐 날개', icon: '🦇', mat: 'ice', matCost: 15, goldCost: 7000, effect: 'crit', value: 0.06, shape: 'wings', color: '#6a4a9a', desc: '치명타 확률' },
-  { id: 'wings_angel', slot: 'back', name: '천사 날개', icon: '🕊️', mat: 'lava', matCost: 18, goldCost: 24000, effect: 'speed', value: 0.14, shape: 'wings', color: '#f4f4ff', desc: '이동 속도' },
-  { id: 'cape_demon', slot: 'back', name: '마왕의 망토', icon: '🦹', mat: 'shadow', matCost: 38, goldCost: 300000, essence: 6, effect: 'fever', value: 0.6, shape: 'cape', color: '#3a1a4a', desc: '전설: 피버 게이지 차는 속도' },
+  // 장갑: 치명타 확률
+  { id: 'glove_cotton', slot: 'gloves', name: '면장갑', icon: '🧤', mat: 'feather', matCost: 9, goldCost: 300, effect: 'crit', value: 0.03, desc: '치명타 확률' },
+  { id: 'glove_leather', slot: 'gloves', name: '가죽 장갑', icon: '🥊', mat: 'spore', matCost: 12, goldCost: 1400, effect: 'crit', value: 0.05, desc: '치명타 확률' },
+  { id: 'glove_frost', slot: 'gloves', name: '서리 장갑', icon: '❄️', mat: 'ice', matCost: 15, goldCost: 5600, effect: 'crit', value: 0.07, desc: '치명타 확률' },
+  { id: 'glove_flame', slot: 'gloves', name: '화염 건틀릿', icon: '🔥', mat: 'lava', matCost: 18, goldCost: 22000, effect: 'crit', value: 0.09, desc: '치명타 확률' },
+  { id: 'glove_demon', slot: 'gloves', name: '마왕의 건틀릿', icon: '🖐️', mat: 'shadow', matCost: 38, goldCost: 300000, essence: 8, effect: 'crit', value: 0.18, desc: '전설: 치명타 확률' },
+  // 신발: 이동 속도
+  { id: 'shoe_straw', slot: 'shoes', name: '짚신', icon: '🩴', mat: 'feather', matCost: 9, goldCost: 300, effect: 'speed', value: 0.04, desc: '이동 속도' },
+  { id: 'shoe_sneaker', slot: 'shoes', name: '운동화', icon: '👟', mat: 'spore', matCost: 12, goldCost: 1400, effect: 'speed', value: 0.07, desc: '이동 속도' },
+  { id: 'shoe_boot', slot: 'shoes', name: '눈길 장화', icon: '🥾', mat: 'ice', matCost: 15, goldCost: 5600, effect: 'speed', value: 0.1, desc: '이동 속도' },
+  { id: 'shoe_wing', slot: 'shoes', name: '날개 신발', icon: '🪽', mat: 'lava', matCost: 18, goldCost: 22000, effect: 'speed', value: 0.13, desc: '이동 속도' },
+  { id: 'shoe_demon', slot: 'shoes', name: '마왕의 부츠', icon: '👢', mat: 'shadow', matCost: 38, goldCost: 300000, essence: 6, effect: 'speed', value: 0.22, desc: '전설: 이동 속도' },
+  // 가방: 골드·자석·상자·피버
+  { id: 'bag_leather', slot: 'bag', name: '가죽 가방', icon: '🎒', mat: 'feather', matCost: 9, goldCost: 400, effect: 'gold', value: 0.15, desc: '골드' },
+  { id: 'bag_pouch', slot: 'bag', name: '보석 주머니', icon: '👝', mat: 'spore', matCost: 12, goldCost: 1600, effect: 'magnet', value: 0.6, desc: '보석 끌어오는 범위' },
+  { id: 'bag_lucky', slot: 'bag', name: '행운 보따리', icon: '🛍️', mat: 'ice', matCost: 15, goldCost: 7000, effect: 'chest', value: 0.12, desc: '좋은 상자 확률' },
+  { id: 'bag_gold', slot: 'bag', name: '황금 자루', icon: '💰', mat: 'lava', matCost: 18, goldCost: 24000, effect: 'gold', value: 0.3, desc: '골드' },
+  { id: 'bag_demon', slot: 'bag', name: '마왕의 보물 자루', icon: '👜', mat: 'shadow', matCost: 38, goldCost: 300000, essence: 6, effect: 'fever', value: 0.6, desc: '전설: 피버 게이지 차는 속도' },
   // 장신구
   { id: 'acc_magnet', slot: 'acc', name: '자석 목걸이', icon: '🧲', mat: 'feather', matCost: 9, goldCost: 600, effect: 'magnet', value: 0.6, desc: '보석 끌어오는 범위' },
   { id: 'acc_clover', slot: 'acc', name: '네잎클로버', icon: '🍀', mat: 'spore', matCost: 12, goldCost: 2000, effect: 'chest', value: 0.12, desc: '좋은 상자 확률' },
@@ -67,7 +80,9 @@ export const GEAR: GearDef[] = [
 ];
 
 export const GEAR_BY_ID = Object.fromEntries(GEAR.map((g) => [g.id, g])) as Record<string, GearDef>;
-export const SLOT_NAMES: Record<GearSlot, string> = { weapon: '무기 (옆에 둥둥)', hat: '모자', back: '등', acc: '장신구' };
+export const SLOT_NAMES: Record<GearSlot, string> = { weapon: '무기', hat: '모자', gloves: '장갑', shoes: '신발', bag: '가방', acc: '장신구' };
+/** 칸이 비었을 때 보여 줄 글자 */
+export const SLOT_ICONS: Record<GearSlot, string> = { weapon: '🗡️', hat: '🎩', gloves: '🧤', shoes: '👟', bag: '🎒', acc: '💍' };
 
 /** 강화 단계에 따른 효과 배율 (+1마다 15%) */
 export const gearScale = (plus: number) => 1 + 0.15 * plus;

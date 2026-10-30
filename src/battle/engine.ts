@@ -15,12 +15,14 @@ export type EnemyMove = 'chase' | 'lead' | 'charge' | 'flee';
 /** 그릴 때 쓰는 외형(src/assets/monsters). 행동(kind)과 따로 둔다. */
 /** firstaid = 구급상자 몹 (그림 없이 코드로 그린다. 잡으면 체력 회복템) */
 export type EnemySkin = 'slime' | 'mushroom' | 'sprout' | 'bat' | 'angel' | 'golem' | 'snail' | 'rabbit' | 'devil' | 'firstaid';
+/** 몹 그림: 이름, 또는 이름@색상 (색 바꾼 몹) */
+export type EnemyLook = EnemySkin | `${EnemySkin}@${number}`;
 
 export interface Enemy {
   id: number;
   active: boolean;
   kind: EnemyKind;
-  skin: EnemySkin;
+  skin: EnemyLook;
   x: number;
   y: number;
   r: number;
@@ -44,6 +46,9 @@ export interface Enemy {
   bomb: boolean;
   /** 레이드 보스: 경고 장판·나선 탄막·돌진·소환을 돌아가며 쓴다 */
   raid: boolean;
+  /** 레이드 보스 패턴 목록과 졸개 그림 */
+  pats: number[];
+  minion: EnemyLook;
   /** 레이드 보스가 몇 번째 패턴인지 */
   step: number;
   /** 웨이브 몹 색 (돌진·포위·벽) */
@@ -257,6 +262,8 @@ export interface Pet {
   y: number;
   /** 다음 능력까지 남은 시간 */
   t: number;
+  /** 몇 번째 동료 (따라오는 자리) */
+  idx: number;
 }
 
 /** 경고 장판: 바닥에 빨간 원이 차오르다가 터진다. 안에 있으면 아프다 */
@@ -424,7 +431,7 @@ export class Engine {
 
   readonly enemies = new Pool<Enemy>(() => ({
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
-    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, bomb: false, raid: false, step: 0, tint: '', elite: false,
+    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, bomb: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false,
     stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
     t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
   }), 500);
@@ -453,7 +460,7 @@ export class Engine {
     active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 2, color: '#fff', grav: 0,
   }), 900);
   readonly orbs: Orb[] = [];
-  pet: Pet | null = null;
+  pets: Pet[] = [];
   /** 버프: 남은 시간 t, 값 v */
   readonly buffs = Object.fromEntries(BUFF_IDS.map((id) => [id, { t: 0, v: 0 }])) as Record<BuffId, { t: number; v: number }>;
   /** 보호막: 남은 흡수량 / 남은 시간 */
@@ -512,7 +519,7 @@ export class Engine {
     if (!e) return null;
     Object.assign(e, {
       skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, move: 'chase',
-      phase: Math.random() * Math.PI * 2, golden: false, bomb: false, raid: false, step: 0, tint: '', elite: false, stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
+      phase: Math.random() * Math.PI * 2, golden: false, bomb: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false, stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
       t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
     }, init);
     e.id = this.nextId++;
@@ -644,7 +651,7 @@ export class Engine {
     this.addSprite('dust', e.x, e.y + e.r * 0.4, e.r * 1.3, 0.35);
     this.addSprite('sparkle', e.x, e.y - e.r * 0.3, e.r * 0.9, 0.2);
     // 몸 색 조각이 튀어 오른다
-    this.burst(e.x, e.y - e.r * 0.3, e.kind === 'boss' ? 30 : e.kind === 'tank' ? 10 : 7, BURST_COLOR[e.skin], e.kind === 'boss' ? 260 : 170, 0.5, 420, e.kind === 'boss' ? 4 : 3);
+    this.burst(e.x, e.y - e.r * 0.3, e.kind === 'boss' ? 30 : e.kind === 'tank' ? 10 : 7, BURST_COLOR[e.skin.split('@')[0] as EnemySkin], e.kind === 'boss' ? 260 : 170, 0.5, 420, e.kind === 'boss' ? 4 : 3);
     this.addShake(e.kind === 'boss' ? MAX_SHAKE : 0.8);
     if (e.golden) this.burst(e.x, e.y - e.r, 26, ['#ffe066', '#ffd23f', '#fff6c8'], 300, 0.8, 380, 3.5);
     if (e.bomb) {
@@ -913,8 +920,10 @@ export class Engine {
   /** 동료: 병아리 뒤를 둥실둥실 따라오며 능력을 쓴다 */
   private updatePet(pet: Pet, dt: number) {
     const p = this.player;
-    const tx = p.x - p.faceX * 26;
-    const ty = p.y - p.faceY * 18 - 10;
+    // 병아리 뒤쪽에 부채꼴로 나란히
+    const back = Math.atan2(-p.faceY, -p.faceX) + (pet.idx === 0 ? 0 : pet.idx === 1 ? 0.9 : -0.9);
+    const tx = p.x + Math.cos(back) * 28;
+    const ty = p.y + Math.sin(back) * 20 - 10;
     const k = 1 - Math.exp(-5 * dt);
     pet.x += (tx - pet.x) * k;
     pet.y += (ty - pet.y) * k;
@@ -943,6 +952,47 @@ export class Engine {
       p.hp = Math.min(p.maxHp, p.hp + v);
       this.addText(p.x, p.y - 30, `+${Math.ceil(v)}`, '#6fdc8c', 14);
       this.addEffect('ring', p.x, p.y, 34, 0.4, '#a8ffb8');
+    } else if (pet.ability === 'frost') {
+      pet.t = 4;
+      const hit = this.nearestEnemies(pet.x, pet.y, 40, 110);
+      if (hit.length === 0) {
+        pet.t = 0.5;
+        return;
+      }
+      for (const e of hit) {
+        e.slowT = Math.max(e.slowT, 2);
+        this.damageEnemy(e, pet.power * pet.value);
+      }
+      this.addEffect('ring', pet.x, pet.y, 110, 0.45, '#bfe8ff');
+      this.burst(pet.x, pet.y, 12, ['#bfe8ff', '#ffffff'], 150, 0.5, 0);
+    } else if (pet.ability === 'bolt') {
+      pet.t = 2.5;
+      const hit = this.nearestEnemies(pet.x, pet.y, 3, 220);
+      if (hit.length === 0) {
+        pet.t = 0.5;
+        return;
+      }
+      let fx = pet.x;
+      let fy = pet.y;
+      for (const e of hit) {
+        this.addEffect('bolt', fx, fy, 0, 0.18, '#fff27a', e.x, e.y);
+        this.damageEnemy(e, pet.power * pet.value);
+        fx = e.x;
+        fy = e.y;
+      }
+    } else if (pet.ability === 'shield') {
+      pet.t = 10;
+      this.addShield(p.maxHp * pet.value, 4);
+      this.addEffect('ring', p.x, p.y, 36, 0.4, '#9fe4ff');
+    } else if (pet.ability === 'bomb') {
+      pet.t = 3;
+      const e = this.nearestEnemies(pet.x, pet.y, 6, 240);
+      if (e.length === 0) {
+        pet.t = 0.5;
+        return;
+      }
+      const t = e[Math.floor(Math.random() * e.length)];
+      this.lobEgg(pet.x, pet.y, t.x, t.y, 0.55, pet.power * pet.value, 70, 'egg', 1.1);
     } else {
       pet.t = 999;
     }
@@ -996,7 +1046,7 @@ export class Engine {
 
     if (!p.dead) for (const w of this.weapons) w.update(this, dt);
     else this.orbs.length = 0;
-    if (this.pet) this.updatePet(this.pet, dt);
+    for (const pet of this.pets) this.updatePet(pet, dt);
     this.updateHazards(dt);
 
     this.updateProjectiles(dt);
@@ -1210,7 +1260,8 @@ export class Engine {
     if (e.t1 > 0) return;
     e.t1 = enraged ? 2.1 : 3;
     // 장판 → 탄막 → 돌진 → 소환 순서로 (2페이즈에선 무작위)
-    const pattern = enraged ? Math.floor(Math.random() * 4) : e.step++ % 4;
+    const pats = e.pats.length ? e.pats : [0, 1, 2, 3];
+    const pattern = enraged ? pats[Math.floor(Math.random() * pats.length)] : pats[e.step++ % pats.length];
     if (pattern === 0) {
       // 장판: 플레이어 발밑 하나 + 주변 여러 개
       const n = enraged ? 7 : 4;
@@ -1228,13 +1279,22 @@ export class Engine {
       e.dashX = nx;
       e.dashY = ny;
       this.addEffect('telegraph', e.x, e.y, e.r, 0.65, '#ff4d6d', e.x + nx * 300, e.y + ny * 300);
+    } else if (pattern === 4) {
+      // 사방 탄막: 두 겹으로 퍼진다
+      const n = enraged ? 20 : 14;
+      const off = Math.random() * Math.PI;
+      for (let i = 0; i < n; i++) {
+        this.fireBullet(e.x, e.y, off + (i / n) * Math.PI * 2, 150, e.dmg * 0.5);
+        this.fireBullet(e.x, e.y, off + ((i + 0.5) / n) * Math.PI * 2, 105, e.dmg * 0.5);
+      }
+      this.addEffect('ring', e.x, e.y, e.r * 1.8, 0.3, '#ff7aa8');
     } else {
-      // 졸개 소환: 보스 둘레에 박쥐 떼
+      // 졸개 소환: 보스 둘레에 졸개 떼
       const n = enraged ? 12 : 8;
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
         this.spawnEnemy({
-          kind: 'fast', skin: 'bat', x: e.x + Math.cos(a) * 60, y: e.y + Math.sin(a) * 60,
+          kind: 'fast', skin: e.minion, x: e.x + Math.cos(a) * 60, y: e.y + Math.sin(a) * 60,
           hp: e.maxHp * 0.002, r: 10, speed: 120, dmg: e.dmg * 0.25, xp: 1, move: 'lead',
         });
       }

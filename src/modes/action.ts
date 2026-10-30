@@ -1,3 +1,4 @@
+import { RAID_BOSSES, RAID_BY_ID, type RaidBossDef } from '../data/raids';
 import { PLAY_PASS_XP, addDaily } from '../data/missions';
 import { CRIT_CHANCE, type Enemy, type EnemyKind, type Engine, type Weapon } from '../battle/engine';
 import type { SkillTree, WeaponStats } from '../battle/weapons';
@@ -112,6 +113,8 @@ export interface EquippedSkill {
 export class ActionMode {
   state: RunState = 'ended';
   kind: RunKind = 'stage';
+  /** 레이드에서 고른 보스 */
+  raidBoss: RaidBossDef = RAID_BOSSES[0];
   stage = 1;
   /** 이번 판에서 보스가 나오기까지 버텨야 하는 시간 */
   duration = NORMAL_SECONDS;
@@ -181,7 +184,8 @@ export class ActionMode {
     return this.kind === 'stage' && isBossStage(this.stage);
   }
 
-  enter(stage: number, kind: RunKind = 'stage') {
+  enter(stage: number, kind: RunKind = 'stage', raidId = 'devil') {
+    this.raidBoss = RAID_BY_ID[raidId] ?? RAID_BOSSES[0];
     const eng = this.game.engine;
     eng.reset();
     eng.bounds = null;
@@ -258,7 +262,7 @@ export class ActionMode {
     const intro = {
       stage: this.rule ? `${region.name} · 규칙: ${this.rule.name} (${this.rule.desc})` : region.name,
       material: `재료 던전 · ${region.name}: 상자가 쏟아져요!`,
-      raid: '보스 레이드: 빨간 장판을 피해라!',
+      raid: `보스 레이드: ${this.raidBoss.name}! 빨간 장판을 피해라!`,
       infinite: '무한 모드: 얼마나 버틸 수 있을까?',
     };
     this.game.ui.toast(intro[kind]);
@@ -288,8 +292,10 @@ export class ActionMode {
   private spawnRaidBoss() {
     this.bossSpawned = true;
     const p = this.game.engine.player;
+    const b = this.raidBoss;
     this.game.engine.spawnEnemy({
-      kind: 'boss', skin: 'devil', raid: true, elite: true, x: p.x, y: p.y - 230, hp: RAID_HP, r: 38, speed: 42, dmg: 24, xp: 0, t1: 2,
+      kind: 'boss', skin: b.skin, raid: true, elite: true, x: p.x, y: p.y - 230, hp: RAID_HP * b.hpMul, r: b.r, speed: b.speed,
+      dmg: 24 * b.dmgMul, xp: 0, t1: 2, pats: b.pats, minion: b.minion,
     });
   }
 
@@ -754,8 +760,9 @@ export class ActionMode {
     let essence = 0;
     if (this.kind === 'raid') {
       const boss = this.game.engine.boss;
-      essence = win ? 3 + (this.time < 45 ? 1 : 0) : boss && boss.hp <= boss.maxHp * 0.5 ? 1 : 0;
+      essence = win ? this.raidBoss.essence + (this.time < 45 ? 1 : 0) : boss && boss.hp <= boss.maxHp * 0.5 ? 1 : 0;
       save.essence += essence;
+      if (win) save.diamonds += this.raidBoss.diamonds;
     }
     const best = this.kind === 'infinite' && this.time > save.infiniteBest;
     if (best) save.infiniteBest = this.time;

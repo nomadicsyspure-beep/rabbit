@@ -6,28 +6,13 @@ import {
   ACHIEVEMENTS, ATTEND_REWARDS, DAILY_ALL_BONUS, DAILY_MISSIONS, PASS_LEVELS, PASS_XP_PER_LEVEL, achieveReady, canAttend,
   freshDaily, passLevel, passReward,
 } from '../data/missions';
-import { PETS, PET_MAX, RARITY_COLORS, RARITY_NAMES, petEffectText } from '../data/pets';
+import { PETS, PET_BY_ID, PET_MAX, PET_SLOTS, RARITY_COLORS, RARITY_NAMES, petEffectText, type PetDef } from '../data/pets';
 import { CHICK_SKINS, FX_SKINS, skinPrice, summonCost, type SkinDef } from '../data/shop';
 import type { Game } from '../game';
-import { h } from './dom';
+import { h, ibox, monsterPic } from './dom';
 import type { UIHost } from './meta';
 
 // 동료 탭, 상점 탭, 미션 창(일일·출석·업적·패스).
-
-/** 몬스터 첫 프레임을 작은 그림으로 */
-function monsterPic(skin: string, size = 44) {
-  const c = h('canvas', 'pet-pic');
-  c.width = c.height = size * 2;
-  c.style.width = c.style.height = `${size}px`;
-  const draw = () => {
-    const anim = SPRITES.monsters[skin];
-    if (!anim) return false;
-    c.getContext('2d')!.drawImage(anim.frames[0], 0, 0, c.width, c.height);
-    return true;
-  };
-  if (!draw()) setTimeout(draw, 600);
-  return c;
-}
 
 /** 다이아·소환권 한 줄 */
 function diamondBar(game: Game) {
@@ -94,43 +79,105 @@ function summonCard(game: Game, host: UIHost, kind: 'pet' | 'gear') {
   return { el: card, refresh };
 }
 
-/** 동료 탭: 데리고 다닐 동료 고르기 + 소환 */
+/** 동료 탭: 위에 함께하는 동료 칸 고정, 아래는 소환 + 동료 격자 (등급별) */
 export function buildPetsTab(panel: HTMLElement, game: Game, host: UIHost) {
+  const top = h('div', 'skill-top');
+  const title = h('div', 'skill-top-title');
+  const bar = h('div', 'equip-slots pet-slots');
+  top.append(title, bar);
   const wallet = diamondBar(game);
   const summon = summonCard(game, host, 'pet');
-  panel.append(wallet.el, summon.el);
-  const rows: (() => void)[] = [wallet.refresh, summon.refresh];
-  for (const def of PETS) {
-    const card = h('div', 'card row gear-row');
-    const pic = h('div', 'item-icon');
-    pic.append(monsterPic(def.skin, 38));
-    const info = h('div', 'info');
-    const name = h('div', 'title');
-    const eff = h('div', 'sub');
-    const rar = h('div', 'cost-line');
-    rar.style.color = RARITY_COLORS[def.rarity];
-    info.append(name, eff, rar);
-    const btn = h('button', 'equip');
-    btn.addEventListener('click', () => {
-      game.togglePet(def.id);
-      host.refresh();
-    });
-    card.append(pic, info, btn);
-    panel.append(card);
-    rows.push(() => {
-      const lv = game.save.pets[def.id];
-      const on = game.save.pet === def.id;
-      card.classList.toggle('unlearned', !lv);
-      card.classList.toggle('equipped', on);
-      name.textContent = lv ? `${def.name} Lv ${lv}${lv >= PET_MAX ? ' (MAX)' : ''}` : def.name;
-      eff.textContent = petEffectText(def, lv || 1);
-      rar.textContent = `${RARITY_NAMES[def.rarity]}${lv ? '' : ' · 소환에서 만나요'}`;
-      btn.textContent = on ? '함께하는 중' : '데려가기';
-      btn.disabled = !lv;
-    });
+  panel.append(top, wallet.el, summon.el);
+  let key = '';
+  const refreshTop = () => {
+    const on = game.save.petsOn;
+    title.textContent = `함께하는 동료 ${on.length}/${PET_SLOTS} · 방치·스테이지 둘 다 따라다녀요`;
+    const k = on.join();
+    if (k === key) return;
+    key = k;
+    const slots = [];
+    for (let i = 0; i < PET_SLOTS; i++) {
+      const def = PET_BY_ID[on[i]];
+      const b = h('button', 'equip-slot' + (def ? '' : ' empty'));
+      if (def) {
+        const box = ibox(monsterPic(def.skin, 40), 'big');
+        box.style.setProperty('--rar', RARITY_COLORS[def.rarity]);
+        b.append(box, h('span', 'tile-name', def.name));
+        b.addEventListener('click', () => showPet(game, host, def));
+      } else {
+        b.append(ibox('+', 'big empty'), h('span', 'tile-name', '빈 칸'));
+      }
+      slots.push(b);
+    }
+    bar.replaceChildren(...slots);
+  };
+  const tiles: (() => void)[] = [];
+  for (const rarity of [2, 1, 0] as const) {
+    const head = h('div', 'skill-type-head');
+    head.style.setProperty('--type', RARITY_COLORS[rarity]);
+    head.append(h('span', 'type-name', RARITY_NAMES[rarity]), h('span', 'type-desc', ['소환 70%', '소환 26%', '소환 4%'][rarity]));
+    const grid = h('div', 'skill-grid');
+    for (const def of PETS.filter((p) => p.rarity === rarity)) {
+      const t = h('button', 'skill-tile');
+      const box = ibox(monsterPic(def.skin, 38));
+      box.style.setProperty('--rar', RARITY_COLORS[def.rarity]);
+      const lv = h('span', 'tile-lv');
+      t.append(box, lv, h('span', 'tile-name', def.name));
+      t.addEventListener('click', () => showPet(game, host, def));
+      grid.append(t);
+      tiles.push(() => {
+        const l = game.save.pets[def.id];
+        t.classList.toggle('unlearned', !l);
+        t.classList.toggle('equipped', game.save.petsOn.includes(def.id));
+        lv.textContent = l ? `Lv${l}` : '';
+      });
+    }
+    panel.append(head, grid);
   }
-  panel.append(h('div', 'hint', '동료는 하나만 데리고 다녀요 · 방치 화면과 스테이지 둘 다 따라다녀요'));
-  return () => rows.forEach((r) => r());
+  panel.append(h('div', 'hint', `동료는 ${PET_SLOTS}마리까지 데리고 다녀요 · 소환에서 겹치면 레벨 업`));
+  return () => {
+    refreshTop();
+    wallet.refresh();
+    summon.refresh();
+    tiles.forEach((f) => f());
+  };
+}
+
+/** 동료 창: 효과, 데려가기 / 집에 두기 (칸이 가득이면 바꿀 동료 고르기) */
+function showPet(game: Game, host: UIHost, def: PetDef) {
+  const s = game.save;
+  const lv = s.pets[def.id];
+  const head = h('div', 'tree-head');
+  const box = ibox(monsterPic(def.skin, 56), 'huge');
+  box.style.setProperty('--rar', RARITY_COLORS[def.rarity]);
+  const info = h('div', 'info');
+  const name = h('div', 'modal-title', `${def.name} `);
+  const rar = h('span', 'grade-badge', RARITY_NAMES[def.rarity]);
+  rar.style.background = RARITY_COLORS[def.rarity];
+  name.append(rar);
+  info.append(
+    name,
+    h('div', 'modal-sub', lv ? `Lv ${lv}${lv >= PET_MAX ? ' (최대)' : ''}` : '아직 없음 · 소환에서 만나요'),
+    h('div', 'modal-sub', petEffectText(def, lv || 1) + (lv && lv < PET_MAX ? `  →  Lv ${lv + 1}: ${petEffectText(def, lv + 1)}` : '')),
+  );
+  head.append(box, info);
+  const btns: HTMLElement[] = [];
+  const on = s.petsOn.includes(def.id);
+  const done = (msg: string) => {
+    host.toast(msg);
+    host.refresh();
+    host.closeModal();
+  };
+  if (lv && on) btns.push(host.button('집에 두기', '', () => game.togglePet(def.id) && done(`${def.name} 집에 두기`)));
+  else if (lv && s.petsOn.length < PET_SLOTS) btns.push(host.button('데려가기', 'primary', () => game.togglePet(def.id) && done(`${def.name} 함께해요!`)));
+  else if (lv) {
+    btns.push(h('div', 'modal-sub', '칸이 가득 찼어요 · 누구와 바꿀까요?'));
+    for (const id of s.petsOn) {
+      const old = PET_BY_ID[id];
+      if (old) btns.push(host.button(`${old.name} 대신`, '', () => game.togglePet(def.id, id) && done(`${old.name} → ${def.name}`)));
+    }
+  }
+  host.openModal(head, ...btns, host.button('닫기', 'primary', () => host.closeModal()));
 }
 
 /** 꾸미기 미리보기: 병아리는 색 입힌 첫 프레임, 스킬 색은 화염구 */

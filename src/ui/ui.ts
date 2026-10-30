@@ -9,11 +9,12 @@ import {
 import {
   BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_GRADE, SKILL_TYPES, branchValue, emptyTree, skillSummary, treeLevel, SKILL_BY_ID, type SkillDef,
 } from '../data/skills';
+import { RAID_BOSSES } from '../data/raids';
 import { SKILL_BOXES, boxCost, boxesFor, oddsText, type BoxDef } from '../data/skillbox';
 import { COLLECTION_BONUS, DUNGEON_DAILY, REBIRTH_MIN_STAGE, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
-import { art, coin, h, holdRepeat, skillIcon, svgIcon } from './dom';
+import { art, coin, h, holdRepeat, ibox, monsterPic, skillIcon, svgIcon } from './dom';
 import { buildGearTab, showCollection, showRebirth, type UIHost } from './meta';
 import { buildPetsTab, buildShopTab, showMissions } from './shop';
 import { ICONS } from './icons';
@@ -417,6 +418,34 @@ export class UI implements UIHost {
     this.panel.append(h('div', 'hint', '스킬은 상자에서 얻어요 · 겹치면 피해 +1 · 등급이 높을수록 강화가 비싸요'));
   }
 
+  /** 보스 레이드: 보스 고르기 */
+  private showRaidSelect() {
+    const list = h('div', 'raid-list');
+    for (const b of RAID_BOSSES) {
+      const card = h('div', 'card row raid-card');
+      const info = h('div', 'info');
+      info.append(
+        h('div', 'title', `${b.name}  ${'★'.repeat(b.stars)}${'☆'.repeat(5 - b.stars)}`),
+        h('div', 'sub', b.desc),
+        h('div', 'cost-line', `이기면 🔮 ${b.essence}${b.diamonds ? ` · 💎 ${b.diamonds}` : ''} · 체력 ×${b.hpMul}`),
+      );
+      const go = h('button', 'enter', '도전');
+      go.disabled = this.game.entriesLeft('raid') <= 0;
+      go.addEventListener('click', () => {
+        this.closeModal();
+        this.game.enterAction('raid', b.id);
+      });
+      card.append(ibox(monsterPic(b.skin, 44), 'big'), info, go);
+      list.append(card);
+    }
+    this.openModal(
+      h('div', 'modal-title', '😈 보스 레이드'),
+      h('div', 'modal-sub', `오늘 ${this.game.entriesLeft('raid')}/${DUNGEON_DAILY.raid}회 · 별이 많을수록 세고 보상도 커요`),
+      list,
+      this.button('닫기', 'primary', () => this.closeModal()),
+    );
+  }
+
   /** 스킬 상자 칸: 상자마다 1회·10회 버튼과 등급 확률 */
   private buildBoxes() {
     const g = this.game;
@@ -578,7 +607,7 @@ export class UI implements UIHost {
     // 재료 던전 / 보스 레이드 / 무한 모드 (최고 스테이지 난이도)
     const extra = ([
       ['material', '📦', '재료 던전', '45초 동안 3초마다 보물 상자! 지역 재료·스킬북을 쓸어 담아요'],
-      ['raid', '😈', '보스 레이드', '잡몹은 적고 마왕은 거세다 · 빨간 장판을 피하고 2페이즈를 버텨요 · 🔮 보스의 정수'],
+      ['raid', '😈', '보스 레이드', '보스 5종 중 골라서 도전 · 빨간 장판을 피하고 2페이즈를 버텨요 · 🔮 보스의 정수·💎'],
       ['infinite', '♾️', '무한 모드', '끝없이 몰려온다 · 1분마다 다음 지역 · 오래 버틸수록 기록'],
     ] as const).map(([kind, icon, name, desc]) => {
       const c = h('div', 'card dungeon');
@@ -586,7 +615,7 @@ export class UI implements UIHost {
       const sub = h('div', 'ratio');
       info.append(h('div', 'title', name), h('div', 'sub', desc), sub);
       const enter = h('button', 'enter', '입장');
-      enter.addEventListener('click', () => this.game.enterAction(kind));
+      enter.addEventListener('click', () => (kind === 'raid' ? this.showRaidSelect() : this.game.enterAction(kind)));
       c.append(h('div', 'item-icon', icon), info, enter);
       this.panel.append(c);
       return () => {
@@ -762,6 +791,10 @@ export class UI implements UIHost {
     return box;
   }
 
+  setModalRefresh(fn: (() => void) | null) {
+    this.treeRefresh = fn;
+  }
+
   closeModal() {
     this.treeRefresh = null;
     this.overlay.classList.remove('show');
@@ -812,7 +845,11 @@ export class UI implements UIHost {
     line('최고 콤보', String(r.bestCombo));
     line('경험치', `+${r.xp}` + (r.levelUps > 0 ? ` (레벨 업 ${r.levelUps}번!)` : ''));
     line('보상', coin(fmt(r.gold)));
-    if (r.kind === 'raid') line('보스의 정수', `🔮 +${r.essence}`);
+    if (r.kind === 'raid') {
+      line('보스의 정수', `🔮 +${r.essence}`);
+      const boss = this.game.action.raidBoss;
+      if (r.win && boss.diamonds) line('다이아', `💎 +${boss.diamonds}`);
+    }
     let title = r.win ? `스테이지 ${r.stage} 클리어!` : '쓰러졌어요…';
     let sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
     if (r.kind === 'material') {
