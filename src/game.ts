@@ -5,7 +5,7 @@ import { clearSave, loadSave, writeSave, type SaveData } from './core/save';
 import {
   OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, idleGoldPerSec, xpToNext, type StatId,
 } from './data/balance';
-import { EQUIP_SLOTS, SKILL_BY_ID, SKILL_MAX_LEVEL, skillCost, type SkillId } from './data/skills';
+import { BRANCHES, EQUIP_SLOTS, SKILL_BY_ID, branchCost, emptyTree, type Branch, type SkillId } from './data/skills';
 import { ActionMode } from './modes/action';
 import { IdleMode } from './modes/idle';
 import { UI } from './ui/ui';
@@ -157,26 +157,40 @@ export class Game {
 
   // ---- 스킬 ----
 
-  skillLevel(id: SkillId) {
-    return this.save.skills[id] ?? 0;
+  skillTree(id: SkillId) {
+    return this.save.skills[id];
   }
 
-  skillUpgradeCost(id: SkillId) {
-    return skillCost(SKILL_BY_ID[id], this.skillLevel(id));
+  canLearn(id: SkillId) {
+    return !this.save.skills[id] && this.save.gold >= SKILL_BY_ID[id].learnCost;
   }
 
-  canUpgradeSkill(id: SkillId) {
-    const lv = this.skillLevel(id);
-    return lv < SKILL_MAX_LEVEL && this.save.gold >= this.skillUpgradeCost(id);
+  /** 배우기. 빈 장착 칸이 있으면 바로 장착한다 */
+  learnSkill(id: SkillId): boolean {
+    if (!this.canLearn(id)) return false;
+    this.save.gold -= SKILL_BY_ID[id].learnCost;
+    this.save.skills[id] = emptyTree();
+    if (this.save.equipped.length < EQUIP_SLOTS) this.save.equipped.push(id);
+    return true;
   }
 
-  /** 배우기(0 → 1) 또는 강화. 처음 배운 스킬은 빈 칸이 있으면 바로 장착한다 */
-  upgradeSkill(id: SkillId): boolean {
-    if (!this.canUpgradeSkill(id)) return false;
-    const lv = this.skillLevel(id);
-    this.save.gold -= this.skillUpgradeCost(id);
-    this.save.skills[id] = lv + 1;
-    if (lv === 0 && this.save.equipped.length < EQUIP_SLOTS) this.save.equipped.push(id);
+  /** 가지 다음 단계 비용 (최대면 null) */
+  branchUpgradeCost(id: SkillId, branch: Branch) {
+    const tree = this.save.skills[id];
+    const max = BRANCHES.find((b) => b.id === branch)!.max;
+    if (!tree || tree[branch] >= max) return null;
+    return branchCost(SKILL_BY_ID[id], branch, tree[branch]);
+  }
+
+  canUpgradeBranch(id: SkillId, branch: Branch) {
+    const cost = this.branchUpgradeCost(id, branch);
+    return cost !== null && this.save.gold >= cost;
+  }
+
+  upgradeBranch(id: SkillId, branch: Branch): boolean {
+    if (!this.canUpgradeBranch(id, branch)) return false;
+    this.save.gold -= this.branchUpgradeCost(id, branch)!;
+    this.save.skills[id]![branch]++;
     return true;
   }
 
@@ -188,7 +202,7 @@ export class Game {
       eq.splice(i, 1);
       return true;
     }
-    if (this.skillLevel(id) <= 0 || eq.length >= EQUIP_SLOTS) return false;
+    if (!this.save.skills[id] || eq.length >= EQUIP_SLOTS) return false;
     eq.push(id);
     return true;
   }

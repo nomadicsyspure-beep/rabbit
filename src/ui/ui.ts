@@ -1,12 +1,14 @@
-import { UI_URLS } from '../battle/sprites';
+import { FX_URLS, UI_URLS } from '../battle/sprites';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
   STATS, STAT_ORDER, actionRatio, isBossStage, playerPower, playerStats, recommendedPower, stageClearGold, xpToNext,
   type StatId,
 } from '../data/balance';
-import { EQUIP_SLOTS, SKILLS, SKILL_MAX_LEVEL, type SkillDef, type SkillId } from '../data/skills';
+import {
+  BRANCHES, EQUIP_SLOTS, SKILLS, branchValue, emptyTree, skillSummary, treeLevel, type SkillDef, type SkillId,
+} from '../data/skills';
 import type { Game, Mode } from '../game';
-import type { RunResult } from '../modes/action';
+import { COMBO_SEC, type RunResult } from '../modes/action';
 import { ICONS } from './icons';
 
 type TabId = 'growth' | 'skill' | 'gear' | 'pets' | 'dungeon' | 'shop';
@@ -53,6 +55,18 @@ function art(name: string, cls = '') {
   return img;
 }
 
+/** 스킬 아이콘: UI 시트 그림, 또는 이펙트 그림을 나무 틀 안에 */
+function skillIcon(def: SkillDef, cls: string): HTMLElement {
+  if (!def.icon.startsWith('fx:')) return art(def.icon, cls);
+  const box = h('div', cls + ' fx-icon');
+  const img = h('img');
+  img.src = FX_URLS[def.icon.slice(3)] ?? '';
+  img.alt = '';
+  img.draggable = false;
+  box.append(img);
+  return box;
+}
+
 function coin(text: string) {
   const s = h('span', 'gold');
   s.append(art('coin', 'coin'), document.createTextNode(text));
@@ -92,15 +106,12 @@ interface SkillRow {
   card: HTMLElement;
   lv: HTMLElement;
   desc: HTMLElement;
-  cost: HTMLElement;
-  label: HTMLElement;
   buy: HTMLButtonElement;
   equip: HTMLButtonElement;
 }
 
 interface SlotEl {
   root: HTMLElement;
-  icon: HTMLImageElement;
   fill: HTMLElement;
 }
 
@@ -132,6 +143,7 @@ export class UI {
   private readonly timerEl: HTMLElement;
   private readonly killsEl: HTMLElement;
   private readonly slotsEl: HTMLElement;
+  private readonly comboEl: HTMLElement;
   private slots: SlotEl[] = [];
   private slotKey = '';
 
@@ -141,6 +153,8 @@ export class UI {
   private skillHeader: HTMLElement | null = null;
   private powerEl: HTMLElement | null = null;
   private dungeonRefresh: (() => void) | null = null;
+  /** 열려 있는 스킬 트리 창 갱신 */
+  private treeRefresh: (() => void) | null = null;
   private tickT = 0;
   private toastT = 0;
 
@@ -201,8 +215,9 @@ export class UI {
     right.append(kills, pauseBtn);
     this.hudAction.append(player, center, right);
     this.slotsEl = h('div', 'skill-slots');
+    this.comboEl = h('div', 'combo');
 
-    this.battle.append(this.hudIdle, this.challengeBtn, this.hudAction, this.slotsEl);
+    this.battle.append(this.hudIdle, this.challengeBtn, this.hudAction, this.slotsEl, this.comboEl);
 
     // ---- 하단 패널 / 탭 ----
     this.panel = h('section', 'panel');
@@ -238,14 +253,14 @@ export class UI {
   private buildSlots() {
     this.slots = this.game.action.equipped.map((s) => {
       const root = h('div', 'slot');
-      const icon = art(`skill-${s.def.icon}`, 'slot-icon');
+      const icon = skillIcon(s.def, 'slot-icon');
       const track = h('div', 'cd-track');
       const zone = h('div', 'cd-zone');
       const fill = h('div', 'cd-fill');
       zone.append(fill);
       track.append(zone);
       root.append(icon, track);
-      return { root, icon, fill };
+      return { root, fill };
     });
     this.slotsEl.replaceChildren(...this.slots.map((s) => s.root));
   }
@@ -310,7 +325,7 @@ export class UI {
     this.panel.append(this.skillHeader);
     for (const def of SKILLS) {
       const card = h('div', 'card row skill-row');
-      const icon = art(`skill-${def.icon}`, 'skill-art');
+      const icon = skillIcon(def, 'skill-art');
       const info = h('div', 'info');
       const name = h('div', 'title', def.name + ' ');
       const lv = h('span', 'lv');
@@ -319,22 +334,76 @@ export class UI {
       info.append(name, desc);
       const btns = h('div', 'skill-btns');
       const buy = h('button', 'buy');
-      const cost = h('span');
-      const label = h('small');
-      buy.append(cost, label);
-      holdRepeat(buy, () => {
-        const ok = this.game.upgradeSkill(def.id);
-        if (ok) this.refresh();
-        return ok;
+      buy.addEventListener('click', () => {
+        if (this.game.skillTree(def.id)) return this.showTree(def);
+        if (this.game.learnSkill(def.id)) {
+          this.toast(`${def.name} 습득!`);
+          this.refresh();
+        }
       });
       const equip = h('button', 'equip');
       equip.addEventListener('click', () => this.toggleEquip(def.id));
       btns.append(buy, equip);
       card.append(icon, info, btns);
+      // 배운 스킬은 카드를 눌러도 트리가 열린다
+      info.addEventListener('click', () => {
+        if (this.game.skillTree(def.id)) this.showTree(def);
+      });
       this.panel.append(card);
-      this.skillRows.push({ def, card, lv, desc, cost, label, buy, equip });
+      this.skillRows.push({ def, card, lv, desc, buy, equip });
     }
-    this.panel.append(h('div', 'hint', `스테이지에서는 장착한 스킬(최대 ${EQUIP_SLOTS}개)만 발동해요 · 강화한 레벨은 계속 유지돼요`));
+    this.panel.append(h('div', 'hint', `스테이지에서는 장착한 스킬(최대 ${EQUIP_SLOTS}개)만 발동해요 · 강화는 계속 유지돼요`));
+  }
+
+  /** 스킬 트리 창: 피해 / 발동 속도 / 개수를 따로 강화 */
+  private showTree(def: SkillDef) {
+    const g = this.game;
+    const head = h('div', 'tree-head');
+    const title = h('div', 'info');
+    title.append(h('div', 'modal-title', def.name), h('div', 'modal-sub', def.blurb));
+    head.append(skillIcon(def, 'skill-art'), title);
+    const rows = BRANCHES.map((br) => {
+      const row = h('div', 'tree-row');
+      const info = h('div', 'info');
+      const name = h('div', 'title', '');
+      const val = h('div', 'sub');
+      info.append(name, val);
+      const btn = h('button', 'buy');
+      const cost = h('span');
+      btn.append(cost, h('small', '', '강화'));
+      holdRepeat(btn, () => {
+        const ok = g.upgradeBranch(def.id, br.id);
+        if (ok) this.refresh();
+        return ok;
+      });
+      row.append(info, btn);
+      return { br, row, name, val, cost, btn };
+    });
+    const equip = this.button('', '', () => this.toggleEquip(def.id));
+    this.treeRefresh = () => {
+      const tree = g.skillTree(def.id) ?? emptyTree();
+      for (const r of rows) {
+        const lv = tree[r.br.id];
+        const maxed = lv >= r.br.max;
+        const label = r.br.id === 'dmg' ? (def.dmgLabel ?? '피해') : r.br.id === 'cnt' ? def.countLabel : r.br.name;
+        r.name.textContent = `${label}  Lv ${lv}/${r.br.max}`;
+        const next = { ...tree, [r.br.id]: lv + 1 };
+        r.val.textContent = maxed ? `${branchValue(def, r.br.id, tree)} (최대)` : `${branchValue(def, r.br.id, tree)} → ${branchValue(def, r.br.id, next)}`;
+        const c = g.branchUpgradeCost(def.id, r.br.id);
+        r.cost.replaceChildren(c === null ? document.createTextNode('MAX') : coin(fmt(c)));
+        r.btn.disabled = !g.canUpgradeBranch(def.id, r.br.id);
+      }
+      const on = g.save.equipped.includes(def.id);
+      equip.textContent = on ? `장착 해제 (${g.save.equipped.length}/${EQUIP_SLOTS})` : `장착하기 (${g.save.equipped.length}/${EQUIP_SLOTS})`;
+    };
+    const gold = h('div', 'tree-gold');
+    const goldRefresh = this.treeRefresh;
+    this.treeRefresh = () => {
+      goldRefresh();
+      gold.replaceChildren(coin(fmt(g.save.gold)));
+    };
+    this.openModal(head, gold, ...rows.map((r) => r.row), equip, this.button('닫기', 'primary', () => this.closeModal()));
+    this.treeRefresh();
   }
 
   private toggleEquip(id: SkillId) {
@@ -393,7 +462,19 @@ export class UI {
 
   /** 쿨다운 막대는 부드럽게 보이도록 매 프레임 */
   private refreshSlots() {
-    const eq = this.game.action.equipped;
+    const a = this.game.action;
+    // 콤보: 처치할 때마다 크게 튀었다가 줄어들고, 끊기기 직전엔 흐려진다
+    const since = this.game.engine.time - a.lastKillAt;
+    if (a.combo >= 5 && since <= COMBO_SEC) {
+      const pop = 1 + 0.35 * Math.max(0, 1 - since / 0.15);
+      this.comboEl.textContent = `${a.combo} COMBO`;
+      this.comboEl.style.transform = `scale(${pop.toFixed(3)})`;
+      this.comboEl.style.opacity = String(Math.min(1, (COMBO_SEC - since) / 0.5));
+      this.comboEl.classList.toggle('hot', a.combo >= 100);
+    } else {
+      this.comboEl.style.opacity = '0';
+    }
+    const eq = a.equipped;
     const key = eq.map((s) => s.def.id).join();
     if (key !== this.slotKey) {
       this.slotKey = key;
@@ -449,24 +530,27 @@ export class UI {
   }
 
   private refreshSkills() {
+    this.treeRefresh?.();
     if (!this.skillHeader) return;
     const g = this.game;
     const eq = g.save.equipped;
-    this.skillHeader.textContent = `장착 ${eq.length}/${EQUIP_SLOTS}  ·  골드로 배우고 강화해요`;
+    this.skillHeader.textContent = `장착 ${eq.length}/${EQUIP_SLOTS}  ·  배운 스킬을 눌러 피해·속도·개수를 강화해요`;
     for (const row of this.skillRows) {
       const id = row.def.id;
-      const lv = g.skillLevel(id);
-      const learned = lv > 0;
-      const maxed = lv >= SKILL_MAX_LEVEL;
-      row.card.classList.toggle('unlearned', !learned);
+      const tree = g.skillTree(id);
+      row.card.classList.toggle('unlearned', !tree);
       row.card.classList.toggle('equipped', eq.includes(id));
-      row.lv.textContent = learned ? `Lv ${lv}` : '미습득';
-      row.desc.textContent = maxed ? `${row.def.desc(lv)} (최대)` : learned ? `${row.def.desc(lv)} → 다음 Lv ${lv + 1}` : row.def.desc(1);
-      row.cost.replaceChildren(maxed ? document.createTextNode('MAX') : coin(fmt(g.skillUpgradeCost(id))));
-      row.label.textContent = learned ? '강화' : '배우기';
-      row.buy.disabled = !g.canUpgradeSkill(id);
+      row.lv.textContent = tree ? `Lv ${treeLevel(tree)}` : '미습득';
+      row.desc.textContent = tree ? skillSummary(row.def, tree) : row.def.blurb;
+      if (tree) {
+        row.buy.replaceChildren(h('span', '', '스킬 트리'), h('small', '', '강화'));
+        row.buy.disabled = false;
+      } else {
+        row.buy.replaceChildren(coin(fmt(row.def.learnCost)), h('small', '', '배우기'));
+        row.buy.disabled = !g.canLearn(id);
+      }
       row.equip.textContent = eq.includes(id) ? '해제' : '장착';
-      row.equip.disabled = !learned;
+      row.equip.disabled = !tree;
     }
   }
 
@@ -487,6 +571,7 @@ export class UI {
   }
 
   private closeModal() {
+    this.treeRefresh = null;
     this.overlay.classList.remove('show');
     this.overlay.replaceChildren();
   }
@@ -532,6 +617,7 @@ export class UI {
     };
     line('생존 시간', fmtTime(r.time));
     line('처치', String(r.kills));
+    line('최고 콤보', String(r.bestCombo));
     line('경험치', `+${r.xp}` + (r.levelUps > 0 ? ` (레벨 업 ${r.levelUps}번!)` : ''));
     line('보상', coin(fmt(r.gold)));
     const title = r.win ? `스테이지 ${r.stage} 클리어!` : '쓰러졌어요…';
