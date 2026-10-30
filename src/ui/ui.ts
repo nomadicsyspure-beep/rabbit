@@ -10,7 +10,7 @@ import {
   BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_GRADE, SKILL_TYPES, branchValue, emptyTree, skillSummary, treeLevel, SKILL_BY_ID, type SkillDef,
 } from '../data/skills';
 import { SKILL_BOXES, boxCost, boxesFor, oddsText, type BoxDef } from '../data/skillbox';
-import { DUNGEON_DAILY, type Game, type Mode } from '../game';
+import { COLLECTION_BONUS, DUNGEON_DAILY, REBIRTH_MIN_STAGE, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
 import { art, coin, h, holdRepeat, skillIcon, svgIcon } from './dom';
@@ -93,6 +93,9 @@ export class UI implements UIHost {
   private readonly feverFill: HTMLElement;
   private readonly feverBanner: HTMLElement;
   private slots: SlotEl[] = [];
+  /** 스테이지 스킬 칸 설명 말풍선 */
+  private slotTip!: HTMLElement;
+  private slotTipT = 0;
   private slotKey = '';
 
   private readonly tabButtons = new Map<TabId, HTMLButtonElement>();
@@ -203,7 +206,8 @@ export class UI implements UIHost {
       this.game.toggleAutoSkills();
       this.refreshToggles();
     });
-    bottom.append(this.slotsEl, this.skillModeBtn);
+    this.slotTip = h('div', 'slot-tip');
+    bottom.append(this.slotTip, this.slotsEl, this.skillModeBtn);
     this.comboEl = h('div', 'combo');
     this.feverBanner = h('div', 'fever-banner', 'FEVER TIME!');
 
@@ -259,18 +263,42 @@ export class UI implements UIHost {
     this.app.classList.toggle('manual-skills', !this.game.skillsAuto);
   }
 
+  /** 스테이지에서 스킬 칸 설명 (게임은 멈추지 않고 3초 뒤 사라진다) */
+  private showSlotTip(def: SkillDef) {
+    const type = SKILL_TYPES.find((t) => t.id === def.type)!;
+    const grade = SKILL_GRADE[def.id];
+    const name = h('div', 'tip-name', def.name + ' ');
+    name.append(h('span', `grade-badge g-${grade}`, grade), h('span', 'tip-type', ` ${type.name}`));
+    name.querySelector<HTMLElement>('.tip-type')!.style.color = type.color;
+    this.slotTip.replaceChildren(
+      name,
+      h('div', 'tip-blurb', def.blurb),
+      h('div', 'tip-sum', skillSummary(def, this.game.skillTree(def.id) ?? emptyTree())),
+    );
+    this.slotTip.classList.add('show');
+    this.slotTipT = 3;
+  }
+
   /** 장착 스킬 칸을 만든다 (스테이지가 시작되어 장착 목록이 바뀌면 다시) */
   private buildSlots() {
     this.slots = this.game.action.equipped.map((s) => {
       const root = h('button', 'slot');
       // 수동 모드: 누르면 그 스킬을 쓴다 (쿨다운 중이면 준비되는 대로)
+      // 자동이면 누르면 설명, 수동이면 꾹 누르면 설명
+      let hold = 0;
       root.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        if (this.game.engine.autoSkills || !s.weapon.trigger) return;
+        if (this.game.engine.autoSkills || !s.weapon.trigger) {
+          this.showSlotTip(s.def);
+          return;
+        }
         s.weapon.trigger();
         root.classList.add('pressed');
         setTimeout(() => root.classList.remove('pressed'), 120);
+        clearTimeout(hold);
+        hold = window.setTimeout(() => this.showSlotTip(s.def), 450);
       });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) root.addEventListener(ev, () => clearTimeout(hold));
       const icon = skillIcon(s.def, 'slot-icon');
       const track = h('div', 'cd-track');
       const zone = h('div', 'cd-zone');
@@ -341,13 +369,23 @@ export class UI implements UIHost {
       this.panel.append(card);
       this.statRows.set(id, { lv, val, cost, btn });
     }
-    // 도감·환생
-    const extra = h('div', 'extra-btns');
-    extra.append(
-      this.button('📖 도감', '', () => showCollection(this.game, this)),
-      this.button('🪶 환생', '', () => showRebirth(this.game, this)),
-    );
-    this.panel.append(extra, h('div', 'hint', '버튼을 누르고 있으면 연속 강화 · 전투 화면을 탭하면 추가 피해'));
+    // 도감·환생: 능력치 줄과 같은 모양
+    const g = this.game;
+    const extra: [string, string, string, string, () => void][] = [
+      ['📖', '도감', `${g.collectionCount}개 모음 · 공격력·체력 +${Math.round(g.collectionCount * COLLECTION_BONUS * 100)}%`, '보기', () => showCollection(g, this)],
+      ['🪶', '환생', `${g.save.rebirth.count}번 · 깃털 ${g.save.rebirth.feathers}개 · 최고 스테이지 ${REBIRTH_MIN_STAGE}부터`, '열기', () => showRebirth(g, this)],
+    ];
+    for (const [icon, title, sub, label, fn] of extra) {
+      const card = h('div', 'card row');
+      const info = h('div', 'info');
+      info.append(h('div', 'title', title), h('div', 'sub', sub));
+      const btn = h('button', 'buy');
+      btn.append(h('span', '', label));
+      btn.addEventListener('click', fn);
+      card.append(h('div', 'item-icon', icon), info, btn);
+      this.panel.append(card);
+    }
+    this.panel.append(h('div', 'hint', '버튼을 누르고 있으면 연속 강화 · 전투 화면을 탭하면 추가 피해'));
   }
 
   /** 스킬 탭: 위에 장착 중 4칸 고정, 아래는 아이콘 격자(5줄)만 스크롤 */
@@ -384,9 +422,8 @@ export class UI implements UIHost {
     const g = this.game;
     const wrap = h('div', 'box-list');
     const refreshers = SKILL_BOXES.map((box) => {
-      const card = h('div', `card skill-box box-${box.id}`);
-      const head = h('div', 'box-head');
-      head.append(h('span', 'box-icon', box.icon), h('span', 'title', box.name));
+      const card = h('div', `card row skill-box box-${box.id}`);
+      const info = h('div', 'info');
       const odds = h('div', 'box-odds');
       for (const gr of ['S', 'A', 'B', 'C', 'D'] as const) {
         const p = box.odds[gr];
@@ -402,7 +439,8 @@ export class UI implements UIHost {
         return { b, label, n };
       };
       const buttons = [mk(1), mk(10)];
-      card.append(head, odds, btns);
+      info.append(h('div', 'title', box.name), odds);
+      card.append(h('div', 'item-icon box-icon', box.icon), info, btns);
       wrap.append(card);
       return () => {
         for (const { b, label, n } of buttons) {
@@ -580,6 +618,10 @@ export class UI implements UIHost {
   // ---- 매 프레임 ----
 
   tick(dt: number) {
+    if (this.slotTipT > 0) {
+      this.slotTipT -= dt;
+      if (this.slotTipT <= 0) this.slotTip.classList.remove('show');
+    }
     if (this.toastT > 0) {
       this.toastT -= dt;
       if (this.toastT <= 0) this.toastEl.classList.remove('show');

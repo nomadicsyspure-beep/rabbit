@@ -3,7 +3,7 @@ import type { EnemyKind } from '../battle/engine';
 import { FeatherWeapon, type WeaponStats } from '../battle/weapons';
 import { TAP_DAMAGE_MUL } from '../data/balance';
 import { regionOf, stageSkins } from '../data/world';
-import { SKILL_BY_ID, emptyTree } from '../data/skills';
+import { SKILL_BY_ID, createSkill, emptyTree } from '../data/skills';
 import type { Game } from '../game';
 
 // 방치 화면은 보여주기용이다. 수입은 Game이 최고 스테이지 기준으로 따로 계산하고,
@@ -31,7 +31,7 @@ export class IdleMode {
     eng.showDamageText = true;
     eng.controller = this.controller;
     eng.autoSkills = true;
-    eng.weapons = [new FeatherWeapon(this.stats, SKILL_BY_ID.feather, emptyTree(), FEATHER_RANGE)];
+    this.setWeapon();
     eng.onKill = null;
     eng.onGem = null;
     eng.onChest = null;
@@ -49,6 +49,15 @@ export class IdleMode {
     p.hp = p.maxHp;
     this.game.applyPet(this.stats.power);
     this.spawnT = 0.3;
+  }
+
+  /** 방치 화면 스킬 = 착용한 무기의 스킬 (없으면 깃털). 보여주기용 */
+  setWeapon() {
+    const skill = this.game.worn('weapon')?.def.bonusSkill;
+    const eng = this.game.engine;
+    eng.weapons = [!skill || skill === 'feather'
+      ? new FeatherWeapon(this.stats, SKILL_BY_ID.feather, emptyTree(), FEATHER_RANGE)
+      : createSkill(SKILL_BY_ID[skill], this.stats, emptyTree())];
   }
 
   resize(w: number, h: number) {

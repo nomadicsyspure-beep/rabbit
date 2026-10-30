@@ -613,10 +613,10 @@ export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s])) as R
 export const emptyTree = (): SkillTree => ({ dmg: 0, spd: 0, cnt: 0 });
 
 /** 테스트용: 가지 강화 값을 등급별 이 값으로 (null이면 원래 값). 테스트 중에도 등급 차이는 보이게 */
-const COST_OVERRIDE: Record<Grade, number> | null = { D: 1, C: 2, B: 4, A: 10, S: 25 };
+const COST_OVERRIDE: Record<Grade, number> | null = null;
 
 /** 등급별 강화 기본값: 높은 등급일수록 훨씬 비싸다 */
-const GRADE_BASE: Record<Grade, number> = { D: 30, C: 60, B: 150, A: 400, S: 1200 };
+const GRADE_BASE: Record<Grade, number> = { D: 40, C: 100, B: 250, A: 700, S: 2000 };
 
 export const createSkill = (def: SkillDef, stats: WeaponStats, tree: SkillTree) => def.create(stats, def, tree);
 
