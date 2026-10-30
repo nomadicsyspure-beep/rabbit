@@ -12,7 +12,7 @@ import {
 import { GEAR, GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
 import { type Reward } from './data/items';
 import { PET_BY_ID, PET_MAX, petValue } from './data/pets';
-import { AD_DAILY, AD_DIAMONDS, CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, SUMMON_COST, rollGear, rollPet } from './data/shop';
+import { CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, rollGear, rollPet, skinPrice, summonCost } from './data/shop';
 import {
   ACHIEVEMENTS, ATTEND_REWARDS, DAILY_ALL_BONUS, DAILY_MISSIONS, MISSION_PASS_XP, PASS_LEVELS, achieveReady, addDaily,
   canAttend, freshDaily, passLevel, passReward, today, type DailyKey,
@@ -402,7 +402,7 @@ export class Game {
   summon(kind: 'pet' | 'gear', n: 1 | 10) {
     const s = this.save;
     const useTicket = n === 1 && s.tickets[kind] > 0;
-    const cost = n === 1 ? SUMMON_COST.one : SUMMON_COST.ten;
+    const cost = summonCost(n);
     if (!useTicket && s.diamonds < cost) return null;
     if (useTicket) s.tickets[kind]--;
     else s.diamonds -= cost;
@@ -419,8 +419,8 @@ export class Game {
   buySkin(kind: 'chick' | 'fx', id: string) {
     const def = (kind === 'chick' ? CHICK_SKIN_BY_ID : FX_SKIN_BY_ID)[id];
     const s = this.save;
-    if (!def || s.skins[kind].includes(id) || s.diamonds < def.price) return false;
-    s.diamonds -= def.price;
+    if (!def || s.skins[kind].includes(id) || s.diamonds < skinPrice(def)) return false;
+    s.diamonds -= skinPrice(def);
     s.skins[kind].push(id);
     this.wearSkin(kind, id);
     return true;
@@ -446,25 +446,6 @@ export class Game {
     this.engine.pet = pet
       ? { skin: pet.def.skin, ability: pet.def.ability, value: petValue(pet.def, pet.level), power, x: p.x - 20, y: p.y, t: 1 }
       : null;
-  }
-
-  // ---- 광고 (지금은 광고 없이 바로 보상) ----
-
-  get adsLeft() {
-    return AD_DAILY - freshDaily(this.save).ads;
-  }
-
-  /** 광고 한 번 쓰기 (남은 횟수가 없으면 false) */
-  useAd() {
-    if (this.adsLeft <= 0) return false;
-    this.save.daily.ads++;
-    return true;
-  }
-
-  adDiamonds() {
-    if (!this.useAd()) return false;
-    this.save.diamonds += AD_DIAMONDS;
-    return true;
   }
 
   // ---- 미션 · 출석 · 업적 · 패스 ----

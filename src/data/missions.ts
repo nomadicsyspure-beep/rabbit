@@ -11,8 +11,6 @@ export interface DailyState {
   counts: Record<DailyKey, number>;
   /** 받은 미션 id (all = 모두 완료 보너스) */
   claimed: string[];
-  /** 오늘 본 광고 수 */
-  ads: number;
   /** 오늘 들어간 던전 횟수 */
   entries: { material: number; raid: number };
 }
@@ -26,7 +24,6 @@ export const emptyDaily = (): DailyState => ({
   date: today(),
   counts: { kills: 0, plays: 0, chests: 0, fevers: 0, upgrades: 0, summons: 0 },
   claimed: [],
-  ads: 0,
   entries: { material: 0, raid: 0 },
 });
 

@@ -14,7 +14,7 @@ import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
 import { art, coin, h, holdRepeat, skillIcon, svgIcon } from './dom';
 import { buildGearTab, showCollection, showRebirth, type UIHost } from './meta';
-import { buildPetsTab, buildShopTab, playAd, showMissions } from './shop';
+import { buildPetsTab, buildShopTab, showMissions } from './shop';
 import { ICONS } from './icons';
 
 type TabId = 'growth' | 'skill' | 'gear' | 'pets' | 'dungeon' | 'shop';
@@ -691,16 +691,6 @@ export class UI implements UIHost {
     }
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
     if (r.chests.length > 0) parts.push(this.chestOpener(r.chests));
-    // 광고 보고 보상 2배 (골드 + 상자 재료 한 번 더)
-    const double = this.button('📺 광고 보고 보상 2배', 'ad', () =>
-      playAd(this.game, this, () => {
-        this.game.save.gold += r.gold;
-        for (const c of r.chests) this.game.grantReward(c.reward);
-        this.toast('보상 2배 받았어요!');
-        done();
-      }),
-    );
-    if (this.game.adsLeft > 0 && (r.gold > 0 || r.chests.length > 0)) parts.push(double);
     parts.push(
       this.button('돌아가기', 'primary', () => {
         this.closeModal();
@@ -749,13 +739,6 @@ export class UI implements UIHost {
       h('div', 'modal-title', '돌아오셨군요!'),
       h('div', 'modal-sub', `자리를 비운 ${fmtDuration(sec)} 동안 병아리가 사냥했어요`),
       reward,
-      this.button('📺 광고 보고 2배', 'ad', () =>
-        playAd(this.game, this, () => {
-          claim();
-          claim();
-          this.toast('2배로 받았어요!');
-        }),
-      ),
       this.button('받기', 'primary', () => {
         this.closeModal();
         claim();
@@ -777,6 +760,11 @@ export class UI implements UIHost {
         g.save.gold += g.goldPerSec * 500;
         this.refresh();
         this.toast('골드를 지급했어요');
+      }),
+      this.button('테스트: 다이아 1,000 지급', '', () => {
+        g.save.diamonds += 1000;
+        this.refresh();
+        this.toast('💎 1,000을 지급했어요');
       }),
       this.confirmButton('저장 초기화', '한 번 더 누르면 모두 지워져요', () => g.resetSave()),
       this.button('닫기', 'primary', () => this.closeModal()),

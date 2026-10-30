@@ -7,12 +7,12 @@ import {
   freshDaily, passLevel, passReward,
 } from '../data/missions';
 import { PETS, PET_MAX, RARITY_COLORS, RARITY_NAMES, petEffectText } from '../data/pets';
-import { AD_DAILY, AD_DIAMONDS, CHICK_SKINS, FX_SKINS, SUMMON_COST, type SkinDef } from '../data/shop';
+import { CHICK_SKINS, FX_SKINS, skinPrice, summonCost, type SkinDef } from '../data/shop';
 import type { Game } from '../game';
 import { h } from './dom';
 import type { UIHost } from './meta';
 
-// 동료 탭, 상점 탭, 미션 창(일일·출석·업적·패스), 광고 자리.
+// 동료 탭, 상점 탭, 미션 창(일일·출석·업적·패스).
 
 /** 몬스터 첫 프레임을 작은 그림으로 */
 function monsterPic(skin: string, size = 44) {
@@ -42,36 +42,10 @@ function diamondBar(game: Game) {
   return { el: bar, refresh };
 }
 
-/**
- * 광고 자리: 지금은 실제 광고 없이 2초 기다린 뒤 보상.
- * 출시 때 여기만 광고 SDK로 바꾸면 된다.
- */
-export function playAd(game: Game, host: UIHost, reward: () => void) {
-  if (game.adsLeft <= 0) {
-    host.toast(`오늘 광고는 다 봤어요 (하루 ${AD_DAILY}번)`);
-    return;
-  }
-  const count = h('div', 'ad-count', '2');
-  host.openModal(h('div', 'modal-title', '광고'), h('div', 'ad-box', '📺 광고 자리 (출시 때 실제 광고)'), count);
-  let n = 2;
-  const id = setInterval(() => {
-    n--;
-    count.textContent = String(n);
-    if (n > 0) return;
-    clearInterval(id);
-    host.closeModal();
-    if (game.useAd()) {
-      reward();
-      sfx.coin();
-    }
-    host.refresh();
-  }, 1000);
-}
-
 /** 소환 결과: 카드가 하나씩 뒤집힌다 */
 function showSummon(game: Game, host: UIHost, kind: 'pet' | 'gear', n: 1 | 10) {
   const res = game.summon(kind, n);
-  if (!res) return host.toast('💎 다이아가 모자라요 (미션·출석·광고로 모아요)');
+  if (!res) return host.toast('💎 다이아가 모자라요 (미션·출석으로 모아요)');
   const grid = h('div', 'summon-grid');
   res.forEach((r, i) => {
     const card = h('div', 'summon-card' + (r.isNew ? ' new' : ''));
@@ -106,16 +80,16 @@ function summonCard(game: Game, host: UIHost, kind: 'pet' | 'gear') {
   one.append(oneLabel, h('small', '', '1회'));
   one.addEventListener('click', () => showSummon(game, host, kind, 1));
   const ten = h('button', 'buy');
-  ten.append(h('span', '', `💎 ${SUMMON_COST.ten}`), h('small', '', '10회'));
+  ten.append(h('span', '', `💎 ${summonCost(10)}`), h('small', '', '10회'));
   ten.addEventListener('click', () => showSummon(game, host, kind, 10));
   const btns = h('div', 'skill-btns');
   btns.append(one, ten);
   card.append(info, btns);
   const refresh = () => {
     const t = game.save.tickets[kind];
-    oneLabel.textContent = t > 0 ? `🎟️ ${t}` : `💎 ${SUMMON_COST.one}`;
-    one.disabled = t <= 0 && game.save.diamonds < SUMMON_COST.one;
-    ten.disabled = game.save.diamonds < SUMMON_COST.ten;
+    oneLabel.textContent = t > 0 ? `🎟️ ${t}` : `💎 ${summonCost(1)}`;
+    one.disabled = t <= 0 && game.save.diamonds < summonCost(1);
+    ten.disabled = game.save.diamonds < summonCost(10);
   };
   return { el: card, refresh };
 }
@@ -205,32 +179,20 @@ function skinSection(panel: HTMLElement, game: Game, host: UIHost, kind: 'chick'
       const owned = s.skins[kind].includes(skin.id);
       const on = (kind === 'chick' ? s.skins.chickOn : s.skins.fxOn) === skin.id;
       card.classList.toggle('on', on);
-      label.textContent = on ? '사용 중' : owned ? '사용하기' : `💎 ${skin.price}`;
+      label.textContent = on ? '사용 중' : owned ? '사용하기' : `💎 ${skinPrice(skin)}`;
     };
   });
   return () => rows.forEach((r) => r());
 }
 
-/** 상점 탭: 광고 다이아, 소환, 꾸미기, 다이아 충전(출시 때) */
+/** 상점 탭: 소환, 꾸미기, 다이아 충전(출시 때) */
 export function buildShopTab(panel: HTMLElement, game: Game, host: UIHost) {
   const wallet = diamondBar(game);
   panel.append(wallet.el);
 
-  const ad = h('div', 'card row');
-  const adInfo = h('div', 'info');
-  const adSub = h('div', 'sub');
-  adInfo.append(h('div', 'title', `📺 광고 보고 💎 ${AD_DIAMONDS}`), adSub);
-  const adBtn = h('button', 'buy');
-  adBtn.append(h('span', '', '무료'), h('small', '', '보기'));
-  adBtn.addEventListener('click', () => playAd(game, host, () => {
-    game.save.diamonds += AD_DIAMONDS;
-    host.toast(`💎 +${AD_DIAMONDS}`);
-  }));
-  ad.append(h('div', 'item-icon', '🎁'), adInfo, adBtn);
-
   const pet = summonCard(game, host, 'pet');
   const gear = summonCard(game, host, 'gear');
-  panel.append(ad, h('div', 'section-title', '소환'), pet.el, gear.el);
+  panel.append(h('div', 'section-title', '소환'), pet.el, gear.el);
   const chick = skinSection(panel, game, host, 'chick');
   const fx = skinSection(panel, game, host, 'fx');
 
@@ -242,12 +204,10 @@ export function buildShopTab(panel: HTMLElement, game: Game, host: UIHost) {
     b.addEventListener('click', () => host.toast('결제는 출시 때 열려요'));
     packs.append(b);
   }
-  panel.append(packs, h('div', 'hint', '광고·결제는 출시 때 연결돼요 (지금 광고는 바로 보상)'));
+  panel.append(packs, h('div', 'hint', '결제는 출시 때 연결돼요 · 테스트 중엔 설정에서 다이아를 받을 수 있어요'));
 
   return () => {
     wallet.refresh();
-    adSub.textContent = `오늘 남은 횟수 ${game.adsLeft}/${AD_DAILY}`;
-    adBtn.disabled = game.adsLeft <= 0;
     pet.refresh();
     gear.refresh();
     chick();
