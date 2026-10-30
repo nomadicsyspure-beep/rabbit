@@ -1,5 +1,3 @@
-import type { EnemySkin } from '../battle/engine';
-
 // 수치 공식. 밸런스 조정은 이 파일에서만 한다.
 // 스테이지는 액션 모드로 직접 깨고, 방치는 깬 최고 스테이지 기준으로 재화만 쌓인다.
 
@@ -10,13 +8,6 @@ export const OFFLINE_EFFICIENCY = 0.5;
 
 export const isBossStage = (stage: number) => stage % BOSS_EVERY === 0;
 
-/** 스테이지마다 나오는 몬스터 외형 (일반 / 빠른 / 단단한). 정예는 토끼 전사, 마왕은 악마 */
-const STAGE_SKINS: Record<'normal' | 'fast' | 'tank', EnemySkin>[] = [
-  { normal: 'slime', fast: 'bat', tank: 'golem' },
-  { normal: 'mushroom', fast: 'angel', tank: 'snail' },
-  { normal: 'sprout', fast: 'bat', tank: 'golem' },
-];
-export const stageSkins = (stage: number) => STAGE_SKINS[(Math.max(1, stage) - 1) % STAGE_SKINS.length];
 
 export const enemyHp = (stage: number) => 10 * Math.pow(1.17, stage - 1);
 export const enemyDmg = (stage: number) => 4 * Math.pow(1.13, stage - 1);

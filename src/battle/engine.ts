@@ -1,3 +1,4 @@
+import { sfx } from '../audio/sfx';
 import { fmt } from '../core/format';
 
 // 방치 모드와 액션 모드가 같이 쓰는 전투 엔진.
@@ -6,9 +7,10 @@ import { fmt } from '../core/format';
 export type EnemyKind = 'normal' | 'fast' | 'tank' | 'boss';
 /**
  * 움직임: chase = 지그재그로 흔들리며 쫓기 / lead = 가는 방향을 앞질러 막기 /
- * charge = 정한 방향으로 곧장 돌진하고 사라짐 (dashX·dashY 방향, t1초 뒤)
+ * charge = 정한 방향으로 곧장 돌진하고 사라짐 (dashX·dashY 방향, t1초 뒤) /
+ * flee = 플레이어에게서 도망치다 t1초 뒤 사라짐 (황금 몹)
  */
-export type EnemyMove = 'chase' | 'lead' | 'charge';
+export type EnemyMove = 'chase' | 'lead' | 'charge' | 'flee';
 
 /** 그릴 때 쓰는 외형(src/assets/monsters). 행동(kind)과 따로 둔다. */
 export type EnemySkin = 'slime' | 'mushroom' | 'sprout' | 'bat' | 'angel' | 'golem' | 'snail' | 'rabbit' | 'devil';
@@ -35,6 +37,10 @@ export interface Enemy {
   move: EnemyMove;
   /** 지그재그 위상 (몹마다 다르게) */
   phase: number;
+  /** 황금 몹: 도망치고, 잡으면 골드 폭죽 */
+  golden: boolean;
+  /** 폭탄 몹: 쓰러지면 터져서 옆 몹과 가까운 플레이어에게 피해 */
+  bomb: boolean;
   /** 보스 패턴용 타이머 */
   t1: number;
   t2: number;
@@ -109,6 +115,8 @@ export interface Chest {
   active: boolean;
   x: number;
   y: number;
+  /** 0 나무 / 1 은 / 2 금 */
+  grade: 0 | 1 | 2;
   /** 나타난 뒤 지난 시간 (통통 튀는 연출) */
   t: number;
 }
@@ -317,6 +325,10 @@ export class Engine {
   autoSkills = true;
   /** 피버 남은 시간(초). 0보다 크면 화면이 금빛으로 들뜬다 */
   fever = 0;
+  /** 안개: 0이 아니면 플레이어 주변 이 반경(px)만 보인다 */
+  fog = 0;
+  /** 바닥 색 (지역마다 다르다): 바탕 / 큰 얼룩 둘 / 작은 자갈 둘 */
+  ground: readonly string[] = ['#7f5a3a', 'rgba(98,68,42,0.2)', 'rgba(150,112,74,0.15)', 'rgba(60,40,24,0.45)', 'rgba(186,150,108,0.45)'];
   time = 0;
   /** 화면 흔들림 세기(px). 폭발·피격 때 올라가고 금방 줄어든다 */
   shake = 0;
@@ -328,7 +340,8 @@ export class Engine {
 
   readonly enemies = new Pool<Enemy>(() => ({
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
-    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, bomb: false,
+    t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
   }), 500);
   readonly projectiles = new Pool<Projectile>(() => ({
     active: false, kind: 'feather', x: 0, y: 0, vx: 0, vy: 0, r: 4, dmg: 1, life: 1, pierce: 0, hit: [], blast: 0, flight: 0,
@@ -341,7 +354,7 @@ export class Engine {
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
   }), 300);
   readonly gems = new Pool<Gem>(() => ({ active: false, x: 0, y: 0, value: 1, pulled: false, vacuum: false }), 900);
-  readonly chests = new Pool<Chest>(() => ({ active: false, x: 0, y: 0, t: 0 }), 8);
+  readonly chests = new Pool<Chest>(() => ({ active: false, x: 0, y: 0, grade: 0, t: 0 }), 8);
   readonly texts = new Pool<FloatText>(() => ({
     active: false, x: 0, y: 0, text: '', life: 0, maxLife: 1, color: '#fff', size: 12,
   }), 160);
@@ -358,7 +371,7 @@ export class Engine {
 
   onKill: ((e: Enemy) => void) | null = null;
   onGem: ((value: number) => void) | null = null;
-  onChest: ((x: number, y: number) => void) | null = null;
+  onChest: ((x: number, y: number, grade: 0 | 1 | 2) => void) | null = null;
   onPlayerDead: (() => void) | null = null;
 
   private readonly grid = new Grid(48);
@@ -380,6 +393,7 @@ export class Engine {
     this.time = 0;
     this.shake = 0;
     this.fever = 0;
+    this.fog = 0;
     const p = this.player;
     p.dead = false;
     p.curSpeed = 0;
@@ -394,7 +408,7 @@ export class Engine {
     if (!e) return null;
     Object.assign(e, {
       skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, move: 'chase',
-      phase: Math.random() * Math.PI * 2, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+      phase: Math.random() * Math.PI * 2, golden: false, bomb: false, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
     }, init);
     e.id = this.nextId++;
     e.active = true;
@@ -446,6 +460,8 @@ export class Engine {
       e.kx += kx * (crit ? 1.6 : 1);
       e.ky += ky * (crit ? 1.6 : 1);
     }
+    if (crit) sfx.crit();
+    else sfx.hit();
     // 맞은 자리에 작은 불꽃
     this.burst(e.x, e.y - e.r * 0.4, crit ? 5 : 2, crit ? ['#ffb347', '#fff3a0'] : ['#fff3a0', '#ffffff'], 120, 0.22, 0);
     if (this.showDamageText) {
@@ -484,6 +500,15 @@ export class Engine {
     // 몸 색 조각이 튀어 오른다
     this.burst(e.x, e.y - e.r * 0.3, e.kind === 'boss' ? 30 : e.kind === 'tank' ? 10 : 7, BURST_COLOR[e.skin], e.kind === 'boss' ? 260 : 170, 0.5, 420, e.kind === 'boss' ? 4 : 3);
     this.addShake(e.kind === 'boss' ? MAX_SHAKE : 0.8);
+    if (e.golden) this.burst(e.x, e.y - e.r, 26, ['#ffe066', '#ffd23f', '#fff6c8'], 300, 0.8, 380, 3.5);
+    if (e.bomb) {
+      // 폭탄 몹: 터져서 옆 몹을 같이 날리고, 가까이 있으면 나도 아프다
+      this.addSprite('fire-burst', e.x, e.y - 6, 30, 0.3);
+      sfx.boom();
+      const p = this.player;
+      if (!p.dead && (p.x - e.x) ** 2 + (p.y - e.y) ** 2 < 42 * 42) this.damagePlayer(e.dmg * 1.5);
+      this.blast(e.x, e.y, 42, e.maxHp, 90);
+    }
     if (this.dropGems && e.xp > 0) {
       const g = this.gems.get();
       if (g) {
@@ -560,6 +585,7 @@ export class Engine {
   explode(x: number, y: number, r: number, dmg: number, sprite: string) {
     this.addSprite(sprite, x, y, r, 0.35);
     this.addShake(2.5);
+    sfx.boom();
     this.blast(x, y, r, dmg, 120);
   }
 
@@ -577,12 +603,13 @@ export class Engine {
     return hit;
   }
 
-  spawnChest(x: number, y: number) {
+  spawnChest(x: number, y: number, grade: 0 | 1 | 2 = 0) {
     const c = this.chests.get();
     if (!c) return;
     c.active = true;
     c.x = x;
     c.y = y;
+    c.grade = grade;
     c.t = 0;
   }
 
@@ -776,6 +803,20 @@ export class Engine {
         // 돌진: 플레이어와 상관없이 곧장 지나가고 시간이 다 되면 사라진다
         e.x += e.dashX * e.speed * slow * dt;
         e.y += e.dashY * e.speed * slow * dt;
+        e.t1 -= dt;
+        if (e.t1 <= 0) {
+          e.active = false;
+          continue;
+        }
+      } else if (e.move === 'flee') {
+        // 황금 몹: 도망치며 흔들린다. 시간이 지나면 사라진다
+        const wob = Math.sin(this.time * 4 + e.phase) * 0.8;
+        const ux = -dx / d - (dy / d) * wob;
+        const uy = -dy / d + (dx / d) * wob;
+        const ul = Math.hypot(ux, uy) || 1;
+        e.x += (ux / ul) * e.speed * slow * dt;
+        e.y += (uy / ul) * e.speed * slow * dt;
+        if (Math.random() < 0.3) this.trail(e.x, e.y - e.r, ['#ffe066', '#fff6c8'], 0.4, 2.5);
         e.t1 -= dt;
         if (e.t1 <= 0) {
           e.active = false;
@@ -977,6 +1018,7 @@ export class Engine {
         if (d < p.r + 4) {
           g.active = false;
           this.burst(g.x, g.y, 2, g.value >= 3 ? ['#7cf2a0', '#ffffff'] : ['#7ad7ff', '#ffffff'], 60, 0.25, 0, 2);
+          sfx.gem();
           this.onGem?.(g.value);
         }
       }
@@ -991,8 +1033,9 @@ export class Engine {
       if (p.dead || (c.x - p.x) ** 2 + (c.y - p.y) ** 2 > (p.r + 18) ** 2) continue;
       c.active = false;
       this.addSprite('star-burst', c.x, c.y - 10, 40, 0.4);
-      this.vacuumGems();
-      this.onChest?.(c.x, c.y);
+      this.burst(c.x, c.y - 10, 16, ['#ffe066', '#ffffff', '#c8823a'], 220, 0.6, 300, 3);
+      sfx.chest();
+      this.onChest?.(c.x, c.y, c.grade);
     }
   }
 }

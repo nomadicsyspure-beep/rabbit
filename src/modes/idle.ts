@@ -1,7 +1,8 @@
 import { AutoController } from '../battle/controllers';
 import type { EnemyKind } from '../battle/engine';
 import { FeatherWeapon, type WeaponStats } from '../battle/weapons';
-import { TAP_DAMAGE_MUL, playerStats, stageSkins } from '../data/balance';
+import { TAP_DAMAGE_MUL, playerStats } from '../data/balance';
+import { regionOf, stageSkins } from '../data/world';
 import { SKILL_BY_ID, emptyTree } from '../data/skills';
 import type { Game } from '../game';
 
@@ -34,6 +35,8 @@ export class IdleMode {
     eng.onKill = null;
     eng.onGem = null;
     eng.onChest = null;
+    // 다음에 도전할 스테이지 지역의 바닥
+    eng.ground = regionOf(this.game.nextStage).ground;
     eng.onPlayerDead = null;
 
     const p = eng.player;
