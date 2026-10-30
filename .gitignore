@@ -3,4 +3,3 @@ dist
 *.log
 .DS_Store
 __pycache__
-art/source/sheets2/index-*.png

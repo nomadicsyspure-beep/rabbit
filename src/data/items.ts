@@ -6,19 +6,17 @@ import { regionLap, regionOf } from './world';
 export interface MatDef {
   id: MatId;
   name: string;
-  /** 글자로 쓸 때 아이콘 (토스트 등) */
+  /** 그림이 생기기 전 임시 아이콘 */
   icon: string;
-  /** 그림 아이콘 (src/assets/icons) */
-  img: string;
 }
 
 export const MATS: MatDef[] = [
-  { id: 'feather', name: '깃털 조각', icon: '🪶', img: 'gear-wings_bat' },
-  { id: 'spore', name: '버섯 포자', icon: '🍄', img: 'mushroom' },
-  { id: 'ice', name: '얼음 결정', icon: '❄️', img: 'snow_gem' },
-  { id: 'lava', name: '용암석', icon: '🔥', img: 'lava_rock' },
-  { id: 'shadow', name: '어둠의 조각', icon: '🌑', img: 'shadow' },
-  { id: 'skillbook', name: '스킬북', icon: '📕', img: 'skillbook' },
+  { id: 'feather', name: '깃털 조각', icon: '🪶' },
+  { id: 'spore', name: '버섯 포자', icon: '🍄' },
+  { id: 'ice', name: '얼음 결정', icon: '❄️' },
+  { id: 'lava', name: '용암석', icon: '🔥' },
+  { id: 'shadow', name: '어둠의 조각', icon: '🌑' },
+  { id: 'skillbook', name: '스킬북', icon: '📕' },
 ];
 
 export const MAT_BY_ID = Object.fromEntries(MATS.map((m) => [m.id, m])) as Record<MatId, MatDef>;
@@ -26,8 +24,6 @@ export const MAT_BY_ID = Object.fromEntries(MATS.map((m) => [m.id, m])) as Recor
 /** 상자 등급: 0 나무 / 1 은 / 2 금 */
 export type ChestGrade = 0 | 1 | 2;
 export const CHEST_NAMES = ['나무 상자', '은 상자', '금 상자'] as const;
-/** 상자 그림 (src/assets/icons): 나무 / 은(금테) / 금(보라 금테) */
-export const CHEST_ICONS = ['chest-big', 'chest-2', 'chest-3'] as const;
 /** 상자 테두리 빛 색 */
 export const CHEST_COLORS = ['#c8823a', '#d8e4f0', '#ffd23f'] as const;
 

@@ -1,4 +1,4 @@
-import { FX_URLS, ICON_URLS, SPRITES, UI_URLS } from '../battle/sprites';
+import { FX_URLS, SPRITES, UI_URLS } from '../battle/sprites';
 import { hueRecolor, recolored } from '../battle/tint';
 import type { SkillDef } from '../data/skills';
 
@@ -29,16 +29,6 @@ export function art(name: string, cls = '') {
 
 /** 스킬 아이콘: UI 시트 그림, 또는 이펙트 그림을 나무 틀 안에 */
 export function skillIcon(def: SkillDef, cls: string): HTMLElement {
-  if (def.icon.startsWith('ic:')) {
-    // 아이콘 그림 (src/assets/icons)
-    const box = h('div', cls + ' fx-icon');
-    const img = h('img');
-    img.src = ICON_URLS[def.icon.slice(3)] ?? '';
-    img.alt = '';
-    img.draggable = false;
-    box.append(img);
-    return box;
-  }
   if (!def.icon.startsWith('fx:')) return art(def.icon, cls);
   const box = h('div', cls + ' fx-icon');
   const [name, hue] = def.icon.slice(3).split('@');
@@ -64,22 +54,6 @@ export function skillIcon(def: SkillDef, cls: string): HTMLElement {
   else src?.addEventListener('load', paint, { once: true });
   box.append(c);
   return box;
-}
-
-/** 아이콘 그림 (src/assets/icons) */
-export function icon(name: string, cls = '') {
-  const img = h('img', cls);
-  img.src = ICON_URLS[name] ?? '';
-  img.alt = '';
-  img.draggable = false;
-  return img;
-}
-
-/** 그림 아이콘 + 숫자 칩 (재료·다이아 등) */
-export function chip(name: string, text: string) {
-  const c = h('span', 'chip');
-  c.append(icon(name, 'chip-icon'), document.createTextNode(text));
-  return c;
 }
 
 export function coin(text: string) {

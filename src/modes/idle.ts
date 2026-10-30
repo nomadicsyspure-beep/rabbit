@@ -37,7 +37,6 @@ export class IdleMode {
     eng.onChest = null;
     // 다음에 도전할 스테이지 지역의 바닥
     eng.ground = regionOf(this.game.nextStage).ground;
-    eng.deco = regionOf(this.game.nextStage).deco;
     eng.onPlayerDead = null;
 
     const p = eng.player;

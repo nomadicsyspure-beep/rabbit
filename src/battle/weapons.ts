@@ -67,7 +67,7 @@ export abstract class SkillWeapon implements Weapon {
   }
 
   update(engine: Engine, dt: number) {
-    this.cd -= dt * engine.skillHaste;
+    this.cd -= dt;
     if (this.cd > 0) return;
     if (!engine.autoSkills && !this.pending) return;
     if (this.fire(engine)) {
