@@ -1099,3 +1099,95 @@ button:disabled {
 .app:not(.mode-action) .fever-banner {
   display: none;
 }
+
+/* ---- 결과 화면 상자 열기 ---- */
+
+.chests {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.chests-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--gold);
+  text-align: center;
+}
+
+.chest-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.chest-item {
+  width: 62px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 4px 0;
+  border-radius: 8px;
+  border: 2px solid transparent;
+}
+
+.chest-item img {
+  width: 40px;
+}
+
+.chest-item.grade-0 {
+  border-color: #c8823a;
+}
+
+.chest-item.grade-1 {
+  border-color: #d8e4f0;
+  box-shadow: 0 0 8px rgba(216, 228, 240, 0.6);
+}
+
+.chest-item.grade-2 {
+  border-color: #ffd23f;
+  box-shadow: 0 0 12px rgba(255, 210, 63, 0.9);
+}
+
+.chest-item.shake img {
+  animation: chest-shake 0.09s linear infinite;
+}
+
+.chest-item.opened img {
+  animation: chest-pop 0.35s ease-out forwards;
+}
+
+@keyframes chest-shake {
+  0% { transform: rotate(-12deg); }
+  50% { transform: rotate(12deg) scale(1.1); }
+  100% { transform: rotate(-12deg); }
+}
+
+@keyframes chest-pop {
+  0% { transform: scale(1.4); filter: brightness(2); }
+  100% { transform: scale(1); filter: brightness(1) grayscale(0.4); opacity: 0.7; }
+}
+
+.chest-log {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.chest-line {
+  animation: fade-up 0.3s ease-out;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+

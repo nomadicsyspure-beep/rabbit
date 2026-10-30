@@ -1,3 +1,4 @@
+import { sfx } from './audio/sfx';
 import { AutoPilot, Joystick } from './battle/controllers';
 import { Engine } from './battle/engine';
 import { Renderer } from './battle/renderer';
@@ -8,6 +9,8 @@ import {
 import {
   BRANCHES, EQUIP_SLOTS, SKILL_BY_ID, branchCost, emptyTree, learnPrice, type Branch, type SkillId,
 } from './data/skills';
+import { type Reward } from './data/items';
+import type { MatId } from './data/world';
 import { ActionMode } from './modes/action';
 import { IdleMode } from './modes/idle';
 import { UI } from './ui/ui';
@@ -41,6 +44,9 @@ export class Game {
     this.canvas = this.ui.canvas;
     this.renderer = new Renderer(this.canvas);
     this.bindInput();
+    sfx.setEnabled(this.save.sound);
+    // 브라우저는 첫 터치 뒤에야 소리를 낼 수 있다
+    window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
     this.bindLifecycle();
 
     new ResizeObserver(() => this.resize()).observe(this.ui.battle);
@@ -112,6 +118,7 @@ export class Game {
     this.persist();
     this.mode = 'action';
     this.ui.setMode('action');
+    sfx.setCombat(true);
     this.resize();
     this.action.enter(this.nextStage);
   }
@@ -120,6 +127,7 @@ export class Game {
     this.exitLandscape();
     this.mode = 'idle';
     this.ui.setMode('idle');
+    sfx.setCombat(false);
     this.resize();
     this.idle.enter();
     this.persist();
@@ -144,6 +152,36 @@ export class Game {
     this.save.levels[id]++;
     this.idle.refreshStats();
     return true;
+  }
+
+  // ---- 보상 ----
+
+  /** 주말 이벤트: 토·일엔 골드 2배, 황금 몹 3배 */
+  get isWeekend() {
+    const d = new Date().getDay();
+    return d === 0 || d === 6;
+  }
+
+  /** 스테이지 골드 배율 */
+  get goldBoost() {
+    return this.isWeekend ? 2 : 1;
+  }
+
+  /** 황금 몹 출현 배율 */
+  get goldenBoost() {
+    return this.isWeekend ? 3 : 1;
+  }
+
+  grantReward(r: Reward) {
+    const save = this.save;
+    for (const [k, v] of Object.entries(r.mats)) save.mats[k as MatId] = (save.mats[k as MatId] ?? 0) + (v ?? 0);
+    save.gold += r.gold;
+    save.diamonds += r.diamonds;
+  }
+
+  toggleSound() {
+    this.save.sound = !this.save.sound;
+    sfx.setEnabled(this.save.sound);
   }
 
   // ---- 스테이지 설정 ----

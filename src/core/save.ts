@@ -1,6 +1,7 @@
 import type { SkillTree } from '../battle/weapons';
 import type { StatId } from '../data/balance';
 import { EQUIP_SLOTS, SKILL_BY_ID, emptyTree, type SkillId } from '../data/skills';
+import type { MatId } from '../data/world';
 
 const KEY = 'rabbit.save.v1';
 
@@ -22,6 +23,13 @@ export interface SaveData {
   /** 스테이지 설정: 자동 이동 / 스킬 자동 발동 (끄면 스킬 칸을 눌러 쓴다) */
   autoMove: boolean;
   autoSkills: boolean;
+  /** 재료 (보물 상자에서) */
+  mats: Partial<Record<MatId, number>>;
+  /** 다이아 (고급 재화: 금 상자·황금 몹·미션) */
+  diamonds: number;
+  /** 누적 기록 (업적·미션용) */
+  stats: { kills: number; bestCombo: number; fevers: number; chests: number; golden: number; stages: number };
+  sound: boolean;
 }
 
 export function newSave(): SaveData {
@@ -38,6 +46,10 @@ export function newSave(): SaveData {
     equipped: ['feather'],
     autoMove: false,
     autoSkills: true,
+    mats: {},
+    diamonds: 0,
+    stats: { kills: 0, bestCombo: 0, fevers: 0, chests: 0, golden: 0, stages: 0 },
+    sound: true,
   };
 }
 
@@ -80,6 +92,10 @@ export function loadSave(): SaveData {
       equipped,
       autoMove: data.autoMove ?? base.autoMove,
       autoSkills: data.autoSkills ?? base.autoSkills,
+      mats: { ...data.mats },
+      diamonds: data.diamonds ?? 0,
+      stats: { ...base.stats, ...data.stats },
+      sound: data.sound ?? true,
     };
   } catch {
     return newSave();

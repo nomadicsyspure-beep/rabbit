@@ -1,4 +1,7 @@
+import { sfx } from '../audio/sfx';
 import { FX_URLS, UI_URLS } from '../battle/sprites';
+import { CHEST_NAMES, rewardText } from '../data/items';
+import { regionOf, stageRule } from '../data/world';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
   STATS, STAT_ORDER, actionRatio, isBossStage, playerPower, playerStats, recommendedPower, stageClearGold, xpToNext,
@@ -503,7 +506,8 @@ export class UI {
       const save = this.game.save;
       const stage = this.game.nextStage;
       title.textContent = isBossStage(stage) ? `스테이지 ${stage} · 마왕` : `스테이지 ${stage}`;
-      sub.textContent = `권장 전투력 ${fmt(recommendedPower(stage))} · 클리어 보상 ${fmt(stageClearGold(stage))}`;
+      const rule = stageRule(stage);
+      sub.textContent = `${regionOf(stage).name}${rule ? ` · 규칙: ${rule.name}` : ''} · 권장 전투력 ${fmt(recommendedPower(stage))} · 클리어 보상 ${fmt(stageClearGold(stage))}`;
       const r = actionRatio(playerStats(save.levels, save.level), stage);
       const worst = Math.min(r.atk, r.hp);
       const [label, cls] = worst < 0.6 ? ['위험', 'bad'] : worst < 0.9 ? ['도전', 'mid'] : ['여유', 'good'];
@@ -691,15 +695,47 @@ export class UI {
     line('보상', coin(fmt(r.gold)));
     const title = r.win ? `스테이지 ${r.stage} 클리어!` : '쓰러졌어요…';
     const sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
-    this.openModal(
-      h('div', 'modal-title ' + (r.win ? 'win' : 'lose'), title),
-      h('div', 'modal-sub', sub),
-      stats,
+    const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
+    if (r.chests.length > 0) parts.push(this.chestOpener(r.chests));
+    parts.push(
       this.button('돌아가기', 'primary', () => {
         this.closeModal();
         done();
       }),
     );
+    this.openModal(...parts);
+  }
+
+  /** 결과 화면 상자 열기: 누르면 흔들리다 펑 하고 재료가 나온다 (보상은 이미 받은 상태) */
+  private chestOpener(chests: RunResult['chests']) {
+    const box = h('div', 'chests');
+    box.append(h('div', 'chests-title', `주운 상자 ${chests.length}개 · 눌러서 열기`));
+    const row = h('div', 'chest-row');
+    const log = h('div', 'chest-log');
+    const opens: (() => void)[] = [];
+    for (const c of chests) {
+      const el = h('button', `chest-item grade-${c.grade}`);
+      el.append(art('chest'), h('span', '', CHEST_NAMES[c.grade]));
+      let opened = false;
+      const open = () => {
+        if (opened) return;
+        opened = true;
+        el.classList.add('shake');
+        setTimeout(() => {
+          el.classList.remove('shake');
+          el.classList.add('opened');
+          sfx.chest();
+          el.querySelector('span')!.textContent = '열림!';
+          log.append(h('div', 'chest-line', `${CHEST_NAMES[c.grade]}: ${rewardText(c.reward)}`));
+        }, 450);
+      };
+      el.addEventListener('click', open);
+      opens.push(open);
+      row.append(el);
+    }
+    const all = this.button('모두 열기', '', () => opens.forEach((o, i) => setTimeout(o, i * 160)));
+    box.append(row, all, log);
+    return box;
   }
 
   showOffline(sec: number, gold: number, claim: () => void) {
@@ -720,7 +756,12 @@ export class UI {
     const g = this.game;
     this.openModal(
       h('div', 'modal-title', '설정'),
-      h('div', 'modal-sub', `프로토타입 v0.3 · 빌드 ${new Date(__BUILD_TIME__).toLocaleString('ko-KR')}`),
+      h('div', 'modal-sub', `프로토타입 v0.4 · 빌드 ${new Date(__BUILD_TIME__).toLocaleString('ko-KR')}`),
+      this.button(g.save.sound ? '소리 끄기' : '소리 켜기', '', () => {
+        g.toggleSound();
+        this.closeModal();
+        this.showSettings();
+      }),
       this.button('테스트: 골드 지급', '', () => {
         g.save.gold += g.goldPerSec * 500;
         this.refresh();

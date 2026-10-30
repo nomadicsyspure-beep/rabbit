@@ -1,6 +1,7 @@
 import { enemyColor, type Effect, type Engine, type Enemy, type Projectile, type Zone } from './engine';
 import type { Joystick } from './controllers';
 import { frameAt } from './anim';
+import { CHEST_COLORS } from '../data/items';
 import { HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites';
 
 // 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
@@ -21,7 +22,8 @@ export class Renderer {
   private dpr = 1;
   /** 지금 보여주는 8방향 인덱스. 경계에서 그림이 깜빡이지 않게 여유를 두고 바꾼다. */
   private heroDir = 2;
-  private ground: CanvasPattern | null = null;
+  /** 바닥 무늬 (색 조합마다 한 번 만들어 둔다) */
+  private grounds = new Map<string, CanvasPattern | null>();
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -69,11 +71,14 @@ export class Renderer {
     for (const c of eng.chests.items) {
       if (!c.active) continue;
       const glow = 0.5 + 0.5 * Math.sin(c.t * 6);
-      ctx.strokeStyle = `rgba(255,224,102,${0.4 + 0.4 * glow})`;
-      ctx.lineWidth = 3;
+      // 등급 색 고리 (나무 갈색 / 은 / 금)
+      ctx.strokeStyle = CHEST_COLORS[c.grade];
+      ctx.globalAlpha = 0.45 + 0.4 * glow;
+      ctx.lineWidth = 3 + c.grade;
       ctx.beginPath();
       ctx.ellipse(c.x, c.y + 8, 24 + glow * 4, 9 + glow * 2, 0, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.globalAlpha = 1;
       const hop = Math.abs(Math.sin(c.t * 4)) * 6;
       if (isReady(chest)) {
         const w = 34;
@@ -166,6 +171,7 @@ export class Renderer {
     ctx.restore();
 
     const boss = eng.boss;
+    if (eng.fog > 0) this.drawFog(eng, -eng.camX + eng.player.x, -eng.camY + eng.player.y);
     if (boss && eng.followCamera) this.drawBossBar(eng, boss);
     if (joystick?.active) this.drawJoystick(joystick);
   }
@@ -174,21 +180,22 @@ export class Renderer {
     const ctx = this.ctx;
     const w = eng.viewW;
     const h = eng.viewH;
-    this.ground ??= this.makeGround();
+    const key = eng.ground.join();
+    if (!this.grounds.has(key)) this.grounds.set(key, this.makeGround(eng.ground));
     ctx.save();
     ctx.translate(-eng.camX, -eng.camY);
-    ctx.fillStyle = this.ground ?? '#7a5536';
+    ctx.fillStyle = this.grounds.get(key) ?? eng.ground[0];
     ctx.fillRect(eng.camX, eng.camY, w, h);
     ctx.restore();
   }
 
-  /** 흙바닥 무늬 한 칸(이음새 없이 반복). 밝고 어두운 얼룩과 작은 자갈을 흩뿌린다 */
-  private makeGround(): CanvasPattern | null {
+  /** 바닥 무늬 한 칸(이음새 없이 반복). 밝고 어두운 얼룩과 작은 자갈을 흩뿌린다. colors = 바탕, 얼룩 둘, 자갈 둘 */
+  private makeGround(colors: readonly string[]): CanvasPattern | null {
     const size = 256;
     const c = document.createElement('canvas');
     c.width = c.height = size;
     const g = c.getContext('2d')!;
-    g.fillStyle = '#7f5a3a';
+    g.fillStyle = colors[0];
     g.fillRect(0, 0, size, size);
     let seed = 7;
     const rnd = () => {
@@ -206,8 +213,8 @@ export class Renderer {
         }
       }
     };
-    for (let i = 0; i < 26; i++) blob(rnd() * size, rnd() * size, 18 + rnd() * 34, rnd() < 0.5 ? 'rgba(98,68,42,0.2)' : 'rgba(150,112,74,0.15)');
-    for (let i = 0; i < 140; i++) blob(rnd() * size, rnd() * size, 1 + rnd() * 2.2, rnd() < 0.5 ? 'rgba(60,40,24,0.45)' : 'rgba(186,150,108,0.45)');
+    for (let i = 0; i < 26; i++) blob(rnd() * size, rnd() * size, 18 + rnd() * 34, rnd() < 0.5 ? colors[1] : colors[2]);
+    for (let i = 0; i < 140; i++) blob(rnd() * size, rnd() * size, 1 + rnd() * 2.2, rnd() < 0.5 ? colors[3] : colors[4]);
     return this.ctx.createPattern(c, 'repeat');
   }
 
@@ -255,6 +262,18 @@ export class Renderer {
   private drawEnemy(eng: Engine, e: Enemy) {
     const anim = SPRITES.monsters[e.skin];
     const size = e.r * ENEMY_SPRITE_SCALE;
+    if (e.golden || e.bomb) {
+      // 황금 몹은 금빛, 폭탄 몹은 붉은 기운
+      const ctx = this.ctx;
+      const r = e.r * 2.2 * (1 + 0.1 * Math.sin(eng.time * 10 + e.id));
+      const g = ctx.createRadialGradient(e.x, e.y - e.r * 0.5, 2, e.x, e.y - e.r * 0.5, r);
+      g.addColorStop(0, e.golden ? 'rgba(255,230,90,0.85)' : 'rgba(255,90,60,0.6)');
+      g.addColorStop(1, e.golden ? 'rgba(255,200,0,0)' : 'rgba(255,60,30,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y - e.r * 0.5, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (anim) {
       const img = frameAt(anim, eng.time * 1000 + e.id * 97);
       const flip = FACES_RIGHT.has(e.skin) && eng.player.x < e.x;
@@ -588,6 +607,16 @@ export class Renderer {
         break;
     }
     ctx.globalAlpha = 1;
+  }
+
+  /** 안개: 플레이어 주변만 밝고 바깥은 어둡다 */
+  private drawFog(eng: Engine, px: number, py: number) {
+    const ctx = this.ctx;
+    const g = ctx.createRadialGradient(px, py, eng.fog * 0.6, px, py, eng.fog * 1.4);
+    g.addColorStop(0, 'rgba(20,16,24,0)');
+    g.addColorStop(1, 'rgba(20,16,24,0.93)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, eng.viewW, eng.viewH);
   }
 
   private drawBossBar(eng: Engine, boss: Enemy) {

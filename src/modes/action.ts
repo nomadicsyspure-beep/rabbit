@@ -1,9 +1,12 @@
 import type { Enemy, EnemyKind, Engine, Weapon } from '../battle/engine';
 import type { SkillTree, WeaponStats } from '../battle/weapons';
+import { sfx } from '../audio/sfx';
 import { fmt } from '../core/format';
 import {
-  actionRatio, enemyGold, isBossStage, playerStats, stageClearGold, stageSkins, type ActionRatio,
+  actionRatio, enemyGold, isBossStage, playerStats, stageClearGold, type ActionRatio,
 } from '../data/balance';
+import { CHEST_NAMES, addReward, emptyReward, openChest, rollChest, type ChestGrade, type Reward } from '../data/items';
+import { regionOf, stageRule, stageSkins, type RuleDef } from '../data/world';
 import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
 
@@ -46,9 +49,15 @@ const WALL_CD = 2.5;
 export const COMBO_SEC = 2;
 /** 처치 1마리당 골드 = 그 스테이지 몹 골드 × 이 값 (이기든 지든) */
 const KILL_GOLD = 0.3;
-/** 보물 상자가 나오는 간격(초)과 상자 하나의 골드 (몹 골드 × 이 값) */
+/** 재료 상자가 나오는 간격(초) */
 const CHEST_SEC = 12;
-const CHEST_GOLD = 25;
+/** 황금 몹: 나올 확률, 잡으면 골드 (몹 골드 × 이 값) */
+const GOLDEN_RATE = 0.003;
+const GOLDEN_GOLD = 40;
+/** 몇 콤보마다 보석 싹쓸이 */
+const VACUUM_COMBO = 100;
+/** 안개 규칙: 보이는 반경(px) */
+const FOG_RADIUS = 150;
 
 export interface RunResult {
   win: boolean;
@@ -60,6 +69,8 @@ export interface RunResult {
   levelUps: number;
   gold: number;
   stage: number;
+  /** 주운 상자들과 열면 나오는 것 (보상은 이미 저장에 들어가 있고, 결과 화면에서 여는 연출만 한다) */
+  chests: { grade: ChestGrade; reward: Reward }[];
 }
 
 export type RunState = 'playing' | 'paused' | 'ended';
@@ -104,8 +115,14 @@ export class ActionMode {
   private baseHp = BASE_HP;
   private endT = -1;
   private chestT = 0;
-  /** 보물 상자로 번 골드 (결과에 더한다) */
+  /** 황금 몹으로 번 골드 (결과에 더한다) */
   private bonusGold = 0;
+  /** 이번 판에 주운 상자 등급들 */
+  private chests: ChestGrade[] = [];
+  /** 이번 스테이지 규칙 (없을 수도) */
+  rule: RuleDef | null = null;
+  /** 정예 습격 규칙: 정예가 나오는 시각들 */
+  private eliteAt: number[] = [];
   /** 피버 남은 시간 / 피버 중 처치 수 (골드 2배) */
   fever = 0;
   /** 피버 게이지: 피버가 아닐 때 처치할 때마다 1씩 찬다 (콤보가 끊겨도 안 줄어든다) */
@@ -116,6 +133,8 @@ export class ActionMode {
     return Math.min(1, this.feverGauge / FEVER_NEED);
   }
   private feverKills = 0;
+  private fevers = 0;
+  private goldenKills = 0;
 
   constructor(private readonly game: Game) {}
 
@@ -138,7 +157,7 @@ export class ActionMode {
     this.game.applyControls();
     eng.onKill = (e) => this.onKill(e);
     eng.onGem = (v) => this.onGem(v);
-    eng.onChest = (x, y) => this.onChest(x, y);
+    eng.onChest = (x, y, grade) => this.onChest(x, y, grade);
     eng.onPlayerDead = () => {
       this.endT = 0.9;
     };
@@ -162,6 +181,8 @@ export class ActionMode {
     this.time = 0;
     this.kills = 0;
     this.feverKills = 0;
+    this.fevers = 0;
+    this.goldenKills = 0;
     this.fever = 0;
     this.feverGauge = 0;
     this.combo = 0;
@@ -179,6 +200,15 @@ export class ActionMode {
     this.endT = -1;
     this.chestT = CHEST_SEC * 0.6;
     this.bonusGold = 0;
+    this.chests = [];
+
+    // 지역 바닥과 스테이지 규칙
+    const region = regionOf(stage);
+    eng.ground = region.ground;
+    this.rule = stageRule(stage);
+    eng.fog = this.rule?.id === 'fog' ? FOG_RADIUS : 0;
+    this.eliteAt = this.rule?.id === 'elite' ? [18, 33, 48] : [];
+    this.game.ui.toast(this.rule ? `${region.name} · 규칙: ${this.rule.name} (${this.rule.desc})` : region.name);
 
     // 장착한 스킬만 발동한다 (레벨은 성장 탭에서 올린 그대로)
     this.equipped = [];
@@ -212,7 +242,17 @@ export class ActionMode {
     const peak = this.isBossStage ? 18 : 14;
     // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
-    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * (this.fever > 0 ? FEVER_SPAWN : 1);
+    const horde = this.rule?.id === 'horde' ? 1.6 : 1;
+    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * horde * (this.fever > 0 ? FEVER_SPAWN : 1);
+
+    // 정예 습격 규칙
+    if (this.eliteAt.length > 0 && this.time >= this.eliteAt[0]) {
+      this.eliteAt.shift();
+      const pos = this.spawnPos();
+      const s = 1 + (this.time / 60) * 0.6;
+      this.spawnMob({ kind: 'tank', skin: 'rabbit', x: pos.x, y: pos.y, hp: 160 * s, r: 20, speed: 60, dmg: 12 * s, xp: 15 });
+      this.game.ui.toast('정예 습격!');
+    }
 
     if (this.fever > 0) {
       this.fever -= dt;
@@ -265,8 +305,9 @@ export class ActionMode {
       const a = Math.random() * Math.PI * 2;
       const d = 110 + Math.random() * 90;
       const p = eng.player;
-      eng.spawnChest(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d * 0.7);
-      this.game.ui.toast('보물 상자 등장!');
+      const grade = rollChest(this.fever > 0 ? 0.25 : 0);
+      eng.spawnChest(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d * 0.7, grade);
+      this.game.ui.toast(`${CHEST_NAMES[grade]} 등장!`);
     }
 
     this.recycleFarEnemies();
@@ -285,7 +326,8 @@ export class ActionMode {
   private pickKind(): EnemyKind {
     const k = this.ramp;
     const r = Math.random();
-    const tankW = k > 0.33 ? 0.15 + (k - 0.33) * 0.3 : 0;
+    if (this.rule?.id === 'horde') return r < 0.2 ? 'fast' : 'normal';
+    const tankW = this.rule?.id === 'armored' ? 0.45 : k > 0.33 ? 0.15 + (k - 0.33) * 0.3 : 0;
     const fastW = k > 0.14 ? 0.25 : 0;
     if (r < tankW) return 'tank';
     if (r < tankW + fastW) return 'fast';
@@ -317,6 +359,12 @@ export class ActionMode {
     const { x, y } = this.spawnPos(angle);
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.stage);
+    // 가끔 황금 몹: 도망치고, 잡으면 골드 폭죽
+    if (kind === 'normal' && Math.random() < GOLDEN_RATE * this.game.goldenBoost) {
+      this.spawnMob({ kind, skin: skins.normal, x, y, hp: 15 * s, r: 12, speed: 95, dmg: 0, xp: 5, move: 'flee', golden: true, t1: 12 });
+      this.game.ui.toast('황금 몹이다! 잡아라!');
+      return;
+    }
     switch (kind) {
       case 'normal':
         this.spawnMob({ kind, skin: skins.normal, x, y, hp: 5 * s, r: 11, speed: 62, dmg: 3 * s, xp: 1 });
@@ -427,9 +475,12 @@ export class ActionMode {
     }
   }
 
-  /** 일반 몹 생성: 난이도 배율(MOB_HP, MOB_DMG)을 곱한다 */
+  /** 일반 몹 생성: 난이도 배율(MOB_HP, MOB_DMG)과 스테이지 규칙(질풍·폭탄)을 적용한다 */
   private spawnMob(init: Parameters<Engine['spawnEnemy']>[0]) {
-    return this.game.engine.spawnEnemy({ ...init, hp: init.hp * MOB_HP, dmg: (init.dmg ?? 1) * MOB_DMG });
+    const rule = this.rule?.id;
+    const speed = (init.speed ?? 40) * (rule === 'swift' ? 1.4 : 1);
+    const bomb = rule === 'bomb' && !init.golden && init.move !== 'charge' && Math.random() < 0.5;
+    return this.game.engine.spawnEnemy({ ...init, speed, bomb, hp: init.hp * MOB_HP, dmg: (init.dmg ?? 1) * MOB_DMG });
   }
 
   private spawnBoss() {
@@ -451,7 +502,7 @@ export class ActionMode {
     const p = eng.player;
     const limit = this.diag * 0.9;
     for (const e of eng.enemies.items) {
-      if (!e.active || e.kind === 'boss' || e.move === 'charge') continue;
+      if (!e.active || e.kind === 'boss' || e.move === 'charge' || e.move === 'flee') continue;
       if (Math.hypot(e.x - p.x, e.y - p.y) > limit) {
         const pos = this.spawnPos();
         e.x = pos.x;
@@ -467,13 +518,23 @@ export class ActionMode {
     this.combo = now - this.lastKillAt <= COMBO_SEC ? this.combo + 1 : 1;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.lastKillAt = now;
-    // 100콤보마다 축하 연출
-    if (this.combo % 100 === 0) {
-      const eng = this.game.engine;
+    sfx.kill(this.combo);
+    const eng = this.game.engine;
+    if (e.golden) {
+      const gold = enemyGold(this.stage) * GOLDEN_GOLD;
+      this.bonusGold += gold;
+      this.goldenKills++;
+      eng.addText(e.x, e.y - 40, `+${fmt(gold)} G`, '#ffe066', 20);
+      sfx.coin();
+      this.game.ui.toast('황금 몹 처치! 골드 폭죽!');
+    }
+    // 100콤보마다 축하 연출 + 맵 전체 보석 싹쓸이
+    if (this.combo % VACUUM_COMBO === 0) {
       const p = eng.player;
       eng.addEffect('ring', p.x, p.y, 140, 0.45, '#ffe066');
       eng.burst(p.x, p.y - 20, 24, ['#ffe066', '#ffb347', '#ffffff'], 260, 0.7, 300, 3.5);
-      eng.addText(p.x, p.y - 64, `${this.combo} COMBO!`, '#ffb347', 22);
+      eng.addText(p.x, p.y - 64, `${this.combo} COMBO! 싹쓸이!`, '#ffb347', 22);
+      eng.vacuumGems();
     }
     // 피버 게이지: 다 차면 피버, 끝나면 다시 0부터
     if (this.fever <= 0 && ++this.feverGauge >= FEVER_NEED) this.startFever();
@@ -496,6 +557,10 @@ export class ActionMode {
     eng.addSprite('pillar', p.x, p.y - 30, 60, 0.9, true);
     eng.addEffect('ring', p.x, p.y, 260, 0.7, '#ffb347');
     eng.addShake(7);
+    // 피버 시작 = 맵 전체 보석 싹쓸이
+    eng.vacuumGems();
+    this.fevers++;
+    sfx.fever();
     this.game.ui.feverStart();
   }
 
@@ -511,12 +576,11 @@ export class ActionMode {
     }
   }
 
-  /** 보물 상자: 보석은 엔진이 다 끌어오고, 여기선 골드 보너스 */
-  private onChest(x: number, y: number) {
-    const gold = enemyGold(this.stage) * CHEST_GOLD;
-    this.bonusGold += gold;
-    this.game.engine.addText(x, y - 30, `+${fmt(gold)} G`, '#ffe066', 18);
-    this.game.ui.toast('싹쓸이!');
+  /** 재료 상자: 결과 화면에서 연다 */
+  private onChest(x: number, y: number, grade: ChestGrade) {
+    this.chests.push(grade);
+    this.game.engine.addText(x, y - 30, `${CHEST_NAMES[grade]}!`, '#ffe066', 16);
+    this.game.ui.toast(`${CHEST_NAMES[grade]} 획득! (끝나고 열어요)`);
   }
 
   /** 경험치 보석: 캐릭터 영구 경험치로 바로 쌓는다 */
@@ -527,6 +591,7 @@ export class ActionMode {
       this.levelUps += ups;
       const p = this.game.engine.player;
       this.game.engine.addSprite('pillar', p.x, p.y - 20, 34, 0.8, true);
+      sfx.levelUp();
       this.game.ui.toast(`레벨 업! Lv ${this.game.save.level}`);
     }
   }
@@ -555,10 +620,26 @@ export class ActionMode {
       gold += stageClearGold(this.stage);
       save.maxStage = Math.max(save.maxStage, this.stage);
       if (this.isBossStage) save.bossKills++;
+      save.stats.stages++;
     }
+    gold *= this.game.goldBoost;
+    // 상자는 지금 열어서 저장에 넣고, 결과 화면에선 여는 연출만
+    const total = emptyReward();
+    const chests = this.chests.map((grade) => {
+      const reward = openChest(grade, this.stage, enemyGold(this.stage));
+      addReward(total, reward);
+      return { grade, reward };
+    });
+    this.game.grantReward(total);
     save.gold += gold;
+    save.stats.kills += this.kills;
+    save.stats.bestCombo = Math.max(save.stats.bestCombo, this.bestCombo);
+    save.stats.fevers += this.fevers;
+    save.stats.chests += chests.length;
+    save.stats.golden += this.goldenKills;
     const result: RunResult = {
-      win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps, gold, stage: this.stage,
+      win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps,
+      gold, stage: this.stage, chests,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }
