@@ -75,6 +75,10 @@ export class UI implements UIHost {
   // 방치 HUD
   private readonly hudIdle: HTMLElement;
   private readonly goldEl: HTMLElement;
+  /** 성장 탭이 아닐 때 위에 뜨는 얇은 줄 (골드·다이아·설정): 방치 화면은 접는다 */
+  private readonly miniHud: HTMLElement;
+  private readonly miniGold: HTMLElement;
+  private readonly miniDia: HTMLElement;
   private readonly stageEl: HTMLElement;
   private readonly incomeEl: HTMLElement;
   private readonly challengeBtn: HTMLButtonElement;
@@ -213,6 +217,16 @@ export class UI implements UIHost {
 
     this.battle.append(this.hudIdle, this.challengeBtn, this.missionBtn, this.hudAction, bottom, this.comboEl, this.feverBanner);
 
+    // 성장 탭이 아닐 때: 방치 화면 대신 얇은 줄
+    this.miniHud = h('div', 'mini-hud');
+    this.miniGold = h('span', 'mini-chip');
+    this.miniDia = h('span', 'mini-chip');
+    const miniSettings = h('button', 'art-btn mini-settings');
+    miniSettings.append(art('btn-gear'));
+    miniSettings.setAttribute('aria-label', '설정');
+    miniSettings.addEventListener('click', () => this.showSettings());
+    this.miniHud.append(this.miniGold, this.miniDia, miniSettings);
+
     // ---- 하단 패널 / 탭 ----
     this.panel = h('section', 'panel');
     this.tabBar = h('nav', 'tabs');
@@ -229,7 +243,7 @@ export class UI implements UIHost {
 
     this.overlay = h('div', 'overlay');
     this.toastEl = h('div', 'toast');
-    this.app.append(this.battle, this.panel, this.tabBar, this.overlay, this.toastEl);
+    this.app.append(this.battle, this.miniHud, this.panel, this.tabBar, this.overlay, this.toastEl);
     this.tutorial = new Tutorial(this.game, document.body, () => this.overlay.classList.contains('show'));
 
     // 시트 그림은 CSS 변수로 넘겨 배경·테두리에 쓴다
@@ -311,6 +325,8 @@ export class UI implements UIHost {
 
   private selectTab(id: TabId) {
     for (const [tid, b] of this.tabButtons) b.classList.toggle('active', tid === id);
+    // 방치 화면은 메인(성장 탭)에서만, 나머지 탭은 아래 내용이 화면을 꽉 채운다
+    this.app.classList.toggle('compact', id !== 'growth');
     this.panel.replaceChildren();
     this.panel.scrollTop = 0;
     this.statRows.clear();
@@ -704,6 +720,8 @@ export class UI implements UIHost {
     const save = g.save;
     if (g.mode === 'idle') {
       this.goldEl.textContent = fmt(save.gold);
+      this.miniGold.replaceChildren(coin(fmt(save.gold)));
+      this.miniDia.textContent = `💎 ${fmt(save.diamonds)}`;
       this.stageEl.textContent = save.maxStage > 0 ? `최고 스테이지 ${save.maxStage}` : '스테이지 기록 없음';
       this.incomeEl.textContent = `초당 +${fmt(g.goldPerSec)}`;
       const next = g.nextStage;
