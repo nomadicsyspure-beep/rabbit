@@ -4,6 +4,7 @@ import { frameAt } from './anim';
 import { CHEST_COLORS } from '../data/items';
 import { HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites';
 import { recolored, type Recolor } from './tint';
+import { drawOutfitBehind, drawOutfitFront } from './outfit';
 import { CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, skinRecolor } from '../data/shop';
 
 type Pic = HTMLImageElement | HTMLCanvasElement;
@@ -423,19 +424,26 @@ export class Renderer {
     const motion = p.moving && (eng.fever > 0 || p.curSpeed >= p.speed * RUN_RATIO) ? 'run' : 'walk';
     const anim = SPRITES.hero[motion][dir] ?? SPRITES.hero.walk[dir];
     if (!anim) return this.drawPlayerShape(eng);
-    const img = this.chick(p.moving ? frameAt(anim, eng.time * 1000) : anim.frames[0]);
+    const frame = p.moving ? frameAt(anim, eng.time * 1000) : anim.frames[0];
+    const img = this.chick(frame);
 
     const blink = p.invuln > 0 && Math.floor(eng.time * 20) % 2 === 0;
     const left = p.x - HERO_SIZE / 2;
     const top = footY - HERO_SIZE * HERO_FOOT;
+    // 장비 겉모습: 등은 몸 뒤(위를 볼 땐 앞), 모자는 머리 위, 무기는 옆에 둥둥
+    const at = { frame, dir, left, top };
     ctx.save();
     ctx.globalAlpha = blink ? 0.55 : 1;
+    drawOutfitBehind(ctx, eng, at);
     ctx.drawImage(img, left, top, HERO_SIZE, HERO_SIZE);
     if (p.flash > 0) {
+      ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha *= 0.6;
       ctx.drawImage(img, left, top, HERO_SIZE, HERO_SIZE);
+      ctx.restore();
     }
+    drawOutfitFront(ctx, eng, at);
     ctx.restore();
     this.bar(p.x - 15, p.y + p.r + 5, 30, 4, p.hp / p.maxHp, '#6fdc8c');
   }

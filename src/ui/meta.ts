@@ -35,7 +35,7 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   const wallet = walletBar(game);
   panel.append(wallet.el);
   const rows: (() => void)[] = [wallet.refresh];
-  for (const slot of ['weapon', 'hat', 'acc'] as GearSlot[]) {
+  for (const slot of ['weapon', 'hat', 'back', 'acc'] as GearSlot[]) {
     panel.append(h('div', 'section-title', SLOT_NAMES[slot]));
     for (const def of GEAR.filter((g) => g.slot === slot)) {
       const card = h('div', 'card row gear-row');

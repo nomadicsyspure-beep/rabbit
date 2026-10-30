@@ -16,6 +16,8 @@ const monsterFiles = import.meta.glob<string>('../assets/monsters/*.png', { eage
 const fxFiles = import.meta.glob<string>('../assets/fx/*.png', { eager: true, query: '?url', import: 'default' });
 const groundFiles = import.meta.glob<string>('../assets/ground/*.png', { eager: true, query: '?url', import: 'default' });
 const uiFiles = import.meta.glob<string>('../assets/ui/*.png', { eager: true, query: '?url', import: 'default' });
+// 장비 겉모습 (src/assets/gear/README.md 참고): <장비id>-<방향>.png (모자·등) / <장비id>.png (무기)
+const gearFiles = import.meta.glob<string>('../assets/gear/*.png', { eager: true, query: '?url', import: 'default' });
 
 /** 몬스터 걷기 프레임 한 장 시간(ms) */
 const MONSTER_FRAME_MS = 170;
@@ -73,6 +75,8 @@ export const SPRITES = {
   fx: {} as Record<string, HTMLImageElement>,
   ground: [] as HTMLImageElement[],
   ui: {} as Record<string, HTMLImageElement>,
+  /** 장비 겉모습 그림 (파일 이름 → 그림) */
+  gear: {} as Record<string, HTMLImageElement>,
 };
 
 for (const [path, url] of Object.entries(monsterFiles)) {
@@ -92,6 +96,7 @@ for (const [path, url] of Object.entries(monsterFiles)) {
 SPRITES.fx = loadAll(fxFiles);
 SPRITES.ground = Object.values(loadAll(groundFiles));
 SPRITES.ui = loadAll(uiFiles);
+SPRITES.gear = loadAll(gearFiles);
 
 for (const [path, url] of Object.entries(chickStrips)) {
   const name = path.split('/').pop()!.toLowerCase();
