@@ -83,8 +83,10 @@ export class Game {
 
   private resize() {
     const rect = this.ui.battle.getBoundingClientRect();
-    const w = Math.max(1, rect.width);
-    const h = Math.max(1, rect.height);
+    // 다른 탭에서 방치 화면을 접어 둔 동안은 크기를 그대로 둔다 (다시 펼치면 맞춘다)
+    if (rect.width < 10 || rect.height < 10) return;
+    const w = rect.width;
+    const h = rect.height;
     this.engine.viewW = w;
     this.engine.viewH = h;
     this.renderer.resize(w, h);
