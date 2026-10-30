@@ -7,8 +7,8 @@ import type { Game } from '../game';
 // 방치 화면은 보여주기용이다. 수입은 Game이 최고 스테이지 기준으로 따로 계산하고,
 // 여기서는 병아리가 알아서 싸우는 모습만 돌린다 (적은 플레이어를 다치게 하지 않는다).
 
-const MAX_ALIVE = 4;
-const SPAWN_SEC = 0.6;
+const MAX_ALIVE = 7;
+const SPAWN_SEC = 0.35;
 /** 깃털 사거리를 짧게 해서 몹이 조금 걸어 들어온 뒤에 쓰러지게 한다 */
 const FEATHER_RANGE = 120;
 
@@ -36,7 +36,7 @@ export class IdleMode {
     const p = eng.player;
     p.x = eng.viewW / 2;
     p.y = eng.viewH / 2;
-    p.speed = 90;
+    p.speed = 120;
     p.regen = 0;
     p.magnet = 0;
     this.refreshStats();
@@ -81,7 +81,7 @@ export class IdleMode {
     // 깃털 한 방(탭도 한 번)이면 쓰러진다. 숫자는 내 공격력만큼 커진다
     const hp = this.stats.power * TAP_DAMAGE_MUL;
     const r = kind === 'tank' ? 13 : kind === 'fast' ? 10 : 11;
-    const speed = kind === 'tank' ? 18 : kind === 'fast' ? 46 : 28;
+    const speed = kind === 'tank' ? 26 : kind === 'fast' ? 64 : 40;
     // 다음에 도전할 스테이지의 몬스터가 나온다
     const skin = stageSkins(this.game.nextStage)[kind];
     eng.spawnEnemy({ kind, skin, x, y, hp, r, speed, dmg: 0 });

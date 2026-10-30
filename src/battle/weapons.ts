@@ -4,6 +4,8 @@ import type { Engine, Weapon } from './engine';
 export const skillPower = (level: number) => 1 + 0.18 * (level - 1);
 /** n레벨마다 1씩 늘어나는 개수 보너스 */
 export const every = (level: number, n: number) => Math.floor(level / n);
+/** 전체 쿨다운 배율 (작을수록 자주 쏜다) */
+const HASTE = 0.55;
 
 /** 무기가 참조하는 공용 수치. 모드가 값을 넣어 준다. */
 export interface WeaponStats {
@@ -24,7 +26,7 @@ abstract class CooldownWeapon implements Weapon {
 
   /** 레벨이 오를수록 쿨다운이 조금씩 준다 (최대 25%) */
   protected get cooldown() {
-    return (this.baseCd * Math.max(0.75, 1 - 0.015 * (this.level - 1))) / this.stats.aps;
+    return (this.baseCd * HASTE * Math.max(0.75, 1 - 0.015 * (this.level - 1))) / this.stats.aps;
   }
 
   protected get power() {
@@ -49,16 +51,16 @@ abstract class CooldownWeapon implements Weapon {
 export class FeatherWeapon extends CooldownWeapon {
   readonly id = 'feather';
 
-  constructor(stats: WeaponStats, level: number, private readonly range = 260) {
+  constructor(stats: WeaponStats, level: number, private readonly range = 300) {
     super(stats, level, 0.8);
   }
 
   protected fire(engine: Engine) {
     const p = engine.player;
-    const targets = engine.nearestEnemies(p.x, p.y, 1 + every(this.level, 5), this.range);
+    const targets = engine.nearestEnemies(p.x, p.y, 2 + every(this.level, 5), this.range);
     if (targets.length === 0) return false;
-    const pierce = this.level >= 8 ? 1 : 0;
-    for (const t of targets) engine.fireProjectile(p.x, p.y - 8, t.x, t.y, 380, this.power, this.range + 40, pierce, 'feather');
+    const pierce = this.level >= 8 ? 2 : 1;
+    for (const t of targets) engine.fireProjectile(p.x, p.y - 8, t.x, t.y, 560, this.power, this.range + 60, pierce, 'feather');
     return true;
   }
 }
@@ -77,7 +79,7 @@ export class TornadoWeapon extends CooldownWeapon {
     const base = Math.atan2(p.faceY, p.faceX);
     for (let i = 0; i < n; i++) {
       const a = base + (i - (n - 1) / 2) * 0.5;
-      engine.addZone(p.x, p.y, Math.cos(a) * 120, Math.sin(a) * 120, 22 + this.level, 2.4, this.power * 0.6, 'tornado');
+      engine.addZone(p.x, p.y, Math.cos(a) * 180, Math.sin(a) * 180, 24 + this.level, 2, this.power * 0.6, 'tornado');
     }
     return true;
   }
@@ -98,7 +100,7 @@ export class EggWeapon extends CooldownWeapon {
     const n = 1 + every(this.level, 6);
     for (let i = 0; i < n; i++) {
       const t = near[Math.floor(Math.random() * near.length)];
-      engine.lobEgg(p.x, p.y - 10, t.x, t.y, 0.55, this.power * 1.4, 38 + 1.5 * this.level);
+      engine.lobEgg(p.x, p.y - 10, t.x, t.y, 0.4, this.power * 1.4, 42 + 1.5 * this.level);
     }
     return true;
   }
@@ -117,6 +119,7 @@ export class FlameWeapon extends CooldownWeapon {
     const radius = 60 + 3 * this.level;
     engine.addSprite('fire-burst', p.x, p.y - 6, radius * 0.75, 0.35);
     engine.addEffect('ring', p.x, p.y, radius, 0.35, '#ff9a3c');
+    engine.addShake(3);
     for (const e of [...engine.queryEnemies(p.x, p.y, radius)]) {
       const dx = e.x - p.x;
       const dy = e.y - p.y;
@@ -194,7 +197,7 @@ export class FireballWeapon extends CooldownWeapon {
     const targets = engine.nearestEnemies(p.x, p.y, 1 + every(this.level, 8), 300);
     if (targets.length === 0) return false;
     for (const t of targets) {
-      engine.fireProjectile(p.x, p.y - 8, t.x, t.y, 260, this.power * 1.6, 340, 0, 'fireball', 34 + this.level);
+      engine.fireProjectile(p.x, p.y - 8, t.x, t.y, 400, this.power * 1.6, 380, 0, 'fireball', 38 + this.level);
     }
     return true;
   }
@@ -212,7 +215,7 @@ export class DarkOrbWeapon implements Weapon {
     const p = engine.player;
     const n = 2 + every(this.level, 5);
     const radius = 50 + this.level;
-    this.angle += (3 + 0.06 * this.level) * dt;
+    this.angle += (4.2 + 0.08 * this.level) * dt;
     const dmg = this.stats.power * 0.5 * skillPower(this.level);
     if (this.nextHit.size > 600) this.nextHit.clear();
 

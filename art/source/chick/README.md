@@ -5,8 +5,8 @@
 ## 폴더
 | 폴더 | 동작 | 언제 |
 |---|---|---|
-| `walking/` | 걷기 | 기본 이동 (방치 화면 포함). 멈춰 있을 땐 첫 프레임 |
-| `running/` | 달리기 | 이동 속도가 붙었을 때 (신속 스킬 Lv2부터). 기준은 `src/battle/renderer.ts`의 `RUN_SPEED` |
+| `walking/` | 걷기 | 출발 직후 (방치 화면은 항상). 멈춰 있을 땐 첫 프레임 |
+| `running/` | 달리기 | 가속해서 최고 속도의 80%를 넘었을 때. 기준은 `src/battle/renderer.ts`의 `RUN_RATIO` |
 
 ## 올리는 법
 GitHub에서 해당 폴더 → **Add file → Upload files** → 파일 끌어다 놓기 → **Commit changes**.
@@ -19,4 +19,4 @@ GitHub에서 해당 폴더 → **Add file → Upload files** → 파일 끌어�
 
 ## 있으면 좋은 것
 - 256×256, 프레임마다 캐릭터 크기·위치가 일정
-- 프레임 시간 200ms (게임에서 걷기 2배, 달리기 3배 속도로 재생 → `src/battle/sprites.ts`의 `HERO_ANIM_SPEED`)
+- 프레임 시간 200ms (게임에서 걷기 2.5배, 달리기 3.6배 속도로 재생 → `src/battle/sprites.ts`의 `HERO_ANIM_SPEED`)

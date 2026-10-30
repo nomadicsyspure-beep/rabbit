@@ -11,10 +11,10 @@ import type { Game } from '../game';
 const NORMAL_SECONDS = 90;
 const BOSS_STAGE_SECONDS = 180;
 const BASE_POWER = 10;
-const BASE_HP = 100;
-const BASE_SPEED = 110;
-const BASE_MAGNET = 55;
-const MAX_ALIVE = 170;
+const BASE_HP = 150;
+const BASE_SPEED = 165;
+const BASE_MAGNET = 75;
+const MAX_ALIVE = 320;
 const ELITE_HP = 900;
 const BOSS_HP = 2600;
 
@@ -136,8 +136,8 @@ export class ActionMode {
     if (!this.bossSpawned && this.time >= this.duration) this.spawnBoss();
 
     // 초당 생성 수: 시간이 지날수록 늘어난다 (보스 스테이지가 더 빽빽하다)
-    const peak = this.isBossStage ? 5.5 : 3.5;
-    const rate = this.bossSpawned ? 1 : 1.2 + (this.time / this.duration) * peak;
+    const peak = this.isBossStage ? 18 : 14;
+    const rate = this.bossSpawned ? 6 : 8 + (this.time / this.duration) * peak;
     this.spawnAcc += rate * dt;
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
@@ -146,7 +146,7 @@ export class ActionMode {
 
     if (this.swarms.length > 0 && this.time >= this.swarms[0]) {
       this.swarms.shift();
-      this.spawnSwarm(20);
+      this.spawnSwarm(45);
       this.game.ui.toast('몰려온다!');
     }
 
@@ -181,13 +181,13 @@ export class ActionMode {
     const skins = stageSkins(this.stage);
     switch (kind) {
       case 'normal':
-        eng.spawnEnemy({ kind, skin: skins.normal, x, y, hp: 10 * s, r: 11, speed: 42, dmg: 5 * s, xp: 1 });
+        eng.spawnEnemy({ kind, skin: skins.normal, x, y, hp: 5 * s, r: 11, speed: 62, dmg: 3 * s, xp: 1 });
         break;
       case 'fast':
-        eng.spawnEnemy({ kind, skin: skins.fast, x, y, hp: 6 * s, r: 10, speed: 78, dmg: 4 * s, xp: 1 });
+        eng.spawnEnemy({ kind, skin: skins.fast, x, y, hp: 4 * s, r: 10, speed: 115, dmg: 3 * s, xp: 1 });
         break;
       case 'tank':
-        eng.spawnEnemy({ kind, skin: skins.tank, x, y, hp: 45 * s, r: 14, speed: 26, dmg: 10 * s, xp: 3 });
+        eng.spawnEnemy({ kind, skin: skins.tank, x, y, hp: 24 * s, r: 14, speed: 40, dmg: 7 * s, xp: 3 });
         break;
       case 'boss':
         break;
@@ -204,10 +204,10 @@ export class ActionMode {
     const { x, y } = this.spawnPos();
     const eng = this.game.engine;
     if (this.isBossStage) {
-      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP, r: 30, speed: 34, dmg: 22, xp: 0 });
+      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP, r: 30, speed: 50, dmg: 22, xp: 0 });
       this.game.ui.toast('마왕 등장!');
     } else {
-      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP, r: 22, speed: 38, dmg: 16, xp: 0 });
+      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP, r: 22, speed: 55, dmg: 16, xp: 0 });
       this.game.ui.toast('정예 몬스터 등장!');
     }
   }

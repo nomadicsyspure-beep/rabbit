@@ -140,8 +140,10 @@ export interface Player {
   flash: number;
   dead: boolean;
   moving: boolean;
-  /** 이번 프레임 이동 세기 0~1 (조이스틱을 얼마나 밀었나). 실제 속도 = speed × moveK */
+  /** 이번 프레임 이동 세기 0~1 (조이스틱을 얼마나 밀었나). 목표 속도 = speed × moveK */
   moveK: number;
+  /** 지금 실제 속도(px/초). 출발하면 목표 속도의 일부에서 시작해 가속한다 */
+  curSpeed: number;
 }
 
 export interface Vec {
@@ -228,6 +230,11 @@ class Grid {
 }
 
 const MAX_ENEMY_R = 30;
+/** 출발 속도(목표 속도 대비)와 가속 세기. 0.45 → 0.8까지 약 0.4초 */
+const START_SPEED = 0.45;
+const ACCEL = 2.5;
+/** 화면 흔들림 최대(px) */
+const MAX_SHAKE = 7;
 
 const DEFAULT_SKIN: Record<EnemyKind, EnemySkin> = {
   normal: 'slime',
@@ -247,16 +254,18 @@ export class Engine {
   dropGems = false;
   showDamageText = true;
   time = 0;
+  /** 화면 흔들림 세기(px). 폭발·피격 때 올라가고 금방 줄어든다 */
+  shake = 0;
 
   readonly player: Player = {
     x: 0, y: 0, r: 12, hp: 100, maxHp: 100, speed: 120, regen: 0, magnet: 60,
-    faceX: 1, faceY: 0, invuln: 0, flash: 0, dead: false, moving: false, moveK: 0,
+    faceX: 1, faceY: 0, invuln: 0, flash: 0, dead: false, moving: false, moveK: 0, curSpeed: 0,
   };
 
   readonly enemies = new Pool<Enemy>(() => ({
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
     gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
-  }), 400);
+  }), 500);
   readonly projectiles = new Pool<Projectile>(() => ({
     active: false, kind: 'feather', x: 0, y: 0, vx: 0, vy: 0, r: 4, dmg: 1, life: 1, pierce: 0, hit: [], blast: 0, flight: 0,
   }), 400);
@@ -266,13 +275,13 @@ export class Engine {
   readonly bullets = new Pool<EnemyBullet>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
   }), 300);
-  readonly gems = new Pool<Gem>(() => ({ active: false, x: 0, y: 0, value: 1, pulled: false }), 600);
+  readonly gems = new Pool<Gem>(() => ({ active: false, x: 0, y: 0, value: 1, pulled: false }), 900);
   readonly texts = new Pool<FloatText>(() => ({
     active: false, x: 0, y: 0, text: '', life: 0, maxLife: 1, color: '#fff', size: 12,
-  }), 80);
+  }), 160);
   readonly effects = new Pool<Effect>(() => ({
     active: false, kind: 'ring', x: 0, y: 0, x2: 0, y2: 0, r: 0, life: 0, maxLife: 1, color: '#fff', sprite: '', follow: false,
-  }), 200);
+  }), 500);
 
   readonly orbs: Orb[] = [];
   weapons: Weapon[] = [];
@@ -297,8 +306,10 @@ export class Engine {
     this.orbs.length = 0;
     this.weapons = [];
     this.time = 0;
+    this.shake = 0;
     const p = this.player;
     p.dead = false;
+    p.curSpeed = 0;
     p.invuln = 0;
     p.flash = 0;
     p.faceX = 1;
@@ -365,9 +376,11 @@ export class Engine {
 
   private killEnemy(e: Enemy) {
     e.active = false;
-    const fx = this.addEffect('corpse', e.x, e.y + e.r, e.r, 0.7, '#fff');
+    const fx = this.addEffect('corpse', e.x, e.y + e.r, e.r, 0.6, '#fff');
     if (fx) fx.sprite = e.skin;
     this.addSprite('dust', e.x, e.y + e.r * 0.4, e.r * 1.3, 0.35);
+    this.addSprite('sparkle', e.x, e.y - e.r * 0.3, e.r * 0.9, 0.2);
+    this.addShake(e.kind === 'boss' ? MAX_SHAKE : 0.8);
     if (this.dropGems && e.xp > 0) {
       const g = this.gems.get();
       if (g) {
@@ -385,8 +398,9 @@ export class Engine {
     const p = this.player;
     if (p.dead || p.invuln > 0 || dmg <= 0) return;
     p.hp -= dmg;
-    p.invuln = 0.35;
+    p.invuln = 0.5;
     p.flash = 0.2;
+    this.addShake(4);
     this.addText(p.x, p.y - p.r - 6, '-' + fmt(dmg), '#ff6b6b', 12);
     if (p.hp <= 0) {
       p.hp = 0;
@@ -441,6 +455,7 @@ export class Engine {
   /** 반경 안 모든 적에게 피해 + 바깥으로 밀기 */
   explode(x: number, y: number, r: number, dmg: number, sprite: string) {
     this.addSprite(sprite, x, y, r, 0.35);
+    this.addShake(2.5);
     for (const e of [...this.queryEnemies(x, y, r)]) {
       const dx = e.x - x;
       const dy = e.y - y;
@@ -448,6 +463,10 @@ export class Engine {
       if (d > r + e.r) continue;
       this.damageEnemy(e, dmg, (dx / d) * 120, (dy / d) * 120);
     }
+  }
+
+  addShake(v: number) {
+    this.shake = Math.min(MAX_SHAKE, Math.max(this.shake, v));
   }
 
   addZone(x: number, y: number, vx: number, vy: number, r: number, life: number, dmg: number, sprite: string) {
@@ -528,10 +547,15 @@ export class Engine {
       const len = Math.hypot(mv.x, mv.y);
       p.moving = len > 0.01;
       p.moveK = p.moving ? Math.min(1, len) : 0;
+      // 출발은 느리게, 계속 움직이면 목표 속도까지 가속 (멈추거나 덜 밀면 바로 줄어든다)
+      const target = p.speed * p.moveK;
+      if (!p.moving) p.curSpeed = 0;
+      else if (p.curSpeed < target * START_SPEED) p.curSpeed = target * START_SPEED;
+      else if (p.curSpeed > target) p.curSpeed = target;
+      else p.curSpeed += (target - p.curSpeed) * (1 - Math.exp(-ACCEL * dt));
       if (p.moving) {
-        const k = p.moveK;
-        p.x += (mv.x / len) * k * p.speed * dt;
-        p.y += (mv.y / len) * k * p.speed * dt;
+        p.x += (mv.x / len) * p.curSpeed * dt;
+        p.y += (mv.y / len) * p.curSpeed * dt;
         p.faceX = mv.x / len;
         p.faceY = mv.y / len;
       }
@@ -543,6 +567,7 @@ export class Engine {
     }
     p.invuln -= dt;
     p.flash -= dt;
+    this.shake = Math.max(0, this.shake - 30 * dt);
 
     if (this.followCamera) {
       this.camX = p.x - this.viewW / 2;
@@ -631,8 +656,8 @@ export class Engine {
       // 돌진 준비(예고선) → 돌진
       e.dashT -= dt;
       if (e.dashT < 0.5) {
-        e.x += e.dashX * 300 * dt;
-        e.y += e.dashY * 300 * dt;
+        e.x += e.dashX * 420 * dt;
+        e.y += e.dashY * 420 * dt;
       }
       return;
     }
@@ -647,7 +672,7 @@ export class Engine {
       e.t1 = 0;
       const n = enraged ? 18 : 12;
       const off = Math.random() * Math.PI;
-      for (let i = 0; i < n; i++) this.fireBullet(e.x, e.y, off + (i / n) * Math.PI * 2, 110, e.dmg * 0.6);
+      for (let i = 0; i < n; i++) this.fireBullet(e.x, e.y, off + (i / n) * Math.PI * 2, 150, e.dmg * 0.6);
       this.addEffect('ring', e.x, e.y, e.r * 1.8, 0.3, '#ff7aa8');
     }
     if (e.t2 >= (enraged ? 5 : 7)) {
@@ -655,7 +680,7 @@ export class Engine {
       e.dashT = 1.1;
       e.dashX = nx;
       e.dashY = ny;
-      this.addEffect('telegraph', e.x, e.y, e.r, 0.6, '#ff4d6d', e.x + nx * 165, e.y + ny * 165);
+      this.addEffect('telegraph', e.x, e.y, e.r, 0.6, '#ff4d6d', e.x + nx * 230, e.y + ny * 230);
     }
   }
 
@@ -681,7 +706,7 @@ export class Engine {
         }
         pr.hit.push(e.id);
         const sp = Math.hypot(pr.vx, pr.vy) || 1;
-        this.damageEnemy(e, pr.dmg, (pr.vx / sp) * 60, (pr.vy / sp) * 60);
+        this.damageEnemy(e, pr.dmg, (pr.vx / sp) * 130, (pr.vy / sp) * 130);
         if (pr.pierce-- <= 0) {
           pr.active = false;
           break;

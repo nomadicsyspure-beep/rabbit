@@ -36,7 +36,7 @@ function loadAll(files: Record<string, string>) {
 
 /** 원본 GIF 프레임 시간(ms) ÷ 배율 = 게임 재생 프레임 시간 */
 const SOURCE_FRAME_MS = 200;
-export const HERO_ANIM_SPEED = { walk: 2, run: 3 };
+export const HERO_ANIM_SPEED = { walk: 2.5, run: 3.6 };
 export type HeroMotion = keyof typeof HERO_ANIM_SPEED;
 
 /** 파일 이름에서 가장 긴 방향 단어를 찾아 인덱스로 (예: north-east가 north보다 먼저) */

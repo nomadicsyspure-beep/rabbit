@@ -30,7 +30,7 @@ export const SKILLS: SkillDef[] = [
     id: 'feather',
     name: '깃털 날리기',
     icon: 'feather',
-    desc: (l) => `가까운 적에게 깃털 ${1 + every(l, 5)}개 · 피해 ${pct(skillPower(l))}`,
+    desc: (l) => `가까운 적에게 깃털 ${2 + every(l, 5)}개, 적 ${l >= 8 ? 2 : 1}마리 관통 · 피해 ${pct(skillPower(l))}`,
     learnCost: 0,
     createWeapon: (s, l) => new FeatherWeapon(s, l),
   },
