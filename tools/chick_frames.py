@@ -12,8 +12,6 @@ from pathlib import Path
 
 from PIL import Image
 
-from extract_art import keep_largest
-
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "art" / "source" / "chick"
 OUT = ROOT / "src" / "assets" / "chick"
@@ -46,6 +44,38 @@ def is_grayish(p):
     """얼룩과 캐릭터 외곽선 사이에 섞인 경계 픽셀"""
     r, g, b, a = p
     return a > 0 and max(r, g, b) - min(r, g, b) <= 22 and 80 <= max(r, g, b) <= 170
+
+
+def keep_largest(img: Image.Image, keep_ratio=0.12):
+    """불투명 덩어리 중 가장 큰 것과, 그 크기의 keep_ratio 이상인 조각만 남긴다."""
+    w, h = img.size
+    px = img.load()
+    label = [[-1] * h for _ in range(w)]
+    sizes = []
+    for sx in range(w):
+        for sy in range(h):
+            if label[sx][sy] != -1 or px[sx, sy][3] == 0:
+                continue
+            idx = len(sizes)
+            n = 0
+            q = deque([(sx, sy)])
+            label[sx][sy] = idx
+            while q:
+                x, y = q.popleft()
+                n += 1
+                for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                    if 0 <= nx < w and 0 <= ny < h and label[nx][ny] == -1 and px[nx, ny][3] > 0:
+                        label[nx][ny] = idx
+                        q.append((nx, ny))
+            sizes.append(n)
+    if not sizes:
+        return
+    biggest = max(sizes)
+    for x in range(w):
+        for y in range(h):
+            i = label[x][y]
+            if i != -1 and sizes[i] < biggest * keep_ratio:
+                px[x, y] = (0, 0, 0, 0)
 
 
 def clean(frame: Image.Image):

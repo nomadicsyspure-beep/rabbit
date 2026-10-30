@@ -27,25 +27,25 @@ src/
   battle/      공용 전투 엔진 (두 모드가 같이 씀)
     engine.ts       적·투사체·충돌·피해 처리
     controllers.ts  AutoController(방치) / Joystick(액션)
-    weapons.ts      무기 4종
+    weapons.ts      스킬 8종의 동작
     renderer.ts     렌더러 (스프라이트, 못 불러오면 도형으로 대신 그림)
     sprites.ts      스프라이트 불러오기
   modes/
     idle.ts      방치 화면 (보여주기용 자동 전투 + 탭 공격)
-    action.ts    스테이지 플레이: 웨이브, 레벨업 카드, 정예/마왕 보스
+    action.ts    스테이지 플레이: 웨이브, 장착 스킬 발동, 경험치, 정예/마왕 보스
   data/
     balance.ts   방치 수치 공식과 액션 배율 (밸런스는 여기서 조정)
-    skills.ts    레벨업 카드 스킬 정의
-  assets/      몬스터 스프라이트, chick/ 병아리 프레임
+    skills.ts    스킬 정의 (골드로 배우고 강화, 4개 장착)
+  assets/      chick/ 병아리 프레임, monsters/ fx/ ground/ ui/ 시트에서 잘라낸 그림
   core/          저장, 숫자 표기
   ui/            DOM UI (HUD, 패널, 탭, 모달)
   game.ts        모드 전환, 게임 루프, 입력, 오프라인 보상
 ```
 
-몬스터 스프라이트는 `art/source/character-sheet.webp`에서 잘라낸다. 좌표를 바꾸면 다시 만든다 (Pillow 필요).
+몬스터·이펙트·UI 그림은 `art/source/fx-sheet.webp`(몬스터·스킬 이펙트)와 `art/source/ui-sheet.webp`(HUD·버튼·패널)에서 잘라낸다. 시트 속 숫자·글자는 지우고 게임이 그 자리에 값을 쓴다. 좌표를 바꾸면 다시 만든다 (Pillow 필요).
 
 ```bash
-python3 tools/extract_art.py
+python3 tools/cut_sheets.py
 ```
 
 주인공(병아리)은 `art/source/chick`의 걷기·달리기 GIF를 배경 찌꺼기를 지운 프레임 띠 PNG(`src/assets/chick`)로 바꿔 쓴다. GIF를 새로 올리면 다시 만든다.

@@ -1,14 +1,16 @@
 :root {
   color-scheme: dark;
-  --bg: #0f1422;
-  --field: #07080c;
-  --panel: #182033;
-  --card: #1b2438;
-  --card-2: #222c43;
-  --line: #34425f;
-  --line-strong: #4a5d84;
-  --text: #e3eaff;
-  --muted: #8d9bbb;
+  /* UI 시트(나무·흙 톤)에 맞춘 색 */
+  --bg: #24180f;
+  --field: #7f5a3a;
+  --panel: #3a2719;
+  --card: #3f2a1b;
+  --card-2: #4b3322;
+  --line: #6b4a2e;
+  --line-strong: #a87a4a;
+  --text: #fbefd9;
+  --muted: #c9ae8a;
+  --stroke: #3a1d0b;
   --accent: #4f8cff;
   --gold: #ffd166;
   --good: #6fdc8c;
@@ -72,8 +74,9 @@ button:disabled {
   position: relative;
   flex: 0 0 38%;
   min-height: 220px;
-  border: 2px solid var(--line-strong);
-  border-radius: 10px;
+  border: 3px solid #5a3a1e;
+  border-radius: 12px;
+  box-shadow: 0 0 0 2px #a87a4a;
   overflow: hidden;
   background: var(--field);
 }
@@ -99,42 +102,44 @@ button:disabled {
 }
 
 .tabs {
-  flex: 0 0 64px;
+  flex: 0 0 66px;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  border: 2px solid var(--line);
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--panel);
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
 }
 
+/* 탭: UI 시트의 네모 나무 버튼 틀 */
 .tab {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   color: var(--muted);
   font-size: 11px;
-  border-left: 2px solid var(--line);
-}
-
-.tab:first-child {
-  border-left: none;
+  font-weight: 800;
+  background: var(--art-btn-frame) center / 100% 100% no-repeat;
+  filter: brightness(0.8);
 }
 
 .tab svg {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
+}
+
+.tab .tab-art {
+  height: 22px;
+  width: auto;
 }
 
 .tab.active {
-  color: #a9c6ff;
-  background: #1f2a42;
+  color: var(--text);
+  filter: none;
+  transform: translateY(-2px);
 }
 
 .tab.locked {
-  opacity: 0.45;
+  opacity: 0.5;
 }
 
 /* 액션 모드: 전투 화면만 꽉 차게 */
@@ -157,7 +162,7 @@ button:disabled {
 }
 
 .app:not(.mode-action) .hud-action,
-.app:not(.mode-action) .skill-icons {
+.app:not(.mode-action) .skill-slots {
   display: none;
 }
 
@@ -186,66 +191,99 @@ button:disabled {
   top: calc(8px + var(--safe-top));
 }
 
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: rgba(10, 14, 24, 0.7);
-  border: 1px solid var(--line);
-  font-weight: 700;
-  font-size: 13px;
+/* 시트 그림 위에 숫자를 쓰는 글자 (크림색 + 진갈색 외곽선) */
+.pill-text,
+.plate,
+.timer,
+.hp-text,
+.lv-text,
+.income {
+  color: #fff3dc;
+  font-weight: 900;
+  -webkit-text-stroke: 3px var(--stroke);
+  paint-order: stroke fill;
   white-space: nowrap;
 }
 
+.pill-art {
+  position: relative;
+  flex: none;
+  width: 104px;
+  aspect-ratio: 180 / 72;
+  background: center / 100% 100% no-repeat;
+}
+
+.pill-coin {
+  background-image: var(--art-pill-coin);
+}
+
+.pill-skull {
+  width: 84px;
+  aspect-ratio: 170 / 71;
+  background-image: var(--art-pill-skull);
+}
+
+.pill-text {
+  position: absolute;
+  left: 43%;
+  right: 8%;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+}
+
 .coin {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--gold);
-  box-shadow: inset 0 -2px 0 #d9a53a;
+  width: 14px;
+  height: 14px;
   flex: none;
 }
 
 .gold {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 
 .stage-box {
   flex: 1;
+  max-width: 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 스테이지 표지판: 그림 속 글자 자리에 텍스트 */
+.plate {
+  width: 100%;
   max-width: 170px;
-  text-align: center;
+  aspect-ratio: 338 / 75;
+  background: var(--art-plate) center / 100% 100% no-repeat;
+  display: grid;
+  place-items: center;
+  padding: 0 24%;
   font-size: 12px;
-  font-weight: 700;
-  text-shadow: 0 1px 2px #000;
+  overflow: hidden;
 }
 
 .income {
-  margin-top: 2px;
-  font-size: 11px;
-  font-weight: 700;
+  margin-top: 1px;
+  font-size: 12px;
   color: var(--gold);
 }
 
-.icon-btn {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  background: rgba(10, 14, 24, 0.7);
-  border: 2px solid var(--line-strong);
-  color: #b8c8ee;
-  font-weight: 800;
+.art-btn {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
 }
 
-.icon-btn svg {
-  width: 20px;
-  height: 20px;
+.art-btn img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .challenge-btn {
@@ -284,44 +322,114 @@ button:disabled {
   }
 }
 
-.xp-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.55);
-  overflow: hidden;
-  border: 1px solid var(--line);
-}
-
-.xp-bar .fill {
-  height: 100%;
-  background: #4fd1c5;
-}
-
-.action-row {
-  margin-top: 6px;
+/* 액션 HUD: 왼쪽 위 초상화 패널 (hud.png 580×180 그림 속 위치를 %로) */
+.hud-action {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 6px;
+}
+
+.hud-player {
+  position: relative;
+  flex: none;
+  width: 150px;
+  aspect-ratio: 580 / 180;
+  background: var(--art-hud) center / 100% 100% no-repeat;
+}
+
+.hp-zone {
+  position: absolute;
+  left: 24.5%;
+  top: 25%;
+  width: 72.2%;
+  height: 21.7%;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.hp-lost {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(30, 14, 8, 0.82);
+  transition: width 0.15s;
+}
+
+.hp-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  -webkit-text-stroke-width: 2.5px;
+}
+
+.lv-text {
+  position: absolute;
+  left: 28%;
+  top: 58%;
+  width: 17%;
+  height: 20%;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  -webkit-text-stroke-width: 2.5px;
+}
+
+.xp-zone {
+  position: absolute;
+  left: 45.5%;
+  top: 61.1%;
+  width: 47.2%;
+  height: 15%;
+}
+
+/* 경험치·쿨다운 채움: 시트의 파란 막대 조각을 양 끝 둥근 부분은 그대로 두고 늘린다 */
+.xp-fill,
+.cd-fill {
+  height: 100%;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 0 6px;
+  border-image: var(--art-hud-xp-fill) 0 11 fill / 0 6px stretch;
+}
+
+.cd-fill {
+  border-image-source: var(--art-cd-fill);
+  border-image-slice: 0 9 fill;
+  border-width: 0 4px;
+  border-image-width: 0 4px;
+}
+
+.stage-box .timer {
+  margin-top: -2px;
+}
+
+.timer {
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-stroke-width: 5px;
+}
+
+.timer.boss {
+  color: #ff8f8f;
 }
 
 .action-right {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
 }
 
-.timer {
-  font-size: 18px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 3px #000;
+.art-btn.round {
+  width: 38px;
+  height: 38px;
 }
 
-.timer.boss {
-  color: var(--bad);
-}
-
-.skill-icons {
+/* 장착 스킬 칸 (왼쪽 아래): 아이콘 + 쿨다운 막대 */
+.skill-slots {
   position: absolute;
   left: 8px;
   bottom: calc(10px + var(--safe-bottom));
@@ -330,28 +438,38 @@ button:disabled {
   pointer-events: none;
 }
 
-.skill-icon {
-  position: relative;
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border-radius: 7px;
-  border: 2px solid;
-  background: rgba(10, 14, 24, 0.75);
-  font-size: 15px;
-  font-weight: 800;
+.slot {
+  width: 46px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
 
-.skill-icon b {
+.slot-icon {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  filter: brightness(0.7);
+}
+
+.slot.ready .slot-icon {
+  filter: none;
+}
+
+.cd-track {
+  position: relative;
+  width: 40px;
+  aspect-ratio: 143 / 34;
+  background: var(--art-cd-track) center / 100% 100% no-repeat;
+}
+
+.cd-zone {
   position: absolute;
-  right: -5px;
-  bottom: -5px;
-  font-size: 10px;
-  color: var(--text);
-  background: #0f1422;
-  border-radius: 6px;
-  padding: 0 3px;
+  left: 5.6%;
+  top: 20.6%;
+  width: 89.5%;
+  height: 55.9%;
 }
 
 /* ---- 카드 ---- */
@@ -360,14 +478,12 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
-  background: var(--card);
-  border: 2px solid var(--line);
-  border-radius: 10px;
+  padding: 6px;
+  border: 12px solid transparent;
+  border-image: var(--art-panel-dark) 30 fill / 12px stretch;
 }
 
-.card .icon,
-.skill-card .icon {
+.card .icon {
   flex: none;
   width: 46px;
   height: 46px;
@@ -406,7 +522,7 @@ button:disabled {
   text-align: center;
   font-size: 13px;
   font-weight: 700;
-  color: #b8c8ee;
+  color: var(--muted);
   padding: 4px 0;
 }
 
@@ -446,8 +562,8 @@ button:disabled {
 
 .buy:disabled,
 .enter:disabled {
-  background: #2a3348;
-  color: #6b7896;
+  background: #4b3322;
+  color: #9a7d5c;
   box-shadow: none;
 }
 
@@ -526,10 +642,9 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 18px;
-  background: var(--panel);
-  border: 2px solid var(--line-strong);
-  border-radius: 14px;
+  padding: 8px;
+  border: 16px solid transparent;
+  border-image: var(--art-panel-dark) 30 fill / 16px stretch;
   touch-action: pan-y;
 }
 
@@ -578,51 +693,51 @@ button:disabled {
   color: #fff;
 }
 
-.cards {
+/* ---- 스킬 탭 ---- */
+
+.skill-art {
+  flex: none;
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+}
+
+.skill-row.unlearned .skill-art {
+  filter: grayscale(0.85) brightness(0.7);
+}
+
+.skill-row.equipped .title {
+  color: var(--gold);
+}
+
+.skill-btns {
+  flex: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
-.skill-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  text-align: left;
+.skill-btns .buy {
+  height: 40px;
+  min-width: 84px;
+}
+
+.equip {
+  height: 26px;
+  border-radius: 7px;
   background: var(--card-2);
-  border: 2px solid var(--line);
-  border-radius: 10px;
+  border: 2px solid var(--line-strong);
+  font-size: 12px;
+  font-weight: 800;
 }
 
-.skill-card:active {
-  border-color: var(--accent);
-}
-
-.skill-card .icon {
-  background: #11182a;
-  border: 2px solid;
-}
-
-.tag {
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: #33415f;
-  color: #c9d6f5;
-  vertical-align: 2px;
-}
-
-.tag.new {
-  background: #c2344f;
-  color: #fff;
-}
-
-.max {
-  margin-top: 3px;
-  font-size: 11px;
+.skill-row.equipped .equip {
+  background: #6b4a2e;
   color: var(--gold);
-  font-weight: 700;
+}
+
+.equip:disabled {
+  opacity: 0.4;
 }
 
 .result-stats {
@@ -654,8 +769,8 @@ button:disabled {
 }
 
 .big-reward .coin {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
 }
 
 .toast {

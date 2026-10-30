@@ -1,3 +1,5 @@
+import type { EnemySkin } from '../battle/engine';
+
 // 수치 공식. 밸런스 조정은 이 파일에서만 한다.
 // 스테이지는 액션 모드로 직접 깨고, 방치는 깬 최고 스테이지 기준으로 재화만 쌓인다.
 
@@ -7,6 +9,14 @@ export const OFFLINE_CAP_SEC = 8 * 60 * 60;
 export const OFFLINE_EFFICIENCY = 0.5;
 
 export const isBossStage = (stage: number) => stage % BOSS_EVERY === 0;
+
+/** 스테이지마다 나오는 몬스터 외형 (일반 / 빠른 / 단단한). 정예는 토끼 전사, 마왕은 악마 */
+const STAGE_SKINS: Record<'normal' | 'fast' | 'tank', EnemySkin>[] = [
+  { normal: 'slime', fast: 'bat', tank: 'golem' },
+  { normal: 'mushroom', fast: 'angel', tank: 'snail' },
+  { normal: 'sprout', fast: 'bat', tank: 'golem' },
+];
+export const stageSkins = (stage: number) => STAGE_SKINS[(Math.max(1, stage) - 1) % STAGE_SKINS.length];
 
 export const enemyHp = (stage: number) => 10 * Math.pow(1.17, stage - 1);
 export const enemyDmg = (stage: number) => 4 * Math.pow(1.13, stage - 1);
@@ -21,7 +31,7 @@ export const stageClearGold = (stage: number) => enemyGold(stage) * (isBossStage
 export const recommendedPower = (stage: number) => enemyHp(stage);
 export const recommendedHp = (stage: number) => enemyDmg(stage) * 15;
 
-export type StatId = 'atk' | 'hp' | 'aps';
+export type StatId = 'atk' | 'hp' | 'aps' | 'spd';
 
 export interface StatDef {
   id: StatId;
@@ -51,21 +61,36 @@ export const STATS: Record<StatId, StatDef> = {
     cost: (l) => 20 * Math.pow(1.22, l - 1),
     maxLevel: 51,
   },
+  spd: {
+    id: 'spd',
+    name: '이동 속도',
+    value: (l) => 1 + 0.04 * (l - 1),
+    cost: (l) => 15 * Math.pow(1.25, l - 1),
+    maxLevel: 16,
+  },
 };
 
-export const STAT_ORDER: StatId[] = ['atk', 'hp', 'aps'];
+export const STAT_ORDER: StatId[] = ['atk', 'hp', 'aps', 'spd'];
+
+// 캐릭터 레벨: 스테이지에서 모은 경험치 보석으로 영구히 오른다. 레벨마다 공격력·체력 +5%
+export const xpToNext = (level: number) => Math.round(20 * Math.pow(1.2, level - 1));
+export const levelBonus = (level: number) => 1 + 0.05 * (level - 1);
 
 export interface PlayerStats {
   atk: number;
   hp: number;
   aps: number;
+  /** 이동 속도 배율 */
+  spd: number;
 }
 
-export function playerStats(levels: Record<StatId, number>): PlayerStats {
+export function playerStats(levels: Record<StatId, number>, charLevel: number): PlayerStats {
+  const bonus = levelBonus(charLevel);
   return {
-    atk: STATS.atk.value(levels.atk),
-    hp: STATS.hp.value(levels.hp),
+    atk: STATS.atk.value(levels.atk) * bonus,
+    hp: STATS.hp.value(levels.hp) * bonus,
     aps: STATS.aps.value(levels.aps),
+    spd: STATS.spd.value(levels.spd),
   };
 }
 

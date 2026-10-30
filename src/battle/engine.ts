@@ -4,8 +4,8 @@ import { fmt } from '../core/format';
 // 엔진은 "누가 조종하는지"(Controller)와 "적을 어떻게 내보내는지"(모드)를 모른다.
 
 export type EnemyKind = 'normal' | 'fast' | 'tank' | 'boss';
-/** 그릴 때 쓰는 외형. 행동(kind)과 따로 둔다. */
-export type EnemySkin = 'slime' | 'bat' | 'ghost' | 'demon';
+/** 그릴 때 쓰는 외형(src/assets/monsters). 행동(kind)과 따로 둔다. */
+export type EnemySkin = 'slime' | 'mushroom' | 'sprout' | 'bat' | 'angel' | 'golem' | 'snail' | 'rabbit' | 'devil';
 
 export interface Enemy {
   id: number;
@@ -24,6 +24,8 @@ export interface Enemy {
   flash: number;
   kx: number;
   ky: number;
+  /** 남은 느려짐 시간 (얼음) */
+  slowT: number;
   /** 보스 패턴용 타이머 */
   t1: number;
   t2: number;
@@ -32,8 +34,11 @@ export interface Enemy {
   dashY: number;
 }
 
+export type ProjectileKind = 'feather' | 'fireball' | 'egg';
+
 export interface Projectile {
   active: boolean;
+  kind: ProjectileKind;
   x: number;
   y: number;
   vx: number;
@@ -43,6 +48,25 @@ export interface Projectile {
   life: number;
   pierce: number;
   hit: number[];
+  /** 0보다 크면 맞거나(알은 떨어지면) 이 반경으로 폭발 */
+  blast: number;
+  /** 던진 알: 날아가는 전체 시간 (그릴 때 포물선 높이 계산용) */
+  flight: number;
+}
+
+/** 움직이며 닿는 적에게 계속 피해를 주는 장판 (회오리) */
+export interface Zone {
+  active: boolean;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  r: number;
+  dmg: number;
+  life: number;
+  maxLife: number;
+  sprite: string;
+  nextHit: Map<number, number>;
 }
 
 export interface EnemyBullet {
@@ -75,7 +99,8 @@ export interface FloatText {
   size: number;
 }
 
-export type EffectKind = 'ring' | 'bolt' | 'burst' | 'telegraph';
+/** sprite: src/assets/fx 그림 / corpse: 쓰러진 몬스터 그림 */
+export type EffectKind = 'ring' | 'bolt' | 'burst' | 'telegraph' | 'sprite' | 'corpse';
 
 export interface Effect {
   active: boolean;
@@ -88,6 +113,10 @@ export interface Effect {
   life: number;
   maxLife: number;
   color: string;
+  /** sprite: 이펙트 이름 / corpse: 몬스터 외형 */
+  sprite: string;
+  /** 플레이어를 따라다니는 이펙트 (치유) */
+  follow: boolean;
 }
 
 export interface Orb {
@@ -129,6 +158,8 @@ export interface Weapon {
   id: string;
   level: number;
   update(engine: Engine, dt: number): void;
+  /** 쿨다운 진행도 0~1 (1 = 준비됨). HUD 막대용 */
+  ready?(): number;
 }
 
 export class Pool<T extends { active: boolean }> {
@@ -201,8 +232,8 @@ const MAX_ENEMY_R = 30;
 const DEFAULT_SKIN: Record<EnemyKind, EnemySkin> = {
   normal: 'slime',
   fast: 'bat',
-  tank: 'ghost',
-  boss: 'demon',
+  tank: 'golem',
+  boss: 'devil',
 };
 
 export class Engine {
@@ -224,11 +255,14 @@ export class Engine {
 
   readonly enemies = new Pool<Enemy>(() => ({
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
-    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
   }), 400);
   readonly projectiles = new Pool<Projectile>(() => ({
-    active: false, x: 0, y: 0, vx: 0, vy: 0, r: 4, dmg: 1, life: 1, pierce: 0, hit: [],
+    active: false, kind: 'feather', x: 0, y: 0, vx: 0, vy: 0, r: 4, dmg: 1, life: 1, pierce: 0, hit: [], blast: 0, flight: 0,
   }), 400);
+  readonly zones = new Pool<Zone>(() => ({
+    active: false, x: 0, y: 0, vx: 0, vy: 0, r: 20, dmg: 1, life: 0, maxLife: 1, sprite: '', nextHit: new Map(),
+  }), 30);
   readonly bullets = new Pool<EnemyBullet>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
   }), 300);
@@ -237,8 +271,8 @@ export class Engine {
     active: false, x: 0, y: 0, text: '', life: 0, maxLife: 1, color: '#fff', size: 12,
   }), 80);
   readonly effects = new Pool<Effect>(() => ({
-    active: false, kind: 'ring', x: 0, y: 0, x2: 0, y2: 0, r: 0, life: 0, maxLife: 1, color: '#fff',
-  }), 120);
+    active: false, kind: 'ring', x: 0, y: 0, x2: 0, y2: 0, r: 0, life: 0, maxLife: 1, color: '#fff', sprite: '', follow: false,
+  }), 200);
 
   readonly orbs: Orb[] = [];
   weapons: Weapon[] = [];
@@ -255,6 +289,7 @@ export class Engine {
   reset() {
     this.enemies.clear();
     this.projectiles.clear();
+    this.zones.clear();
     this.bullets.clear();
     this.gems.clear();
     this.texts.clear();
@@ -274,7 +309,7 @@ export class Engine {
     const e = this.enemies.get();
     if (!e) return null;
     Object.assign(e, {
-      skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+      skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
     }, init);
     e.id = this.nextId++;
     e.active = true;
@@ -324,13 +359,15 @@ export class Engine {
       e.kx += kx;
       e.ky += ky;
     }
-    if (this.showDamageText) this.addText(e.x + (Math.random() - 0.5) * 8, e.y - e.r - 4, fmt(dmg), '#ffffff', 11);
+    if (this.showDamageText) this.addText(e.x + (Math.random() - 0.5) * 8, e.y - e.r - 4, fmt(dmg), '#ffe066', 12);
     if (e.hp <= 0) this.killEnemy(e);
   }
 
   private killEnemy(e: Enemy) {
     e.active = false;
-    this.addEffect('burst', e.x, e.y, e.r * 1.6, 0.25, enemyColor(e.kind));
+    const fx = this.addEffect('corpse', e.x, e.y + e.r, e.r, 0.7, '#fff');
+    if (fx) fx.sprite = e.skin;
+    this.addSprite('dust', e.x, e.y + e.r * 0.4, e.r * 1.3, 0.35);
     if (this.dropGems && e.xp > 0) {
       const g = this.gems.get();
       if (g) {
@@ -359,22 +396,73 @@ export class Engine {
     }
   }
 
-  fireProjectile(x: number, y: number, tx: number, ty: number, speed: number, dmg: number, range: number, pierce: number) {
+  fireProjectile(
+    x: number, y: number, tx: number, ty: number, speed: number, dmg: number, range: number, pierce: number,
+    kind: ProjectileKind = 'feather', blast = 0,
+  ) {
     const pr = this.projectiles.get();
     if (!pr) return;
     const dx = tx - x;
     const dy = ty - y;
     const d = Math.hypot(dx, dy) || 1;
     pr.active = true;
+    pr.kind = kind;
     pr.x = x;
     pr.y = y;
     pr.vx = (dx / d) * speed;
     pr.vy = (dy / d) * speed;
-    pr.r = 4;
+    pr.r = kind === 'fireball' ? 7 : 5;
     pr.dmg = dmg;
     pr.life = range / speed;
     pr.pierce = pierce;
     pr.hit.length = 0;
+    pr.blast = blast;
+    pr.flight = 0;
+  }
+
+  /** 알 던지기: (tx, ty)에 flight초 뒤 떨어져 blast 반경으로 폭발. 날아가는 동안은 아무것도 맞히지 않는다 */
+  lobEgg(x: number, y: number, tx: number, ty: number, flight: number, dmg: number, blast: number) {
+    const pr = this.projectiles.get();
+    if (!pr) return;
+    pr.active = true;
+    pr.kind = 'egg';
+    pr.x = x;
+    pr.y = y;
+    pr.vx = (tx - x) / flight;
+    pr.vy = (ty - y) / flight;
+    pr.r = 5;
+    pr.dmg = dmg;
+    pr.life = pr.flight = flight;
+    pr.pierce = 0;
+    pr.hit.length = 0;
+    pr.blast = blast;
+  }
+
+  /** 반경 안 모든 적에게 피해 + 바깥으로 밀기 */
+  explode(x: number, y: number, r: number, dmg: number, sprite: string) {
+    this.addSprite(sprite, x, y, r, 0.35);
+    for (const e of [...this.queryEnemies(x, y, r)]) {
+      const dx = e.x - x;
+      const dy = e.y - y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d > r + e.r) continue;
+      this.damageEnemy(e, dmg, (dx / d) * 120, (dy / d) * 120);
+    }
+  }
+
+  addZone(x: number, y: number, vx: number, vy: number, r: number, life: number, dmg: number, sprite: string) {
+    const z = this.zones.get();
+    if (!z) return;
+    z.active = true;
+    z.x = x;
+    z.y = y;
+    z.vx = vx;
+    z.vy = vy;
+    z.r = r;
+    z.life = z.maxLife = life;
+    z.dmg = dmg;
+    z.sprite = sprite;
+    z.nextHit.clear();
   }
 
   fireBullet(x: number, y: number, angle: number, speed: number, dmg: number) {
@@ -404,8 +492,10 @@ export class Engine {
 
   addEffect(kind: EffectKind, x: number, y: number, r: number, life: number, color: string, x2 = 0, y2 = 0) {
     const fx = this.effects.get();
-    if (!fx) return;
+    if (!fx) return null;
     fx.active = true;
+    fx.sprite = '';
+    fx.follow = false;
     fx.kind = kind;
     fx.x = x;
     fx.y = y;
@@ -414,6 +504,19 @@ export class Engine {
     fx.r = r;
     fx.life = fx.maxLife = life;
     fx.color = color;
+    return fx;
+  }
+
+  /** src/assets/fx 그림 이펙트. r = 그림 반지름(px). follow면 플레이어 기준 위치로 따라다닌다 */
+  addSprite(name: string, x: number, y: number, r: number, life: number, follow = false) {
+    const fx = this.addEffect('sprite', x, y, r, life, '#fff');
+    if (!fx) return;
+    fx.sprite = name;
+    fx.follow = follow;
+    if (follow) {
+      fx.x2 = x - this.player.x;
+      fx.y2 = y - this.player.y;
+    }
   }
 
   update(dt: number) {
@@ -457,6 +560,7 @@ export class Engine {
     else this.orbs.length = 0;
 
     this.updateProjectiles(dt);
+    this.updateZones(dt);
     this.updateBullets(dt);
     this.updateGems(dt);
 
@@ -470,6 +574,10 @@ export class Engine {
       if (!fx.active) continue;
       fx.life -= dt;
       if (fx.life <= 0) fx.active = false;
+      else if (fx.follow) {
+        fx.x = p.x + fx.x2;
+        fx.y = p.y + fx.y2;
+      }
     }
   }
 
@@ -485,9 +593,11 @@ export class Engine {
       if (e.kind === 'boss') {
         this.updateBoss(e, dx / d, dy / d, dt);
       } else if (!p.dead) {
-        e.x += (dx / d) * e.speed * dt;
-        e.y += (dy / d) * e.speed * dt;
+        const slow = e.slowT > 0 ? 0.5 : 1;
+        e.x += (dx / d) * e.speed * slow * dt;
+        e.y += (dy / d) * e.speed * slow * dt;
       }
+      e.slowT -= dt;
 
       // 넉백
       e.x += e.kx * dt;
@@ -557,11 +667,18 @@ export class Engine {
       pr.life -= dt;
       if (pr.life <= 0) {
         pr.active = false;
+        if (pr.kind === 'egg') this.explode(pr.x, pr.y, pr.blast, pr.dmg, 'star-burst');
         continue;
       }
+      if (pr.kind === 'egg') continue;
       for (const e of this.queryEnemies(pr.x, pr.y, pr.r)) {
         if (pr.hit.includes(e.id)) continue;
         if ((e.x - pr.x) ** 2 + (e.y - pr.y) ** 2 > (e.r + pr.r) ** 2) continue;
+        if (pr.blast > 0) {
+          pr.active = false;
+          this.explode(pr.x, pr.y, pr.blast, pr.dmg, 'fire-burst');
+          break;
+        }
         pr.hit.push(e.id);
         const sp = Math.hypot(pr.vx, pr.vy) || 1;
         this.damageEnemy(e, pr.dmg, (pr.vx / sp) * 60, (pr.vy / sp) * 60);
@@ -569,6 +686,26 @@ export class Engine {
           pr.active = false;
           break;
         }
+      }
+    }
+  }
+
+  private updateZones(dt: number) {
+    for (const z of this.zones.items) {
+      if (!z.active) continue;
+      z.x += z.vx * dt;
+      z.y += z.vy * dt;
+      z.life -= dt;
+      if (z.life <= 0) {
+        z.active = false;
+        continue;
+      }
+      for (const e of [...this.queryEnemies(z.x, z.y, z.r)]) {
+        if ((e.x - z.x) ** 2 + (e.y - z.y) ** 2 > (e.r + z.r) ** 2) continue;
+        if ((z.nextHit.get(e.id) ?? 0) > this.time) continue;
+        z.nextHit.set(e.id, this.time + 0.35);
+        const sp = Math.hypot(z.vx, z.vy) || 1;
+        this.damageEnemy(e, z.dmg, (z.vx / sp) * 80, (z.vy / sp) * 80);
       }
     }
   }

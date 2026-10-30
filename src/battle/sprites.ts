@@ -1,13 +1,9 @@
-import bat from '../assets/bat.png';
-import demon from '../assets/demon.png';
-import ghost from '../assets/ghost.png';
-import slime from '../assets/slime.png';
 import { loadStrip, type Anim } from './anim';
 
 // 주인공(병아리)은 src/assets/chick의 프레임 띠 PNG를 쓴다 (256×256 프레임, 투명 배경).
 // 원본 GIF(art/source/chick/walking, running)를 tools/chick_frames.py로 바꾼 것.
 //   파일 이름: <동작>-<방향>.png  동작 walk / run, 방향 south / south-east / east / north-east / north / north-west / west / south-west
-// 몬스터는 캐릭터 시트에서 잘라낸 것 (tools/extract_art.py).
+// 몬스터·이펙트·바닥 장식·게이지 그림은 시트에서 잘라낸 것 (tools/cut_sheets.py).
 
 /**
  * 8방향 인덱스. 화면 기준 오른쪽(0°)부터 시계 방향으로 45°씩:
@@ -16,6 +12,27 @@ import { loadStrip, type Anim } from './anim';
 const DIRS = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'];
 
 const chickStrips = import.meta.glob<string>('../assets/chick/*.png', { eager: true, query: '?url', import: 'default' });
+const monsterFiles = import.meta.glob<string>('../assets/monsters/*.png', { eager: true, query: '?url', import: 'default' });
+const fxFiles = import.meta.glob<string>('../assets/fx/*.png', { eager: true, query: '?url', import: 'default' });
+const groundFiles = import.meta.glob<string>('../assets/ground/*.png', { eager: true, query: '?url', import: 'default' });
+const uiFiles = import.meta.glob<string>('../assets/ui/*.png', { eager: true, query: '?url', import: 'default' });
+
+/** 몬스터 걷기 프레임 한 장 시간(ms) */
+const MONSTER_FRAME_MS = 170;
+
+const baseName = (path: string) => path.split('/').pop()!.replace(/\.png$/, '');
+
+/** UI 그림 이름 → URL (DOM에서 배경으로 쓴다) */
+export const UI_URLS: Record<string, string> = Object.fromEntries(
+  Object.entries(uiFiles).map(([path, url]) => [baseName(path), url]),
+);
+
+/** 폴더의 그림을 이름 → Image로 */
+function loadAll(files: Record<string, string>) {
+  const out: Record<string, HTMLImageElement> = {};
+  for (const [path, url] of Object.entries(files)) out[baseName(path)] = load(url);
+  return out;
+}
 
 /** 원본 GIF 프레임 시간(ms) ÷ 배율 = 게임 재생 프레임 시간 */
 const SOURCE_FRAME_MS = 200;
@@ -44,11 +61,32 @@ export const SPRITES = {
     walk: DIRS.map(() => null) as (Anim | null)[],
     run: DIRS.map(() => null) as (Anim | null)[],
   },
-  slime: load(slime),
-  bat: load(bat),
-  ghost: load(ghost),
-  demon: load(demon),
+  /** 몬스터 걷기 애니메이션 (이름 → 프레임) */
+  monsters: {} as Record<string, Anim>,
+  /** 쓰러진 몬스터 (<이름>-dead) */
+  dead: {} as Record<string, HTMLImageElement>,
+  fx: {} as Record<string, HTMLImageElement>,
+  ground: [] as HTMLImageElement[],
+  ui: {} as Record<string, HTMLImageElement>,
 };
+
+for (const [path, url] of Object.entries(monsterFiles)) {
+  const name = baseName(path);
+  if (name.endsWith('-dead')) {
+    SPRITES.dead[name.slice(0, -5)] = load(url);
+    continue;
+  }
+  loadStrip(url, MONSTER_FRAME_MS)
+    .then((anim) => {
+      SPRITES.monsters[name] = anim;
+    })
+    .catch(() => {
+      // 못 불러오면 도형으로 대신 그린다
+    });
+}
+SPRITES.fx = loadAll(fxFiles);
+SPRITES.ground = Object.values(loadAll(groundFiles));
+SPRITES.ui = loadAll(uiFiles);
 
 for (const [path, url] of Object.entries(chickStrips)) {
   const name = path.split('/').pop()!.toLowerCase();
@@ -74,5 +112,5 @@ export function heroDirIndex(fx: number, fy: number) {
   return ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8;
 }
 
-export const isReady = (img: HTMLImageElement | null): img is HTMLImageElement =>
+export const isReady = (img: HTMLImageElement | null | undefined): img is HTMLImageElement =>
   !!img && img.complete && img.naturalWidth > 0;
