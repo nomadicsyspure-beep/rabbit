@@ -1,7 +1,7 @@
 import type { EnemySkin } from '../battle/engine';
 import { BOSS_EVERY } from './balance';
 
-// 지역(10스테이지마다)과 스테이지 규칙.
+// 지역(10스테이지마다).
 
 export type MatId = 'feather' | 'spore' | 'ice' | 'lava' | 'shadow' | 'skillbook';
 
@@ -56,28 +56,4 @@ export function stageSkins(stage: number): Record<'normal' | 'fast' | 'tank', En
   const r = regionOf(stage);
   const i = Math.max(1, stage) - 1;
   return { normal: r.normal[i % r.normal.length], fast: r.fast[i % r.fast.length], tank: r.tank[i % r.tank.length] };
-}
-
-// ---- 스테이지 규칙: 3스테이지마다 하나 붙는다 (마왕 스테이지 제외) ----
-
-export type RuleId = 'swift' | 'horde' | 'armored' | 'elite' | 'fog' | 'bomb';
-
-export interface RuleDef {
-  id: RuleId;
-  name: string;
-  desc: string;
-}
-
-export const RULES: RuleDef[] = [
-  { id: 'swift', name: '질풍', desc: '몹이 1.4배 빠르다' },
-  { id: 'horde', name: '대군', desc: '약한 몹이 1.6배 많이 몰려온다' },
-  { id: 'armored', name: '철갑', desc: '단단한 몹이 잔뜩' },
-  { id: 'elite', name: '정예 습격', desc: '중간중간 정예 몬스터가 나타난다' },
-  { id: 'fog', name: '안개', desc: '주변밖에 안 보인다' },
-  { id: 'bomb', name: '폭탄 몹', desc: '쓰러진 몹이 터진다 (옆 몹도 같이, 가까우면 나도 아프다)' },
-];
-
-export function stageRule(stage: number): RuleDef | null {
-  if (stage % BOSS_EVERY === 0 || stage % 3 !== 0) return null;
-  return RULES[Math.floor(stage / 3) % RULES.length];
 }

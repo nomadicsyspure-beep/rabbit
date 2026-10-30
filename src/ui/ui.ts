@@ -1,6 +1,6 @@
 import { sfx } from '../audio/sfx';
 import { CHEST_NAMES, type ChestGrade } from '../data/items';
-import { regionOf, stageRule } from '../data/world';
+import { regionOf } from '../data/world';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
   STATS, STAT_ORDER, actionRatio, isBossStage, playerPower, recommendedPower, stageClearGold, xpToNext,
@@ -663,8 +663,7 @@ export class UI implements UIHost {
       extra.forEach((r) => r());
       const stage = this.game.nextStage;
       title.textContent = isBossStage(stage) ? `스테이지 ${stage} · 마왕` : `스테이지 ${stage}`;
-      const rule = stageRule(stage);
-      sub.textContent = `${regionOf(stage).name}${rule ? ` · 규칙: ${rule.name}` : ''} · 권장 전투력 ${fmt(recommendedPower(stage))} · 클리어 보상 ${fmt(stageClearGold(stage))}`;
+      sub.textContent = `${regionOf(stage).name} · 권장 전투력 ${fmt(recommendedPower(stage))} · 클리어 보상 ${fmt(stageClearGold(stage))}`;
       const r = actionRatio(this.game.stats, stage);
       const worst = Math.min(r.atk, r.hp);
       const [label, cls] = worst < 0.6 ? ['위험', 'bad'] : worst < 0.9 ? ['도전', 'mid'] : ['여유', 'good'];

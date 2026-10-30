@@ -17,8 +17,10 @@ const PET_SIZE = 26;
 const GOLDEN_COLOR: Recolor = { shift: 0, sat: 1.6, light: 1.25, set: 46 };
 /** 웨이브 몹은 몸 색 대신 발밑 원 테두리 색으로 구분한다 */
 const TINT_RINGS: Record<string, string> = { charge: '#ff3b3b', ring: '#b05cff', wall: '#4f8cff' };
-/** 몹 그림 채도를 조금 낮춘다 (눈이 덜 피곤하게) */
-const MOB_COLOR: Recolor = { shift: 0, sat: 0.8, light: 0.97 };
+/** 몹은 어두운 톤 (채도·밝기를 낮춰서 밝은 병아리가 눈에 띄게) */
+const MOB_COLOR: Recolor = { shift: 0, sat: 0.7, light: 0.62 };
+/** 병아리는 조금 더 쨍하게 */
+const CHICK_POP: Recolor = { shift: 0, sat: 1.2, light: 1.08 };
 
 // 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
 
@@ -236,7 +238,6 @@ export class Renderer {
     ctx.restore();
 
     const boss = eng.boss;
-    if (eng.fog > 0) this.drawFog(eng, -eng.camX + eng.player.x, -eng.camY + eng.player.y);
     if (boss && eng.followCamera) this.drawBossBar(eng, boss);
     if (eng.followCamera) this.drawOffscreenArrows(eng);
     if (joystick?.active) this.drawJoystick(joystick);
@@ -369,13 +370,13 @@ export class Renderer {
     const [skin, hue] = e.skin.split('@');
     const anim = SPRITES.monsters[skin] ?? SPRITES.monsters.slime ?? Object.values(SPRITES.monsters)[0];
     const size = e.r * ENEMY_SPRITE_SCALE;
-    if (e.golden || e.bomb) {
-      // 황금 몹은 금빛, 폭탄 몹은 붉은 기운
+    if (e.golden) {
+      // 황금 몹은 금빛
       const ctx = this.ctx;
       const r = e.r * 2.2 * (1 + 0.1 * Math.sin(eng.time * 10 + e.id));
       const g = ctx.createRadialGradient(e.x, e.y - e.r * 0.5, 2, e.x, e.y - e.r * 0.5, r);
-      g.addColorStop(0, e.golden ? 'rgba(255,230,90,0.85)' : 'rgba(255,90,60,0.6)');
-      g.addColorStop(1, e.golden ? 'rgba(255,200,0,0)' : 'rgba(255,60,30,0)');
+      g.addColorStop(0, 'rgba(255,230,90,0.85)');
+      g.addColorStop(1, 'rgba(255,200,0,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(e.x, e.y - e.r * 0.5, r, 0, Math.PI * 2);
@@ -450,6 +451,15 @@ export class Renderer {
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
     ctx.ellipse(p.x, p.y + p.r, p.r, p.r * 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 발밑 은은한 빛: 어두운 몹 사이에서 병아리가 눈에 띄게
+    const glow = ctx.createRadialGradient(p.x, p.y - 6, 4, p.x, p.y - 6, 34);
+    glow.addColorStop(0, 'rgba(255,240,170,0.32)');
+    glow.addColorStop(1, 'rgba(255,240,170,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - 6, 34, 0, Math.PI * 2);
     ctx.fill();
 
     // 피버: 병아리 둘레에 금빛 기운이 일렁인다
@@ -601,7 +611,7 @@ export class Renderer {
 
   /** 꾸미기 색을 입힌 병아리 프레임 */
   private chick(frame: HTMLCanvasElement): Pic {
-    return this.chickColor ? recolored(frame, this.chickColor) : frame;
+    return recolored(frame, this.chickColor ?? CHICK_POP);
   }
 
   /** 스킬 이펙트 그림 (이름@색상이면 그 색으로, 그 위에 꾸미기 색). 아직 못 불러왔으면 null */
@@ -831,16 +841,6 @@ export class Renderer {
         break;
     }
     ctx.globalAlpha = 1;
-  }
-
-  /** 안개: 플레이어 주변만 밝고 바깥은 어둡다 */
-  private drawFog(eng: Engine, px: number, py: number) {
-    const ctx = this.ctx;
-    const g = ctx.createRadialGradient(px, py, eng.fog * 0.6, px, py, eng.fog * 1.4);
-    g.addColorStop(0, 'rgba(20,16,24,0)');
-    g.addColorStop(1, 'rgba(20,16,24,0.93)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, eng.viewW, eng.viewH);
   }
 
   private drawBossBar(eng: Engine, boss: Enemy) {

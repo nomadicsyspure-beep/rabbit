@@ -8,7 +8,7 @@ import {
   actionRatio, enemyGold, isBossStage, stageClearGold, type ActionRatio,
 } from '../data/balance';
 import { CHEST_NAMES, rollChest, type ChestGrade } from '../data/items';
-import { regionOf, stageRule, stageSkins, type RuleDef } from '../data/world';
+import { regionOf, stageSkins } from '../data/world';
 import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
 
@@ -61,8 +61,6 @@ const RING_DMG = 2;
 const WALL_DMG = 1.5;
 /** 몇 콤보마다 보석 싹쓸이 */
 const VACUUM_COMBO = 100;
-/** 안개 규칙: 보이는 반경(px) */
-const FOG_RADIUS = 150;
 
 /** 판 종류: 스테이지 / 재료 던전 / 보스 레이드 / 무한 모드 */
 export type RunKind = 'stage' | 'material' | 'raid' | 'infinite';
@@ -143,10 +141,6 @@ export class ActionMode {
   comboSec = COMBO_SEC;
   private feverMul = 1;
   private chestBonus = 0;
-  /** 이번 스테이지 규칙 (없을 수도) */
-  rule: RuleDef | null = null;
-  /** 정예 습격 규칙: 정예가 나오는 시각들 */
-  private eliteAt: number[] = [];
   /** 피버 남은 시간 / 피버 중 처치 수 (골드 2배) */
   fever = 0;
   /** 피버 게이지: 피버가 아닐 때 처치할 때마다 1씩 찬다 (콤보가 끊겨도 안 줄어든다) */
@@ -240,14 +234,11 @@ export class ActionMode {
     this.bonusGold = 0;
     this.chests = [];
 
-    // 지역 바닥과 스테이지 규칙
+    // 지역 바닥
     const region = regionOf(stage);
     eng.ground = region.ground;
-    this.rule = kind === 'stage' ? stageRule(stage) : null;
-    eng.fog = this.rule?.id === 'fog' ? FOG_RADIUS : 0;
-    this.eliteAt = this.rule?.id === 'elite' ? [18, 33, 48] : [];
     const intro = {
-      stage: this.rule ? `${region.name} · 규칙: ${this.rule.name} (${this.rule.desc})` : region.name,
+      stage: region.name,
       material: `재료 던전 · ${region.name}: 상자가 쏟아져요!`,
       raid: `보스 레이드: ${this.raidBoss.name}! 빨간 장판을 피해라!`,
       infinite: '무한 모드: 얼마나 버틸 수 있을까?',
@@ -313,15 +304,8 @@ export class ActionMode {
     const peak = this.isBossStage ? 18 : 14;
     // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
-    const horde = this.rule?.id === 'horde' ? 1.6 : 1;
     const kindRate = this.kind === 'raid' ? RAID_SPAWN : this.kind === 'infinite' ? 1 + this.time / 120 : 1;
-    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * horde * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1);
-
-    // 정예 습격 규칙
-    if (this.eliteAt.length > 0 && this.time >= this.eliteAt[0]) {
-      this.eliteAt.shift();
-      this.spawnElite();
-    }
+    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1);
 
     if (this.fever > 0) {
       this.fever -= dt;
@@ -405,8 +389,7 @@ export class ActionMode {
   private pickKind(): EnemyKind {
     const k = this.ramp;
     const r = Math.random();
-    if (this.rule?.id === 'horde') return r < 0.2 ? 'fast' : 'normal';
-    const tankW = this.rule?.id === 'armored' ? 0.45 : k > 0.33 ? 0.15 + (k - 0.33) * 0.3 : 0;
+    const tankW = k > 0.33 ? 0.15 + (k - 0.33) * 0.3 : 0;
     const fastW = k > 0.14 ? 0.25 : 0;
     if (r < tankW) return 'tank';
     if (r < tankW + fastW) return 'fast';
@@ -536,12 +519,9 @@ export class ActionMode {
     }
   }
 
-  /** 일반 몹 생성: 난이도 배율(MOB_HP, MOB_DMG)과 스테이지 규칙(질풍·폭탄)을 적용한다 */
+  /** 일반 몹 생성: 난이도 배율(MOB_HP, MOB_DMG)을 적용한다 */
   private spawnMob(init: Parameters<Engine['spawnEnemy']>[0]) {
-    const rule = this.rule?.id;
-    const speed = (init.speed ?? 40) * (rule === 'swift' ? 1.4 : 1);
-    const bomb = rule === 'bomb' && !init.golden && init.move !== 'charge' && Math.random() < 0.5;
-    return this.game.engine.spawnEnemy({ ...init, speed, bomb, hp: init.hp * MOB_HP, dmg: (init.dmg ?? 1) * MOB_DMG });
+    return this.game.engine.spawnEnemy({ ...init, hp: init.hp * MOB_HP, dmg: (init.dmg ?? 1) * MOB_DMG });
   }
 
   private spawnBoss() {
