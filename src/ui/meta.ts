@@ -3,7 +3,9 @@ import { GEAR, GEAR_MAX, SLOT_NAMES, enhanceCost, gearEffectText, type GearSlot 
 import { MATS, MAT_BY_ID } from '../data/items';
 import type { Game } from '../game';
 import { COLLECTION_BONUS, REBIRTH_MIN_STAGE, REBIRTH_UPS, type RebirthUp } from '../game';
-import { coin, h, holdRepeat } from './dom';
+import { ICON_URLS, MONSTER_URLS } from '../battle/sprites';
+import { ALL_MONSTERS } from '../data/world';
+import { chip, coin, h, holdRepeat, icon as iconImg } from './dom';
 
 // 장비 탭, 도감, 환생 화면.
 
@@ -22,9 +24,9 @@ export function walletBar(game: Game) {
   const bar = h('div', 'wallet');
   const refresh = () => {
     const s = game.save;
-    const chips = MATS.filter((m) => (s.mats[m.id] ?? 0) > 0).map((m) => h('span', 'chip', `${m.icon} ${fmt(s.mats[m.id] ?? 0)}`));
-    chips.push(h('span', 'chip', `💎 ${fmt(s.diamonds)}`));
-    if (s.essence > 0) chips.push(h('span', 'chip', `🔮 ${fmt(s.essence)}`));
+    const chips = MATS.filter((m) => (s.mats[m.id] ?? 0) > 0).map((m) => chip(m.img, fmt(s.mats[m.id] ?? 0)));
+    chips.push(chip('diamond', fmt(s.diamonds)));
+    if (s.essence > 0) chips.push(chip('essence', fmt(s.essence)));
     bar.replaceChildren(...chips);
   };
   return { el: bar, refresh };
@@ -39,7 +41,9 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
     panel.append(h('div', 'section-title', SLOT_NAMES[slot]));
     for (const def of GEAR.filter((g) => g.slot === slot)) {
       const card = h('div', 'card row gear-row');
-      const icon = h('div', 'item-icon', def.icon);
+      const icon = h('div', 'item-icon');
+      if (ICON_URLS[`gear-${def.id}`]) icon.append(iconImg(`gear-${def.id}`));
+      else icon.textContent = def.icon;
       const info = h('div', 'info');
       const name = h('div', 'title');
       const eff = h('div', 'sub');
@@ -101,28 +105,52 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   return () => rows.forEach((r) => r());
 }
 
-const MONSTER_NAMES: Record<string, string> = {
-  slime: '슬라임', sprout: '새싹', mushroom: '버섯', bat: '박쥐', angel: '천사 유령',
-  golem: '돌 골렘', snail: '달팽이 토끼', rabbit: '토끼 전사', devil: '악마 마왕', firstaid: '구급상자',
-};
 
 /** 도감: 잡은 몬스터·만든 장비 하나마다 공격력·체력 +1% */
 export function showCollection(game: Game, host: UIHost) {
   const s = game.save;
-  const grid = (title: string, items: [string, boolean][]) => {
-    const box = h('div', 'collection');
-    box.append(h('div', 'section-title', title));
-    const g = h('div', 'collection-grid');
-    for (const [label, ok] of items) g.append(h('div', 'collection-item' + (ok ? ' ok' : ''), ok ? label : '???'));
-    box.append(g);
-    return box;
+  const box = (title: string, cells: HTMLElement[]) => {
+    const wrap = h('div', 'collection');
+    wrap.append(h('div', 'section-title', title));
+    const g = h('div', 'collection-grid pics');
+    g.append(...cells);
+    wrap.append(g);
+    return wrap;
   };
-  const total = Object.keys(MONSTER_NAMES).length + GEAR.length;
+  const monsterCell = (skin: string) => {
+    const ok = s.seen.monsters.includes(skin);
+    const cell = h('div', 'collection-item' + (ok ? ' ok' : ''));
+    const pic = MONSTER_URLS[skin];
+    if (pic) {
+      const img = h('img', pic.strip ? 'strip' : '');
+      img.src = pic.url;
+      img.alt = '';
+      cell.append(img);
+    } else {
+      cell.append(h('span', 'collection-emoji', skin === 'firstaid' ? '🩹' : '?'));
+    }
+    return cell;
+  };
+  const gearCell = (g: (typeof GEAR)[number]) => {
+    const ok = s.seen.gear.includes(g.id);
+    const cell = h('div', 'collection-item' + (ok ? ' ok' : ''));
+    if (ICON_URLS[`gear-${g.id}`]) cell.append(iconImg(`gear-${g.id}`));
+    else cell.append(h('span', 'collection-emoji', g.icon));
+    return cell;
+  };
+  const scroll = (...kids: HTMLElement[]) => {
+    const el = h('div', 'modal-scroll');
+    el.append(...kids);
+    return el;
+  };
+  const total = ALL_MONSTERS.length + GEAR.length;
   host.openModal(
     h('div', 'modal-title', '도감'),
-    h('div', 'modal-sub', `${game.collectionCount} / ${total} · 공격력·체력 +${Math.round(game.collectionCount * COLLECTION_BONUS * 100)}%`),
-    grid('몬스터', Object.entries(MONSTER_NAMES).map(([k, v]) => [v, s.seen.monsters.includes(k)])),
-    grid('장비', GEAR.map((g) => [`${g.icon} ${g.name}`, s.seen.gear.includes(g.id)])),
+    h('div', 'modal-sub', `${game.collectionCount} / ${total} · 공격력·체력 +${Math.round(game.collectionCount * COLLECTION_BONUS * 100)}% · 못 만난 건 그림자로`),
+    scroll(
+      box(`몬스터 ${ALL_MONSTERS.filter((m) => s.seen.monsters.includes(m)).length}/${ALL_MONSTERS.length}`, ALL_MONSTERS.map(monsterCell)),
+      box(`장비 ${s.seen.gear.length}/${GEAR.length}`, GEAR.map(gearCell)),
+    ),
     host.button('닫기', 'primary', () => host.closeModal()),
   );
 }

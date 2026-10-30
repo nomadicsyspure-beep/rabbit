@@ -7,7 +7,7 @@ import {
   actionRatio, enemyGold, isBossStage, stageClearGold, type ActionRatio,
 } from '../data/balance';
 import { CHEST_NAMES, addReward, emptyReward, openChest, rollChest, type ChestGrade, type Reward } from '../data/items';
-import { regionOf, stageRule, stageSkins, type RuleDef } from '../data/world';
+import { raidBossToday, regionOf, stageRule, stageSkins, type RuleDef } from '../data/world';
 import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
 
@@ -252,13 +252,14 @@ export class ActionMode {
     // 지역 바닥과 스테이지 규칙
     const region = regionOf(stage);
     eng.ground = region.ground;
+    eng.deco = region.deco;
     this.rule = kind === 'stage' ? stageRule(stage) : null;
     eng.fog = this.rule?.id === 'fog' ? FOG_RADIUS : 0;
     this.eliteAt = this.rule?.id === 'elite' ? [18, 33, 48] : [];
     const intro = {
       stage: this.rule ? `${region.name} · 규칙: ${this.rule.name} (${this.rule.desc})` : region.name,
       material: `재료 던전 · ${region.name}: 상자가 쏟아져요!`,
-      raid: '보스 레이드: 빨간 장판을 피해라!',
+      raid: `보스 레이드: ${raidBossToday().name}! 빨간 장판을 피해라!`,
       infinite: '무한 모드: 얼마나 버틸 수 있을까?',
     };
     this.game.ui.toast(intro[kind]);
@@ -289,7 +290,7 @@ export class ActionMode {
     this.bossSpawned = true;
     const p = this.game.engine.player;
     this.game.engine.spawnEnemy({
-      kind: 'boss', skin: 'devil', raid: true, x: p.x, y: p.y - 230, hp: RAID_HP, r: 38, speed: 42, dmg: 24, xp: 0, t1: 2,
+      kind: 'boss', skin: raidBossToday().skin, raid: true, elite: true, x: p.x, y: p.y - 230, hp: RAID_HP, r: 42, speed: 42, dmg: 24, xp: 0, t1: 2,
     });
   }
 
@@ -392,7 +393,7 @@ export class ActionMode {
   private spawnElite() {
     const pos = this.spawnPos();
     const s = 1 + (this.time / 60) * 0.6;
-    this.spawnMob({ kind: 'tank', skin: 'rabbit', x: pos.x, y: pos.y, hp: 160 * s, r: 20, speed: 60, dmg: 12 * s, xp: 15 });
+    this.spawnMob({ kind: 'tank', skin: regionOf(this.skinStage).elite, x: pos.x, y: pos.y, hp: 160 * s, r: 20, speed: 60, dmg: 12 * s, xp: 15, elite: true });
     this.game.ui.toast('정예 습격!');
   }
 
@@ -416,6 +417,7 @@ export class ActionMode {
       this.skinStage = skinStage;
       const r = regionOf(skinStage);
       this.game.engine.ground = r.ground;
+      this.game.engine.deco = r.deco;
       this.game.ui.toast(`${r.name}(으)로 들어섰다!`);
     }
     if (this.time >= this.nextElite) {
@@ -605,10 +607,10 @@ export class ActionMode {
     const { x, y } = this.spawnPos();
     const eng = this.game.engine;
     if (this.isBossStage) {
-      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP, r: 30, speed: 50, dmg: 22, xp: 0 });
+      eng.spawnEnemy({ kind: 'boss', skin: regionOf(this.stage).boss, x, y, hp: BOSS_HP, r: 34, speed: 50, dmg: 22, xp: 0, elite: true });
       this.game.ui.toast('마왕 등장!');
     } else {
-      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP, r: 22, speed: 55, dmg: 16, xp: 0 });
+      eng.spawnEnemy({ kind: 'boss', skin: regionOf(this.stage).elite, x, y, hp: ELITE_HP, r: 24, speed: 55, dmg: 16, xp: 0, elite: true });
       this.game.ui.toast('정예 몬스터 등장!');
     }
   }
@@ -685,6 +687,7 @@ export class ActionMode {
     // 피버 시작 = 맵 전체 보석 싹쓸이
     eng.vacuumGems();
     this.fevers++;
+    eng.setEmote('alert', 1.5);
     sfx.fever();
     this.game.ui.feverStart();
   }
@@ -717,6 +720,7 @@ export class ActionMode {
       const p = this.game.engine.player;
       this.game.engine.addSprite('pillar', p.x, p.y - 20, 34, 0.8, true);
       sfx.levelUp();
+      this.game.engine.setEmote('heart');
       this.game.ui.toast(`레벨 업! Lv ${this.game.save.level}`);
     }
   }

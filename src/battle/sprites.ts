@@ -16,6 +16,10 @@ const monsterFiles = import.meta.glob<string>('../assets/monsters/*.png', { eage
 const fxFiles = import.meta.glob<string>('../assets/fx/*.png', { eager: true, query: '?url', import: 'default' });
 const groundFiles = import.meta.glob<string>('../assets/ground/*.png', { eager: true, query: '?url', import: 'default' });
 const uiFiles = import.meta.glob<string>('../assets/ui/*.png', { eager: true, query: '?url', import: 'default' });
+// 2차 시트에서 자른 그림 (tools/sheet_cut.py): 한 장짜리 몬스터, 지역별 바닥 장식, 아이콘
+const monster2Files = import.meta.glob<string>('../assets/monsters2/*.png', { eager: true, query: '?url', import: 'default' });
+const decoFiles = import.meta.glob<string>('../assets/deco/*.png', { eager: true, query: '?url', import: 'default' });
+const iconFiles = import.meta.glob<string>('../assets/icons/*.png', { eager: true, query: '?url', import: 'default' });
 // 장비 겉모습 (src/assets/gear/README.md 참고): <장비id>-<방향>.png (모자·등) / <장비id>.png (무기)
 const gearFiles = import.meta.glob<string>('../assets/gear/*.png', { eager: true, query: '?url', import: 'default' });
 
@@ -28,6 +32,17 @@ const baseName = (path: string) => path.split('/').pop()!.replace(/\.png$/, '');
 export const UI_URLS: Record<string, string> = Object.fromEntries(
   Object.entries(uiFiles).map(([path, url]) => [baseName(path), url]),
 );
+
+/** 아이콘 이름 → URL (재료·장비·상자·능력치 등 DOM에서 쓴다) */
+export const ICON_URLS: Record<string, string> = Object.fromEntries(
+  Object.entries(iconFiles).map(([path, url]) => [baseName(path), url]),
+);
+
+/** 몬스터 이름 → 그림 URL (도감에서 쓴다). 걷기 프레임 띠는 첫 칸만 보이게 그린다 */
+export const MONSTER_URLS: Record<string, { url: string; strip: boolean }> = Object.fromEntries([
+  ...Object.entries(monsterFiles).filter(([p]) => !p.endsWith('-dead.png')).map(([p, url]) => [baseName(p), { url, strip: true }]),
+  ...Object.entries(monster2Files).map(([p, url]) => [baseName(p), { url, strip: false }]),
+]);
 
 /** 이펙트 그림 이름 → URL (스킬 아이콘으로도 쓴다) */
 export const FX_URLS: Record<string, string> = Object.fromEntries(
@@ -77,7 +92,37 @@ export const SPRITES = {
   ui: {} as Record<string, HTMLImageElement>,
   /** 장비 겉모습 그림 (파일 이름 → 그림) */
   gear: {} as Record<string, HTMLImageElement>,
+  /** 지역별 바닥 장식 (이름 → 그림) */
+  deco: {} as Record<string, HTMLImageElement>,
+  /** 아이콘 (상자·회복약·감정 표현 등 캔버스에 그리는 것) */
+  icons: {} as Record<string, HTMLImageElement>,
+  /** 한 장짜리 몬스터 (걷기 프레임이 없어서 통통 튀며 움직인다) */
+  still: new Set<string>(),
 };
+
+/** 한 장짜리 그림을 발이 아래에 오게 정사각형 칸에 넣어 프레임 하나짜리 애니메이션으로 */
+async function loadStill(url: string): Promise<Anim> {
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  const size = Math.max(img.naturalWidth, img.naturalHeight);
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  c.getContext('2d')!.drawImage(img, (size - img.naturalWidth) / 2, size - img.naturalHeight);
+  return { frames: [c], frameMs: 1000 };
+}
+
+for (const [path, url] of Object.entries(monster2Files)) {
+  const name = baseName(path);
+  SPRITES.still.add(name);
+  loadStill(url)
+    .then((anim) => {
+      SPRITES.monsters[name] = anim;
+    })
+    .catch(() => {
+      // 못 불러오면 도형으로 대신 그린다
+    });
+}
 
 for (const [path, url] of Object.entries(monsterFiles)) {
   const name = baseName(path);
@@ -97,6 +142,8 @@ SPRITES.fx = loadAll(fxFiles);
 SPRITES.ground = Object.values(loadAll(groundFiles));
 SPRITES.ui = loadAll(uiFiles);
 SPRITES.gear = loadAll(gearFiles);
+SPRITES.deco = loadAll(decoFiles);
+SPRITES.icons = loadAll(iconFiles);
 
 for (const [path, url] of Object.entries(chickStrips)) {
   const name = path.split('/').pop()!.toLowerCase();

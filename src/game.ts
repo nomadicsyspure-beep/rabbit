@@ -7,7 +7,7 @@ import {
   OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, idleGoldPerSec, playerStats, xpToNext, type StatId,
 } from './data/balance';
 import {
-  BRANCHES, EQUIP_SLOTS, SKILL_BY_ID, branchCost, emptyTree, learnPrice, type Branch, type SkillId,
+  BRANCHES, SKILL_BY_ID, SKILL_TYPES, branchCost, emptyTree, learnPrice, type Branch, type SkillId, type SkillType,
 } from './data/skills';
 import { GEAR, GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
 import { type Reward } from './data/items';
@@ -654,7 +654,8 @@ export class Game {
     if (this.needsBook(id)) this.save.mats.skillbook = (this.save.mats.skillbook ?? 0) - 1;
     this.save.gold -= learnPrice(SKILL_BY_ID[id]);
     this.save.skills[id] = emptyTree();
-    if (this.save.equipped.length < EQUIP_SLOTS) this.save.equipped.push(id);
+    // 같은 형태 칸이 비어 있으면 바로 장착
+    if (!this.equippedOfType(SKILL_BY_ID[id].type)) this.toggleEquip(id);
     return true;
   }
 
@@ -680,15 +681,12 @@ export class Game {
   }
 
   /** 장착한 스킬 하나를 다른 스킬로 바꾼다 (같은 칸 자리에) */
-  replaceEquip(oldId: SkillId, newId: SkillId) {
-    const eq = this.save.equipped;
-    const i = eq.indexOf(oldId);
-    if (i < 0 || !this.save.skills[newId] || eq.includes(newId)) return false;
-    eq[i] = newId;
-    return true;
+  /** 이 형태 칸에 장착한 스킬 */
+  equippedOfType(type: SkillType) {
+    return this.save.equipped.find((id) => SKILL_BY_ID[id].type === type) ?? null;
   }
 
-  /** 장착/해제. 칸이 가득 차서 못 끼우면 false */
+  /** 장착/해제. 형태(공격·타겟·디버프·버프)마다 한 칸이라, 같은 형태가 이미 있으면 바꿔 낀다 */
   toggleEquip(id: SkillId): boolean {
     const eq = this.save.equipped;
     const i = eq.indexOf(id);
@@ -696,8 +694,14 @@ export class Game {
       eq.splice(i, 1);
       return true;
     }
-    if (!this.save.skills[id] || eq.length >= EQUIP_SLOTS) return false;
+    if (!this.save.skills[id]) return false;
+    const type = SKILL_BY_ID[id].type;
+    const old = eq.findIndex((x) => SKILL_BY_ID[x].type === type);
+    if (old >= 0) eq.splice(old, 1);
     eq.push(id);
+    // 칸 순서: 공격 · 타겟 · 디버프 · 버프
+    const order = SKILL_TYPES.map((t) => t.id);
+    eq.sort((a, b) => order.indexOf(SKILL_BY_ID[a].type) - order.indexOf(SKILL_BY_ID[b].type));
     return true;
   }
 
