@@ -79,6 +79,10 @@ abstract class SkillWeapon implements Weapon {
     this.pending = true;
   }
 
+  resetCooldown() {
+    this.cd = 0;
+  }
+
   /** 발동했으면 true (대상이 없으면 false로 다음 프레임에 다시 시도) */
   protected abstract fire(engine: Engine): boolean;
 }

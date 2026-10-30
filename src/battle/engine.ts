@@ -190,6 +190,8 @@ export interface Weapon {
   trigger?(): void;
   /** 수동 발동이 필요한 스킬인지 (도는 구체처럼 늘 켜진 건 false) */
   manual?: boolean;
+  /** 쿨다운을 바로 채운다 (피버 시작) */
+  resetCooldown?(): void;
 }
 
 export class Pool<T extends { active: boolean }> {
@@ -283,6 +285,8 @@ export class Engine {
   showDamageText = true;
   /** false면 스킬은 trigger()로 눌렀을 때만 나간다 */
   autoSkills = true;
+  /** 피버 남은 시간(초). 0보다 크면 화면이 금빛으로 들뜬다 */
+  fever = 0;
   time = 0;
   /** 화면 흔들림 세기(px). 폭발·피격 때 올라가고 금방 줄어든다 */
   shake = 0;
@@ -341,6 +345,7 @@ export class Engine {
     this.weapons = [];
     this.time = 0;
     this.shake = 0;
+    this.fever = 0;
     const p = this.player;
     p.dead = false;
     p.curSpeed = 0;
