@@ -4,11 +4,12 @@ import { Engine } from './battle/engine';
 import { Renderer } from './battle/renderer';
 import { clearSave, loadSave, writeSave, type SaveData } from './core/save';
 import {
-  OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, idleGoldPerSec, xpToNext, type StatId,
+  OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, idleGoldPerSec, playerStats, xpToNext, type StatId,
 } from './data/balance';
 import {
   BRANCHES, EQUIP_SLOTS, SKILL_BY_ID, branchCost, emptyTree, learnPrice, type Branch, type SkillId,
 } from './data/skills';
+import { GEAR, GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
 import { type Reward } from './data/items';
 import type { MatId } from './data/world';
 import { ActionMode } from './modes/action';
@@ -16,6 +17,17 @@ import { IdleMode } from './modes/idle';
 import { UI } from './ui/ui';
 
 const AUTOSAVE_SEC = 10;
+/** 도감 하나당 공격력·체력 +1% */
+export const COLLECTION_BONUS = 0.01;
+/** 환생 가능한 최고 스테이지 */
+export const REBIRTH_MIN_STAGE = 20;
+/** 환생 깃털로 올리는 영구 강화 (레벨당) */
+export const REBIRTH_UPS = {
+  atk: { name: '공격력', per: 0.1 },
+  gold: { name: '골드', per: 0.15 },
+  xp: { name: '경험치', per: 0.15 },
+} as const;
+export type RebirthUp = keyof typeof REBIRTH_UPS;
 const OFFLINE_MIN_SEC = 60;
 
 export type Mode = 'idle' | 'action';
@@ -73,7 +85,7 @@ export class Game {
   }
 
   get goldPerSec() {
-    return idleGoldPerSec(this.save.maxStage);
+    return idleGoldPerSec(this.save.maxStage) * this.bonus.gold;
   }
 
   private frame(t: number) {
@@ -154,6 +166,153 @@ export class Game {
     return true;
   }
 
+  // ---- 장비 ----
+
+  canCraft(id: string) {
+    const def = GEAR_BY_ID[id];
+    const s = this.save;
+    return s.gear[id] === undefined && (s.mats[def.mat] ?? 0) >= def.matCost && s.gold >= def.goldCost && s.essence >= (def.essence ?? 0);
+  }
+
+  /** 만들기. 빈 부위면 바로 착용, 도감에 등록 */
+  craftGear(id: string): boolean {
+    if (!this.canCraft(id)) return false;
+    const def = GEAR_BY_ID[id];
+    const s = this.save;
+    s.mats[def.mat] = (s.mats[def.mat] ?? 0) - def.matCost;
+    s.gold -= def.goldCost;
+    s.essence -= def.essence ?? 0;
+    s.gear[id] = 0;
+    if (!s.wear[def.slot]) s.wear[def.slot] = id;
+    if (!s.seen.gear.includes(id)) s.seen.gear.push(id);
+    this.idle.refreshStats();
+    return true;
+  }
+
+  canEnhance(id: string) {
+    const plus = this.save.gear[id];
+    if (plus === undefined || plus >= GEAR_MAX) return false;
+    const def = GEAR_BY_ID[id];
+    const c = enhanceCost(def, plus);
+    const s = this.save;
+    return (s.mats[def.mat] ?? 0) >= c.mat && s.gold >= c.gold && s.essence >= c.essence;
+  }
+
+  enhanceGear(id: string): boolean {
+    if (!this.canEnhance(id)) return false;
+    const def = GEAR_BY_ID[id];
+    const s = this.save;
+    const c = enhanceCost(def, s.gear[id]);
+    s.mats[def.mat] = (s.mats[def.mat] ?? 0) - c.mat;
+    s.gold -= c.gold;
+    s.essence -= c.essence;
+    s.gear[id]++;
+    this.idle.refreshStats();
+    return true;
+  }
+
+  /** 착용 / 같은 걸 다시 누르면 해제 */
+  toggleWear(id: string) {
+    const def = GEAR_BY_ID[id];
+    if (this.save.gear[id] === undefined) return;
+    this.save.wear[def.slot] = this.save.wear[def.slot] === id ? undefined : id;
+    this.idle.refreshStats();
+  }
+
+  /** 착용한 부위의 장비와 강화 단계 */
+  worn(slot: GearSlot) {
+    const id = this.save.wear[slot];
+    return id && GEAR_BY_ID[id] ? { def: GEAR_BY_ID[id], plus: this.save.gear[id] ?? 0 } : null;
+  }
+
+  /** 장비·도감·환생을 합친 배율. 공격력/체력 배율, 장신구 효과, 무기의 공짜 스킬 */
+  get bonus() {
+    const s = this.save;
+    const col = 1 + COLLECTION_BONUS * this.collectionCount;
+    const b = {
+      atk: col * (1 + REBIRTH_UPS.atk.per * s.rebirth.ups.atk),
+      hp: col,
+      gold: 1 + REBIRTH_UPS.gold.per * s.rebirth.ups.gold,
+      magnet: 1, chest: 0, combo: 0, fever: 1, crit: 0,
+      weapon: null as { skill: SkillId; plus: number } | null,
+    };
+    const w = this.worn('weapon');
+    if (w) {
+      b.atk *= 1 + w.def.atk! * gearScale(w.plus);
+      if (w.def.bonusSkill) b.weapon = { skill: w.def.bonusSkill, plus: w.plus };
+    }
+    const hat = this.worn('hat');
+    if (hat) b.hp *= 1 + hat.def.hp! * gearScale(hat.plus);
+    const acc = this.worn('acc');
+    if (acc) {
+      const v = acc.def.value! * gearScale(acc.plus);
+      if (acc.def.effect === 'magnet') b.magnet += v;
+      else if (acc.def.effect === 'chest') b.chest += v;
+      else if (acc.def.effect === 'combo') b.combo += v;
+      else if (acc.def.effect === 'fever') b.fever += v;
+      else if (acc.def.effect === 'gold') b.gold *= 1 + v;
+      else if (acc.def.effect === 'crit') b.crit += v;
+    }
+    return b;
+  }
+
+  /** 능력치 (강화 + 레벨 + 장비·도감·환생) */
+  get stats() {
+    const st = playerStats(this.save.levels, this.save.level);
+    const b = this.bonus;
+    return { ...st, atk: st.atk * b.atk, hp: st.hp * b.hp };
+  }
+
+  // ---- 도감 ----
+
+  get collectionCount() {
+    return this.save.seen.monsters.length + this.save.seen.gear.length;
+  }
+
+  /** 처음 잡은 몹 등록 */
+  seeMonster(skin: string) {
+    if (!this.save.seen.monsters.includes(skin)) {
+      this.save.seen.monsters.push(skin);
+      this.ui.toast(`도감 등록: 새 몬스터! (공격력·체력 +${Math.round(COLLECTION_BONUS * 100)}%)`);
+    }
+  }
+
+  // ---- 환생 ----
+
+  /** 지금 환생하면 받는 깃털 (최고 스테이지가 높을수록 많이) */
+  get rebirthGain() {
+    const m = this.save.maxStage;
+    return m < REBIRTH_MIN_STAGE ? 0 : Math.floor(m / 5 + (m * m) / 200);
+  }
+
+  /** 환생: 골드·최고 스테이지·능력치 강화가 처음으로. 스킬·장비·재료·다이아·레벨은 남는다 */
+  rebirth() {
+    const gain = this.rebirthGain;
+    if (gain <= 0) return false;
+    const s = this.save;
+    s.rebirth.count++;
+    s.rebirth.feathers += gain;
+    s.gold = 0;
+    s.maxStage = 0;
+    s.levels = { atk: 1, hp: 1, aps: 1, spd: 1 };
+    this.idle.enter();
+    this.persist();
+    return true;
+  }
+
+  rebirthUpCost(kind: RebirthUp) {
+    return this.save.rebirth.ups[kind] + 1;
+  }
+
+  upgradeRebirth(kind: RebirthUp) {
+    const cost = this.rebirthUpCost(kind);
+    if (this.save.rebirth.feathers < cost) return false;
+    this.save.rebirth.feathers -= cost;
+    this.save.rebirth.ups[kind]++;
+    this.idle.refreshStats();
+    return true;
+  }
+
   // ---- 보상 ----
 
   /** 주말 이벤트: 토·일엔 골드 2배, 황금 몹 3배 */
@@ -164,7 +323,7 @@ export class Game {
 
   /** 스테이지 골드 배율 */
   get goldBoost() {
-    return this.isWeekend ? 2 : 1;
+    return (this.isWeekend ? 2 : 1) * this.bonus.gold;
   }
 
   /** 황금 몹 출현 배율 */
@@ -248,7 +407,7 @@ export class Game {
   /** 경험치를 더하고 오른 레벨 수를 돌려준다 */
   addXp(v: number) {
     const save = this.save;
-    save.xp += v;
+    save.xp += v * (1 + REBIRTH_UPS.xp.per * save.rebirth.ups.xp);
     let ups = 0;
     while (save.xp >= xpToNext(save.level)) {
       save.xp -= xpToNext(save.level);
@@ -265,13 +424,21 @@ export class Game {
     return this.save.skills[id];
   }
 
+  /** 스킬북이 필요한 스킬: 그 스킬을 주는 무기를 가졌으면 책 없이 배울 수 있다 */
+  needsBook(id: SkillId) {
+    if (!SKILL_BY_ID[id].needsBook) return false;
+    return !GEAR.some((g) => g.bonusSkill === id && this.save.gear[g.id] !== undefined);
+  }
+
   canLearn(id: SkillId) {
-    return !this.save.skills[id] && this.save.gold >= learnPrice(SKILL_BY_ID[id]);
+    if (this.save.skills[id] || this.save.gold < learnPrice(SKILL_BY_ID[id])) return false;
+    return !this.needsBook(id) || (this.save.mats.skillbook ?? 0) > 0;
   }
 
   /** 배우기. 빈 장착 칸이 있으면 바로 장착한다 */
   learnSkill(id: SkillId): boolean {
     if (!this.canLearn(id)) return false;
+    if (this.needsBook(id)) this.save.mats.skillbook = (this.save.mats.skillbook ?? 0) - 1;
     this.save.gold -= learnPrice(SKILL_BY_ID[id]);
     this.save.skills[id] = emptyTree();
     if (this.save.equipped.length < EQUIP_SLOTS) this.save.equipped.push(id);
