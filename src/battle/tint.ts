@@ -9,11 +9,13 @@ export interface Recolor {
   light: number;
   /** 이 색상 범위(도)의 픽셀만 바꾼다 (병아리 몸통 노랑만, 부리·발·눈은 그대로) */
   window?: readonly [number, number];
+  /** 회전 대신 이 색상(도)으로 칠한다 (외곽선·눈처럼 색이 거의 없는 픽셀은 그대로). 몹 색 바꾸기용 */
+  set?: number;
 }
 
 const cache = new WeakMap<object, Map<string, HTMLCanvasElement>>();
 
-export const recolorKey = (r: Recolor) => `${r.shift}|${r.sat}|${r.light}|${r.window?.join('-') ?? ''}`;
+export const recolorKey = (r: Recolor) => `${r.shift}|${r.sat}|${r.light}|${r.window?.join('-') ?? ''}|${r.set ?? ''}`;
 
 /** 다시 칠한 그림 (원본이 아직 안 불러졌으면 원본 그대로) */
 export function recolored(src: HTMLCanvasElement | HTMLImageElement, r: Recolor): HTMLCanvasElement | HTMLImageElement {
@@ -50,7 +52,8 @@ export function recolored(src: HTMLCanvasElement | HTMLImageElement, r: Recolor)
       else hue = 60 * ((rr - gg) / c + 4);
     }
     if (r.window && (s < 0.2 || hue < r.window[0] || hue > r.window[1])) continue;
-    hue = (((hue + r.shift) % 360) + 360) % 360;
+    if (r.set !== undefined && s < 0.15) continue;
+    hue = r.set ?? (((hue + r.shift) % 360) + 360) % 360;
     s = Math.min(1, s * r.sat);
     l = Math.min(0.97, l * r.light);
     // HSL → RGB

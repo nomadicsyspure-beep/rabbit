@@ -23,6 +23,8 @@ export interface SkillSpec {
   cd: number;
   /** 기본 개수 */
   count: number;
+  /** 개수 가지 1레벨당 늘어나는 양 (기본 1) */
+  countStep?: number;
 }
 
 /** 전체 쿨다운 배율 (작을수록 자주 쏜다) */
@@ -33,7 +35,7 @@ export const treeDamage = (t: SkillTree) => 1 + 0.25 * t.dmg;
 export const treeCooldown = (t: SkillTree) => 1 / (1 + 0.1 * t.spd);
 
 /** 쿨다운으로 도는 스킬 공통: 다 차면 fire()를 부르고, 쏠 대상이 없으면 기다린다 */
-abstract class SkillWeapon implements Weapon {
+export abstract class SkillWeapon implements Weapon {
   abstract readonly id: string;
   readonly manual = true;
   protected cd: number;
@@ -58,7 +60,7 @@ abstract class SkillWeapon implements Weapon {
   }
 
   protected get count() {
-    return this.spec.count + this.tree.cnt;
+    return this.spec.count + this.tree.cnt * (this.spec.countStep ?? 1);
   }
 
   update(engine: Engine, dt: number) {
@@ -88,7 +90,7 @@ abstract class SkillWeapon implements Weapon {
 }
 
 /** 여러 번 연달아 터지는 스킬: fire()에서 burst를 정하면 gap초 간격으로 hit()를 부른다 */
-abstract class RepeatWeapon extends SkillWeapon {
+export abstract class RepeatWeapon extends SkillWeapon {
   private left = 0;
   private gapT = 0;
   protected gap = 0.12;
@@ -116,7 +118,7 @@ abstract class RepeatWeapon extends SkillWeapon {
   protected abstract hit(engine: Engine, i: number): void;
 }
 
-function shuffle<T>(a: T[]) {
+export function shuffle<T>(a: T[]) {
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
@@ -338,10 +340,6 @@ export class ChainWeapon extends SkillWeapon {
 
   constructor(stats: WeaponStats, spec: SkillSpec, tree: SkillTree) {
     super(stats, spec, tree, 0.4);
-  }
-
-  protected get count() {
-    return this.spec.count + this.tree.cnt * 2;
   }
 
   protected fire(engine: Engine) {

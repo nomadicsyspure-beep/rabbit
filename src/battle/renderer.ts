@@ -11,6 +11,13 @@ type Pic = HTMLImageElement | HTMLCanvasElement;
 const aspect = (img: Pic) => (img instanceof HTMLImageElement ? img.naturalHeight / img.naturalWidth : img.height / img.width);
 /** 동료 그림 크기 */
 const PET_SIZE = 26;
+/** 몹 색: 황금 몹, 웨이브 몹(돌진 빨강 / 포위 보라 / 벽 남색) */
+const GOLDEN_COLOR: Recolor = { shift: 0, sat: 1.6, light: 1.25, set: 46 };
+const TINT_COLORS: Record<string, Recolor> = {
+  charge: { shift: 0, sat: 1.5, light: 0.95, set: 2 },
+  ring: { shift: 0, sat: 1.3, light: 0.9, set: 285 },
+  wall: { shift: 0, sat: 1.1, light: 0.75, set: 220 },
+};
 
 // 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
 
@@ -304,8 +311,18 @@ export class Renderer {
       ctx.arc(e.x, e.y - e.r * 0.5, r, 0, Math.PI * 2);
       ctx.fill();
     }
+    if (e.tint === 'charge') {
+      // 돌진 몹: 발밑에 빨간 경고 빛
+      const ctx = this.ctx;
+      ctx.fillStyle = `rgba(255,40,40,${0.25 + 0.15 * Math.sin(eng.time * 20 + e.id)})`;
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y + e.r * 0.8, e.r * 1.4, e.r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (anim) {
-      const img = frameAt(anim, eng.time * 1000 + e.id * 97);
+      const frame = frameAt(anim, eng.time * 1000 + e.id * 97);
+      const color = e.golden ? GOLDEN_COLOR : e.tint ? TINT_COLORS[e.tint] : null;
+      const img = color ? recolored(frame, color) : frame;
       const flip = FACES_RIGHT.has(e.skin) && eng.player.x < e.x;
       // 맞으면 옆으로 퍼지고 납작해졌다가 돌아온다
       const hit = Math.max(0, e.flash) / 0.1;
@@ -317,7 +334,7 @@ export class Renderer {
       this.drawEnemyShape(eng, e);
     }
     const top = anim ? e.y + e.r - size * 0.85 : e.y - e.r;
-    const showBar = !eng.followCamera || (e.kind === 'tank' && e.hp < e.maxHp);
+    const showBar = !eng.followCamera || ((e.kind === 'tank' || e.golden) && e.hp < e.maxHp);
     if (showBar && e.kind !== 'boss') {
       const bw = Math.max(18, e.r * 2);
       this.bar(e.x - bw / 2, top - 6, bw, 3, e.hp / e.maxHp, '#ff5c6c');
@@ -522,9 +539,23 @@ export class Renderer {
       ctx.restore();
       return;
     }
+    if (pr.flight > 0 && pr.kind !== 'egg') {
+      // 이펙트 그림을 포물선으로 던진다 (폭죽 등)
+      const t = 1 - pr.life / pr.flight;
+      const lift = Math.sin(Math.PI * t) * 70;
+      const img = this.fx(pr.kind);
+      if (!img) return;
+      const s = 22 * pr.scale;
+      ctx.save();
+      ctx.translate(pr.x, pr.y - lift);
+      ctx.rotate(t * 10);
+      ctx.drawImage(img, -s / 2, (-s * aspect(img)) / 2, s, s * aspect(img));
+      ctx.restore();
+      return;
+    }
     if (pr.kind === 'egg') {
       const t = 1 - pr.life / pr.flight;
-      const lift = Math.sin(Math.PI * t) * 46;
+      const lift = Math.sin(Math.PI * t) * 46 * pr.scale;
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.beginPath();
       ctx.ellipse(pr.x, pr.y + 4, 5, 2, 0, 0, Math.PI * 2);
@@ -532,6 +563,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(pr.x, pr.y - lift);
       ctx.rotate(t * 6);
+      ctx.scale(pr.scale, pr.scale);
       ctx.fillStyle = '#fff6e4';
       ctx.strokeStyle = '#5a3a20';
       ctx.lineWidth = 1.5;
@@ -558,6 +590,12 @@ export class Renderer {
       const h = 22;
       const w = h / aspect(img);
       ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    } else if (pr.kind !== 'fireball') {
+      // 그 밖의 이펙트 그림: 빙글빙글 돌며 날아간다
+      ctx.rotate(pr.life * 14);
+      const w = pr.r * 4 * pr.scale;
+      const h = w * aspect(img);
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
     } else {
       // 화염구 그림은 왼쪽으로 날아가는 모양
       ctx.rotate(angle + Math.PI);
@@ -572,7 +610,8 @@ export class Renderer {
     const img = this.fx(z.sprite);
     const ctx = this.ctx;
     const fade = Math.min(1, z.life / 0.3, (z.maxLife - z.life) / 0.15);
-    ctx.globalAlpha = Math.max(0, fade);
+    // 독안개 구름은 반투명 (화면을 덜 가리게)
+    ctx.globalAlpha = Math.max(0, fade) * (z.sprite === 'dust' ? 0.5 : 1);
     if (img && z.pull > 0) {
       // 블랙홀: 바닥에 깔린 구멍이 맥박치듯 커졌다 작아진다
       const w = z.r * 3.2 * (1 + 0.08 * Math.sin(eng.time * 14));

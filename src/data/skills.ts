@@ -4,6 +4,10 @@ import {
   IceWeapon, MeteorWeapon, PillarWeapon, SlashWeapon, TornadoWeapon, treeCooldown, treeDamage,
   type SkillSpec, type SkillTree, type WeaponStats,
 } from '../battle/weapons';
+import {
+  BigEggWeapon, BlizzardWeapon, BoomerangWeapon, CrossWeapon, FeatherStormWeapon, FireTrailWeapon, FireflyWeapon, FireworkWeapon,
+  GravityWeapon, LanceWeapon, LaserWeapon, NovaWeapon, PoisonWeapon, QuakeWeapon, ThunderWeapon, VampireWeapon, WispWeapon,
+} from '../battle/weapons-more';
 
 // 스킬은 골드로 배우고, 가지(피해 / 발동 속도 / 개수)마다 따로 강화한다 (영구).
 // 스테이지에서는 장착한 스킬(최대 EQUIP_SLOTS개)만 발동한다.
@@ -12,7 +16,9 @@ export const EQUIP_SLOTS = 4;
 
 export type SkillId =
   | 'feather' | 'tornado' | 'egg' | 'flame' | 'ice' | 'heal' | 'fire' | 'dark'
-  | 'slash' | 'chain' | 'blackhole' | 'meteor' | 'pillar';
+  | 'slash' | 'chain' | 'blackhole' | 'meteor' | 'pillar'
+  | 'boomerang' | 'firefly' | 'poison' | 'quake' | 'thunder' | 'lance' | 'nova' | 'firetrail' | 'bigegg'
+  | 'vampire' | 'cross' | 'gravity' | 'laser' | 'blizzard' | 'firework' | 'wisp' | 'featherstorm';
 
 export type Branch = keyof SkillTree;
 
@@ -109,6 +115,92 @@ export const SKILLS: SkillDef[] = [
     needsBook: true, id: 'pillar', name: '빛의 기둥', icon: 'fx:pillar', blurb: '무작위 적들에게 빛 기둥이 내리꽂힌다',
     dmg: 2.5, cd: 3, count: 2, countLabel: '기둥', learnCost: 250,
     create: (s, spec, t) => new PillarWeapon(s, spec, t),
+  },
+  // ---- 추가 스킬 (나중에 추려서 밸런스 조정) ----
+  {
+    id: 'boomerang', name: '부메랑', icon: 'fx:slash', blurb: '날아갔다 돌아오며 오가는 길의 적을 전부 벤다',
+    dmg: 1.1, cd: 1.8, count: 1, countLabel: '부메랑', learnCost: 90,
+    create: (s, spec, t) => new BoomerangWeapon(s, spec, t),
+  },
+  {
+    id: 'firefly', name: '반딧불', icon: 'fx:sparkle', blurb: '적을 끝까지 쫓아가는 빛 구슬',
+    dmg: 0.9, cd: 1.4, count: 3, countLabel: '구슬', learnCost: 70,
+    create: (s, spec, t) => new FireflyWeapon(s, spec, t),
+  },
+  {
+    id: 'poison', name: '독안개', icon: 'fx:dust', blurb: '적 무리에 독 구름을 깔아 계속 피해',
+    dmg: 1, cd: 3, count: 2, countLabel: '독 구름', learnCost: 110,
+    create: (s, spec, t) => new PoisonWeapon(s, spec, t),
+  },
+  {
+    id: 'quake', name: '지진', icon: 'fx:star-burst', blurb: '발밑에서 점점 커지는 땅울림 (개수만큼 연달아)',
+    dmg: 1.1, cd: 2.6, count: 3, countLabel: '울림', learnCost: 140,
+    create: (s, spec, t) => new QuakeWeapon(s, spec, t),
+  },
+  {
+    needsBook: true, id: 'thunder', name: '낙뢰', icon: 'fx:blue-slash', blurb: '하늘에서 번개가 무작위 적에게 내리꽂힌다',
+    dmg: 2, cd: 2.2, count: 3, countLabel: '번개', learnCost: 260,
+    create: (s, spec, t) => new ThunderWeapon(s, spec, t),
+  },
+  {
+    id: 'lance', name: '얼음 창', icon: 'fx:ice-crystals', blurb: '일직선으로 모두 꿰뚫는 빠른 창',
+    dmg: 1.5, cd: 1.6, count: 1, countLabel: '창', learnCost: 130,
+    create: (s, spec, t) => new LanceWeapon(s, spec, t),
+  },
+  {
+    id: 'nova', name: '별 폭죽', icon: 'fx:star-burst', blurb: '사방으로 별이 터져 나간다',
+    dmg: 0.9, cd: 2, count: 6, countStep: 2, countLabel: '별 줄기', learnCost: 100,
+    create: (s, spec, t) => new NovaWeapon(s, spec, t),
+  },
+  {
+    id: 'firetrail', name: '불길', icon: 'fx:fire-burst', blurb: '지나간 자리에 불꽃이 남아 밟는 적을 태운다',
+    dmg: 0.5, cd: 0.5, count: 1, countLabel: '불꽃', learnCost: 120,
+    create: (s, spec, t) => new FireTrailWeapon(s, spec, t),
+  },
+  {
+    needsBook: true, id: 'bigegg', name: '거대 알', icon: 'skill-egg', blurb: '집채만 한 알을 던져 화면이 흔들리게 펑',
+    dmg: 4, cd: 4.5, count: 1, countLabel: '거대 알', learnCost: 350,
+    create: (s, spec, t) => new BigEggWeapon(s, spec, t),
+  },
+  {
+    id: 'vampire', name: '흡혈', icon: 'fx:purple-burst', blurb: '가까운 적의 생명력을 빨아 체력 회복',
+    dmg: 0.8, cd: 1.6, count: 2, countLabel: '대상', learnCost: 160,
+    create: (s, spec, t) => new VampireWeapon(s, spec, t),
+  },
+  {
+    id: 'cross', name: '성스러운 십자', icon: 'fx:heal-cross', blurb: '십자로 빛줄기가 뻗는다 (번갈아 돌려서 연달아)',
+    dmg: 1.3, cd: 2.4, count: 2, countLabel: '십자', learnCost: 180,
+    create: (s, spec, t) => new CrossWeapon(s, spec, t),
+  },
+  {
+    needsBook: true, id: 'gravity', name: '중력 폭탄', icon: 'fx:purple-pit', blurb: '적을 한곳에 끌어모은 뒤 대폭발',
+    dmg: 1, cd: 5, count: 1, countLabel: '폭발 크기', learnCost: 380,
+    create: (s, spec, t) => new GravityWeapon(s, spec, t),
+  },
+  {
+    needsBook: true, id: 'laser', name: '레이저', icon: 'fx:pillar', blurb: '화면을 가르는 광선이 한 줄을 통째로 지운다',
+    dmg: 1.8, cd: 2.2, count: 1, countLabel: '광선', learnCost: 320,
+    create: (s, spec, t) => new LaserWeapon(s, spec, t),
+  },
+  {
+    id: 'blizzard', name: '눈보라', icon: 'fx:ice-crystals', blurb: '주변 적들에게 얼음이 다다닥 (느려짐)',
+    dmg: 0.8, cd: 3, count: 8, countStep: 2, countLabel: '얼음', learnCost: 200,
+    create: (s, spec, t) => new BlizzardWeapon(s, spec, t),
+  },
+  {
+    needsBook: true, id: 'firework', name: '폭죽', icon: 'fx:gold-sparkle', blurb: '반짝이를 높이 던져 적 무리 위에서 펑펑',
+    dmg: 1.7, cd: 2.6, count: 4, countLabel: '폭죽', learnCost: 280,
+    create: (s, spec, t) => new FireworkWeapon(s, spec, t),
+  },
+  {
+    id: 'wisp', name: '도깨비불', icon: 'fx:purple-flame', blurb: '둘레에 생긴 불꽃 고리가 바깥으로 퍼진다',
+    dmg: 0.7, cd: 2.2, count: 4, countStep: 2, countLabel: '불꽃', learnCost: 150,
+    create: (s, spec, t) => new WispWeapon(s, spec, t),
+  },
+  {
+    id: 'featherstorm', name: '깃털 폭풍', icon: 'skill-feather', blurb: '사방으로 깃털이 한꺼번에 쏟아진다',
+    dmg: 0.8, cd: 2, count: 10, countStep: 3, countLabel: '깃털', learnCost: 90,
+    create: (s, spec, t) => new FeatherStormWeapon(s, spec, t),
   },
 ];
 
