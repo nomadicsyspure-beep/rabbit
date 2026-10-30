@@ -1191,3 +1191,80 @@ button:disabled {
   to { opacity: 1; transform: none; }
 }
 
+/* ---- 장비 / 도감 / 환생 ---- */
+
+.wallet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+
+.chip {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--gold);
+  padding: 4px 4px 0;
+}
+
+.item-icon {
+  flex: none;
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  background: var(--art-btn-frame) center / 100% 100% no-repeat;
+}
+
+.gear-row.unlearned .item-icon {
+  filter: grayscale(0.8) brightness(0.7);
+}
+
+.gear-row.equipped .title {
+  color: var(--gold);
+}
+
+.cost-line {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.extra-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.collection-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.collection-item {
+  padding: 6px 4px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 11px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.collection-item.ok {
+  color: var(--text);
+  background: rgba(255, 210, 63, 0.18);
+  border: 1px solid rgba(255, 210, 63, 0.5);
+}
+

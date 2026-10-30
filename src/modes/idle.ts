@@ -1,7 +1,7 @@
 import { AutoController } from '../battle/controllers';
 import type { EnemyKind } from '../battle/engine';
 import { FeatherWeapon, type WeaponStats } from '../battle/weapons';
-import { TAP_DAMAGE_MUL, playerStats } from '../data/balance';
+import { TAP_DAMAGE_MUL } from '../data/balance';
 import { regionOf, stageSkins } from '../data/world';
 import { SKILL_BY_ID, emptyTree } from '../data/skills';
 import type { Game } from '../game';
@@ -56,8 +56,7 @@ export class IdleMode {
 
   /** 강화 후 호출: 공격력·공격 속도를 화면에 반영 */
   refreshStats() {
-    const save = this.game.save;
-    const st = playerStats(save.levels, save.level);
+    const st = this.game.stats;
     this.stats.power = st.atk;
     this.stats.aps = st.aps;
     const p = this.game.engine.player;

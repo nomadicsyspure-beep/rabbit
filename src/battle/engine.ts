@@ -283,8 +283,8 @@ class Grid {
 }
 
 const MAX_ENEMY_R = 30;
-/** 치명타 확률·배율 (숫자가 크게 주황색으로) */
-const CRIT_CHANCE = 0.15;
+/** 치명타 기본 확률·배율 (숫자가 크게 주황색으로) */
+export const CRIT_CHANCE = 0.15;
 const CRIT_MUL = 2;
 /** 몬스터 외형별 쓰러질 때 튀는 조각 색 */
 const BURST_COLOR: Record<EnemySkin, string[]> = {
@@ -325,6 +325,8 @@ export class Engine {
   autoSkills = true;
   /** 피버 남은 시간(초). 0보다 크면 화면이 금빛으로 들뜬다 */
   fever = 0;
+  /** 치명타 확률 (장신구로 오른다) */
+  critChance = CRIT_CHANCE;
   /** 안개: 0이 아니면 플레이어 주변 이 반경(px)만 보인다 */
   fog = 0;
   /** 바닥 색 (지역마다 다르다): 바탕 / 큰 얼룩 둘 / 작은 자갈 둘 */
@@ -452,7 +454,7 @@ export class Engine {
 
   damageEnemy(e: Enemy, dmg: number, kx = 0, ky = 0) {
     if (!e.active) return;
-    const crit = Math.random() < CRIT_CHANCE;
+    const crit = Math.random() < this.critChance;
     if (crit) dmg *= CRIT_MUL;
     e.hp -= dmg;
     e.flash = 0.1;

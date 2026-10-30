@@ -1,6 +1,7 @@
 import type { SkillTree } from '../battle/weapons';
 import type { StatId } from '../data/balance';
 import { EQUIP_SLOTS, SKILL_BY_ID, emptyTree, type SkillId } from '../data/skills';
+import type { GearSlot } from '../data/gear';
 import type { MatId } from '../data/world';
 
 const KEY = 'rabbit.save.v1';
@@ -30,6 +31,15 @@ export interface SaveData {
   /** 누적 기록 (업적·미션용) */
   stats: { kills: number; bestCombo: number; fevers: number; chests: number; golden: number; stages: number };
   sound: boolean;
+  /** 가진 장비 → 강화 단계 / 착용 중인 장비 */
+  gear: Record<string, number>;
+  wear: Partial<Record<GearSlot, string>>;
+  /** 도감: 처음 잡은 몹 외형, 처음 만든 장비 */
+  seen: { monsters: string[]; gear: string[] };
+  /** 환생: 횟수, 남은 환생 깃털, 깃털로 올린 영구 강화 */
+  rebirth: { count: number; feathers: number; ups: { atk: number; gold: number; xp: number } };
+  /** 보스의 정수 (보스 레이드) */
+  essence: number;
 }
 
 export function newSave(): SaveData {
@@ -50,6 +60,11 @@ export function newSave(): SaveData {
     diamonds: 0,
     stats: { kills: 0, bestCombo: 0, fevers: 0, chests: 0, golden: 0, stages: 0 },
     sound: true,
+    gear: {},
+    wear: {},
+    seen: { monsters: [], gear: [] },
+    rebirth: { count: 0, feathers: 0, ups: { atk: 0, gold: 0, xp: 0 } },
+    essence: 0,
   };
 }
 
@@ -96,6 +111,11 @@ export function loadSave(): SaveData {
       diamonds: data.diamonds ?? 0,
       stats: { ...base.stats, ...data.stats },
       sound: data.sound ?? true,
+      gear: { ...data.gear },
+      wear: { ...data.wear },
+      seen: { monsters: [...(data.seen?.monsters ?? [])], gear: [...(data.seen?.gear ?? [])] },
+      rebirth: { ...base.rebirth, ...data.rebirth, ups: { ...base.rebirth.ups, ...data.rebirth?.ups } },
+      essence: data.essence ?? 0,
     };
   } catch {
     return newSave();

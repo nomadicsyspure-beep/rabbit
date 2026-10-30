@@ -1,9 +1,9 @@
-import type { Enemy, EnemyKind, Engine, Weapon } from '../battle/engine';
+import { CRIT_CHANCE, type Enemy, type EnemyKind, type Engine, type Weapon } from '../battle/engine';
 import type { SkillTree, WeaponStats } from '../battle/weapons';
 import { sfx } from '../audio/sfx';
 import { fmt } from '../core/format';
 import {
-  actionRatio, enemyGold, isBossStage, playerStats, stageClearGold, type ActionRatio,
+  actionRatio, enemyGold, isBossStage, stageClearGold, type ActionRatio,
 } from '../data/balance';
 import { CHEST_NAMES, addReward, emptyReward, openChest, rollChest, type ChestGrade, type Reward } from '../data/items';
 import { regionOf, stageRule, stageSkins, type RuleDef } from '../data/world';
@@ -119,6 +119,10 @@ export class ActionMode {
   private bonusGold = 0;
   /** 이번 판에 주운 상자 등급들 */
   private chests: ChestGrade[] = [];
+  /** 장신구 효과: 콤보 유지 시간, 피버 게이지 배율, 좋은 상자 확률 */
+  comboSec = COMBO_SEC;
+  private feverMul = 1;
+  private chestBonus = 0;
   /** 이번 스테이지 규칙 (없을 수도) */
   rule: RuleDef | null = null;
   /** 정예 습격 규칙: 정예가 나오는 시각들 */
@@ -165,7 +169,8 @@ export class ActionMode {
     this.stage = stage;
     this.duration = isBossStage(stage) ? BOSS_STAGE_SECONDS : NORMAL_SECONDS;
     const save = this.game.save;
-    const st = playerStats(save.levels, save.level);
+    const st = this.game.stats;
+    const bonus = this.game.bonus;
     this.ratio = actionRatio(st, stage);
     this.stats.power = BASE_POWER * this.ratio.atk;
     this.baseHp = BASE_HP * this.ratio.hp;
@@ -176,7 +181,12 @@ export class ActionMode {
     p.regen = 0;
     p.maxHp = p.hp = this.baseHp;
     p.speed = BASE_SPEED * st.spd;
-    p.magnet = BASE_MAGNET;
+    p.magnet = BASE_MAGNET * bonus.magnet;
+    // 장신구 효과
+    this.comboSec = COMBO_SEC + bonus.combo;
+    this.feverMul = bonus.fever;
+    this.chestBonus = bonus.chest;
+    eng.critChance = CRIT_CHANCE + bonus.crit;
 
     this.time = 0;
     this.kills = 0;
@@ -220,6 +230,12 @@ export class ActionMode {
       const weapon = createSkill(def, this.stats, runTree);
       eng.weapons.push(weapon);
       this.equipped.push({ def, weapon, tree: runTree });
+    }
+    // 무기가 주는 공짜 스킬 (장착 칸을 안 쓴다, 무기 강화 단계만큼 세다)
+    if (bonus.weapon) {
+      const plus = bonus.weapon.plus;
+      const tree = { dmg: plus, spd: Math.floor(plus / 3), cnt: Math.floor(plus / 5) };
+      eng.weapons.push(createSkill(SKILL_BY_ID[bonus.weapon.skill], this.stats, tree));
     }
     this.state = 'playing';
   }
@@ -305,7 +321,7 @@ export class ActionMode {
       const a = Math.random() * Math.PI * 2;
       const d = 110 + Math.random() * 90;
       const p = eng.player;
-      const grade = rollChest(this.fever > 0 ? 0.25 : 0);
+      const grade = rollChest((this.fever > 0 ? 0.25 : 0) + this.chestBonus);
       eng.spawnChest(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d * 0.7, grade);
       this.game.ui.toast(`${CHEST_NAMES[grade]} 등장!`);
     }
@@ -515,7 +531,8 @@ export class ActionMode {
     this.kills++;
     if (this.fever > 0) this.feverKills++;
     const now = this.game.engine.time;
-    this.combo = now - this.lastKillAt <= COMBO_SEC ? this.combo + 1 : 1;
+    this.combo = now - this.lastKillAt <= this.comboSec ? this.combo + 1 : 1;
+    this.game.seeMonster(e.skin);
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.lastKillAt = now;
     sfx.kill(this.combo);
@@ -537,7 +554,7 @@ export class ActionMode {
       eng.vacuumGems();
     }
     // 피버 게이지: 다 차면 피버, 끝나면 다시 0부터
-    if (this.fever <= 0 && ++this.feverGauge >= FEVER_NEED) this.startFever();
+    if (this.fever <= 0 && (this.feverGauge += this.feverMul) >= FEVER_NEED) this.startFever();
     if (e.kind === 'boss') this.finish(true);
   }
 

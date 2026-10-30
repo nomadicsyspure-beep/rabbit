@@ -37,6 +37,8 @@ export interface SkillDef extends SkillSpec {
   dmgLabel?: string;
   /** 쿨다운이 없는 스킬 (도는 구체): 발동 속도 = 회전 속도 */
   continuous?: boolean;
+  /** 스킬북이 있어야 배운다 (이 스킬을 주는 무기가 있으면 책 없이) */
+  needsBook?: boolean;
   /** 배우는 값 (테스트 중엔 COST_OVERRIDE). 가지 강화 비용은 이 값에서 늘어난다 */
   learnCost: number;
   create: (stats: WeaponStats, spec: SkillSpec, tree: SkillTree) => Weapon;
@@ -94,17 +96,17 @@ export const SKILLS: SkillDef[] = [
     create: (s, spec, t) => new ChainWeapon(s, spec, t),
   },
   {
-    id: 'blackhole', name: '블랙홀', icon: 'fx:purple-pit', blurb: '적을 빨아들이고 닫히며 대폭발',
+    needsBook: true, id: 'blackhole', name: '블랙홀', icon: 'fx:purple-pit', blurb: '적을 빨아들이고 닫히며 대폭발',
     dmg: 1, cd: 7, count: 1, countLabel: '블랙홀', learnCost: 400,
     create: (s, spec, t) => new BlackHoleWeapon(s, spec, t),
   },
   {
-    id: 'meteor', name: '별똥별', icon: 'fx:gold-sparkle', blurb: '적들 위로 별이 쏟아진다',
+    needsBook: true, id: 'meteor', name: '별똥별', icon: 'fx:gold-sparkle', blurb: '적들 위로 별이 쏟아진다',
     dmg: 2.2, cd: 2.8, count: 3, countLabel: '별', learnCost: 300,
     create: (s, spec, t) => new MeteorWeapon(s, spec, t),
   },
   {
-    id: 'pillar', name: '빛의 기둥', icon: 'fx:pillar', blurb: '무작위 적들에게 빛 기둥이 내리꽂힌다',
+    needsBook: true, id: 'pillar', name: '빛의 기둥', icon: 'fx:pillar', blurb: '무작위 적들에게 빛 기둥이 내리꽂힌다',
     dmg: 2.5, cd: 3, count: 2, countLabel: '기둥', learnCost: 250,
     create: (s, spec, t) => new PillarWeapon(s, spec, t),
   },
