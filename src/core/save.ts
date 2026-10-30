@@ -58,6 +58,8 @@ export interface SaveData {
   pass: { xp: number; claimed: number[] };
   /** 무한 모드 최고 기록(초) */
   infiniteBest: number;
+  /** 튜토리얼 단계 (-1 = 끝) */
+  tutorial: number;
 }
 
 export function newSave(): SaveData {
@@ -93,6 +95,7 @@ export function newSave(): SaveData {
     achieve: {},
     pass: { xp: 0, claimed: [] },
     infiniteBest: 0,
+    tutorial: 0,
   };
 }
 
@@ -159,6 +162,8 @@ export function loadSave(): SaveData {
       achieve: { ...data.achieve },
       pass: { ...base.pass, ...data.pass },
       infiniteBest: data.infiniteBest ?? 0,
+      // 이미 하던 사람은 튜토리얼 없이
+      tutorial: data.tutorial ?? ((data.maxStage ?? 0) > 0 ? -1 : 0),
     };
   } catch {
     return newSave();

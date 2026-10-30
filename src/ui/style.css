@@ -2364,3 +2364,119 @@ button:disabled {
   width: 136%;
   height: 136%;
 }
+
+/* 스킬 발동 미리보기 */
+.skill-art.clickable {
+  cursor: pointer;
+  animation: pvPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pvPulse {
+  0%, 100% { transform: none; }
+  50% { transform: scale(1.06); }
+}
+
+.preview-hint {
+  margin-top: -6px;
+  font-size: 11px;
+  color: var(--gold);
+  text-align: left;
+}
+
+.preview-box:empty {
+  display: none;
+}
+
+.preview-canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 300 / 170;
+  border-radius: 10px;
+  border: 3px solid var(--wood-dark);
+  box-shadow: inset 0 0 0 2px var(--wood), 0 2px 0 #140a03;
+}
+
+/* ---- 튜토리얼: 눌러야 할 곳만 밝게, 나머지는 어둡게 막기 ---- */
+.tut {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+  display: none;
+}
+
+.tut.show {
+  display: block;
+}
+
+.tut-block {
+  position: fixed;
+  background: rgba(10, 5, 2, 0.72);
+  pointer-events: auto;
+}
+
+.tut > .tut-block:nth-child(5) {
+  inset: 0;
+}
+
+.tut-ring {
+  position: fixed;
+  border-radius: 14px;
+  box-shadow: 0 0 0 3px #ffd23f, 0 0 18px 4px rgba(255, 210, 63, 0.75);
+  pointer-events: none;
+  animation: tutPulse 1s ease-in-out infinite;
+}
+
+@keyframes tutPulse {
+  0%, 100% { box-shadow: 0 0 0 3px #ffd23f, 0 0 12px 2px rgba(255, 210, 63, 0.6); }
+  50% { box-shadow: 0 0 0 5px #fff1a8, 0 0 26px 8px rgba(255, 210, 63, 0.9); }
+}
+
+.tut-bubble {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 360px);
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 3px solid var(--wood-dark);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff3d6 0%, #f3dcae 100%);
+  box-shadow: inset 0 0 0 2px #c98d4a, 0 4px 0 #140a03, 0 8px 20px rgba(0, 0, 0, 0.5);
+  color: #4a2a10;
+  pointer-events: auto;
+}
+
+.tut-face {
+  flex: none;
+}
+
+.tut-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tut-name {
+  align-self: flex-start;
+  padding: 1px 10px;
+  border-radius: 999px;
+  background: #8b5a2b;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tut-text {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.tut-btn {
+  height: 40px !important;
+}

@@ -18,6 +18,8 @@ import { art, coin, h, holdRepeat, ibox, monsterPic, skillIcon, svgIcon } from '
 import { buildGearTab, showCollection, showRebirth, type UIHost } from './meta';
 import { buildPetsTab, buildShopTab, showMissions } from './shop';
 import { ICONS } from './icons';
+import { skillPreview } from './preview';
+import { Tutorial } from './tutorial';
 
 type TabId = 'growth' | 'skill' | 'gear' | 'pets' | 'dungeon' | 'shop';
 
@@ -66,6 +68,8 @@ export class UI implements UIHost {
   private readonly panel: HTMLElement;
   private readonly tabBar: HTMLElement;
   private readonly overlay: HTMLElement;
+  /** 처음 하는 사람용 튜토리얼 */
+  readonly tutorial: Tutorial;
   private readonly toastEl: HTMLElement;
 
   // 방치 HUD
@@ -231,6 +235,7 @@ export class UI implements UIHost {
     this.overlay = h('div', 'overlay');
     this.toastEl = h('div', 'toast');
     this.app.append(this.battle, this.panel, this.tabBar, this.overlay, this.toastEl);
+    this.tutorial = new Tutorial(this.game, document.body, () => this.overlay.classList.contains('show'));
 
     // 시트 그림은 CSS 변수로 넘겨 배경·테두리에 쓴다
     for (const [name, url] of Object.entries(UI_URLS)) this.app.style.setProperty(`--art-${name}`, `url("${url}")`);
@@ -519,7 +524,20 @@ export class UI implements UIHost {
     const name = h('div', 'modal-title', def.name + ' ');
     name.append(h('span', `grade-badge g-${SKILL_GRADE[def.id]}`, `${SKILL_GRADE[def.id]}등급`));
     title.append(name, h('div', 'modal-sub', def.blurb), summary);
-    head.append(skillIcon(def, 'skill-art'), title);
+    // 아이콘을 누르면 실제 발동 미리보기
+    const icon = skillIcon(def, 'skill-art clickable');
+    const pvBox = h('div', 'preview-box');
+    const pvHint = h('div', 'preview-hint', '▶ 아이콘을 누르면 발동 미리보기');
+    icon.addEventListener('click', () => {
+      if (pvBox.firstChild) {
+        pvBox.replaceChildren();
+        pvHint.textContent = '▶ 아이콘을 누르면 발동 미리보기';
+      } else {
+        pvBox.append(skillPreview(def, g.skillTree(def.id) ?? emptyTree()));
+        pvHint.textContent = '■ 아이콘을 다시 누르면 닫기';
+      }
+    });
+    head.append(icon, title);
     const gold = h('div', 'tree-gold');
 
     if (!g.skillTree(def.id)) {
@@ -534,7 +552,7 @@ export class UI implements UIHost {
       }
       summary.textContent = skillSummary(def, emptyTree());
       this.treeRefresh = null;
-      this.openModal(head, where, this.button('닫기', 'primary', () => this.closeModal()));
+      this.openModal(head, pvHint, pvBox, where, this.button('닫기', 'primary', () => this.closeModal()));
       return;
     }
 
@@ -586,7 +604,7 @@ export class UI implements UIHost {
       }
       gold.replaceChildren(coin(fmt(g.save.gold)));
     };
-    this.openModal(head, gold, ...rows.map((r) => r.row), equipBox, this.button('닫기', 'primary', () => this.closeModal()));
+    this.openModal(head, pvHint, pvBox, gold, ...rows.map((r) => r.row), equipBox, this.button('닫기', 'primary', () => this.closeModal()));
     this.treeRefresh();
   }
 
@@ -647,6 +665,7 @@ export class UI implements UIHost {
   // ---- 매 프레임 ----
 
   tick(dt: number) {
+    this.tutorial.tick();
     if (this.slotTipT > 0) {
       this.slotTipT -= dt;
       if (this.slotTipT <= 0) this.slotTip.classList.remove('show');
@@ -944,6 +963,12 @@ export class UI implements UIHost {
         g.save.diamonds += 1000;
         this.refresh();
         this.toast('💎 1,000을 지급했어요');
+      }),
+      this.button('튜토리얼 다시 보기', '', () => {
+        this.closeModal();
+        if (g.mode !== 'idle') return this.toast('메인 화면에서 다시 눌러 주세요');
+        this.selectTab('growth');
+        this.tutorial.restart();
       }),
       this.confirmButton('저장 초기화', '한 번 더 누르면 모두 지워져요', () => g.resetSave()),
       this.button('닫기', 'primary', () => this.closeModal()),
