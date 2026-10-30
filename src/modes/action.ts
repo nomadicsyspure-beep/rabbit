@@ -52,9 +52,14 @@ export const COMBO_SEC = 2;
 const KILL_GOLD = 0.3;
 /** 재료 상자가 나오는 간격(초) */
 const CHEST_SEC = 12;
-/** 황금 몹: 나올 확률, 잡으면 골드 (몹 골드 × 이 값) */
+/** 황금 몹: 나올 확률, 잡으면 골드 (몹 골드 × 이 값) + 다이아 + 금 상자 */
 const GOLDEN_RATE = 0.003;
-const GOLDEN_GOLD = 40;
+const GOLDEN_GOLD = 150;
+const GOLDEN_DIAMONDS = 5;
+/** 웨이브 몹(돌진·포위·벽)은 색이 다르고 더 아프다: 피하라는 신호 */
+const CHARGE_DMG = 2.2;
+const RING_DMG = 2;
+const WALL_DMG = 1.5;
 /** 몇 콤보마다 보석 싹쓸이 */
 const VACUUM_COMBO = 100;
 /** 안개 규칙: 보이는 반경(px) */
@@ -465,7 +470,8 @@ export class ActionMode {
     const skins = stageSkins(this.skinStage);
     // 가끔 황금 몹: 도망치고, 잡으면 골드 폭죽
     if (kind === 'normal' && Math.random() < GOLDEN_RATE * this.game.goldenBoost) {
-      this.spawnMob({ kind, skin: skins.normal, x, y, hp: 15 * s, r: 12, speed: 95, dmg: 0, xp: 5, move: 'flee', golden: true, t1: 12 });
+      // 크고 단단하고, 부딪히면 아프다. 잡으면 골드·다이아·금 상자
+      this.spawnMob({ kind, skin: skins.normal, x, y, hp: 80 * s, r: 22, speed: 100, dmg: 6 * s, xp: 20, move: 'flee', golden: true, t1: 15 });
       this.game.ui.toast('황금 몹이다! 잡아라!');
       return;
     }
@@ -500,7 +506,7 @@ export class ActionMode {
         kind: 'fast', skin: skins.fast,
         x: p.x + Math.cos(h) * (d + (i % 3) * 20) - Math.sin(h) * off,
         y: p.y + Math.sin(h) * (d + (i % 3) * 20) + Math.cos(h) * off,
-        hp: 4 * s, r: 10, speed: 240, dmg: (5 + streak * 4) * s, xp: 1,
+        hp: 4 * s, r: 11, speed: 240, dmg: (5 + streak * 4) * s * CHARGE_DMG, xp: 1, tint: 'charge',
         move: 'charge', dashX: -Math.cos(h), dashY: -Math.sin(h), t1: (d * 2) / 240,
       });
     }
@@ -523,7 +529,7 @@ export class ActionMode {
           const a = gap + 0.5 + (i / n) * (Math.PI * 2 - 1);
           this.spawnMob({
             kind: 'normal', skin: skins.normal, x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r,
-            hp: 5 * s, r: 11, speed: 70, dmg: 3 * s, xp: 1,
+            hp: 5 * s, r: 11, speed: 70, dmg: 3 * s * RING_DMG, xp: 1, tint: 'ring',
           });
         }
         this.game.ui.toast('포위당했다!');
@@ -542,7 +548,7 @@ export class ActionMode {
           const cx = p.x + Math.cos(side) * startD + Math.cos(h) * (along + 60);
           const cy = p.y + Math.sin(side) * startD + Math.sin(h) * (along + 60);
           this.spawnMob({
-            kind: 'fast', skin: skins.fast, x: cx, y: cy, hp: 4 * s, r: 10, speed: 230, dmg: 5 * s, xp: 1,
+            kind: 'fast', skin: skins.fast, x: cx, y: cy, hp: 4 * s, r: 11, speed: 230, dmg: 5 * s * CHARGE_DMG, xp: 1, tint: 'charge',
             move: 'charge', dashX: dirX, dashY: dirY, t1: (startD * 2 + 80) / 230,
           });
         }
@@ -569,7 +575,7 @@ export class ActionMode {
               skin: tank ? skins.tank : fast ? skins.fast : skins.normal,
               x: p.x + fx * dd - fy * off, y: p.y + fy * dd + fx * off,
               hp: (tank ? 24 : fast ? 4 : 5) * s, r: tank ? 14 : fast ? 10 : 11,
-              speed: tank ? 40 : fast ? 115 : 62, dmg: (tank ? 8 : 4) * s * hurt, xp: tank ? 3 : 1,
+              speed: tank ? 40 : fast ? 115 : 62, dmg: (tank ? 8 : 4) * s * hurt * WALL_DMG, xp: tank ? 3 : 1, tint: 'wall',
             });
           }
         }
@@ -629,9 +635,15 @@ export class ActionMode {
       const gold = enemyGold(this.stage) * GOLDEN_GOLD;
       this.bonusGold += gold;
       this.goldenKills++;
-      eng.addText(e.x, e.y - 40, `+${fmt(gold)} G`, '#ffe066', 20);
+      this.game.save.diamonds += GOLDEN_DIAMONDS;
+      eng.addText(e.x, e.y - 50, `+${fmt(gold)} G`, '#ffe066', 24);
+      eng.addText(e.x, e.y - 28, `💎 +${GOLDEN_DIAMONDS}`, '#9fe4ff', 18);
+      eng.addEffect('ring', e.x, e.y, 120, 0.5, '#ffe066');
+      eng.addShake(5);
+      // 금 상자를 떨군다 (상자 자석으로 바로 끌려온다)
+      eng.spawnChest(e.x, e.y, 2);
       sfx.coin();
-      this.game.ui.toast('황금 몹 처치! 골드 폭죽!');
+      this.game.ui.toast(`황금 몹 처치! 골드 폭죽 + 💎${GOLDEN_DIAMONDS} + 금 상자!`);
     }
     // 100콤보마다 축하 연출 + 맵 전체 보석 싹쓸이
     if (this.combo % VACUUM_COMBO === 0) {

@@ -45,6 +45,8 @@ export interface Enemy {
   raid: boolean;
   /** 레이드 보스가 몇 번째 패턴인지 */
   step: number;
+  /** 웨이브 몹 색 (돌진·포위·벽) */
+  tint: EnemyTint;
   /** 보스 패턴용 타이머 */
   t1: number;
   t2: number;
@@ -53,7 +55,13 @@ export interface Enemy {
   dashY: number;
 }
 
-export type ProjectileKind = 'feather' | 'fireball' | 'egg' | 'meteor';
+/**
+ * 날아가는 것의 그림. feather·fireball은 방향대로 돌려 그리고, egg·meteor는 던지는(떨어지는) 것,
+ * 그 밖의 이름은 이펙트 그림(fx) 이름이고 빙글빙글 돌며 날아간다
+ */
+export type ProjectileKind = string;
+/** 레이드·웨이브 몹 색: 돌진(빨강) / 포위(보라) / 벽(남색) */
+export type EnemyTint = '' | 'charge' | 'ring' | 'wall';
 
 export interface Projectile {
   active: boolean;
@@ -71,6 +79,13 @@ export interface Projectile {
   blast: number;
   /** 던진 알·떨어지는 별: 날아가는 전체 시간 (그릴 때 높이 계산용) */
   flight: number;
+  /** 0보다 크면 가까운 적 쪽으로 이 속도(라디안/초)로 꺾는다 (유도) */
+  home: number;
+  /** 부메랑: 플레이어 쪽으로 계속 끌려와 되돌아온다 (돌아오는 길에 한 번 더 맞힌다) */
+  back: boolean;
+  turned: boolean;
+  /** 그림 크기 배율 */
+  scale: number;
 }
 
 /** 움직이며 닿는 적에게 계속 피해를 주는 장판 (회오리) */
@@ -123,6 +138,8 @@ export interface Chest {
   grade: 0 | 1 | 2;
   /** 나타난 뒤 지난 시간 (통통 튀는 연출) */
   t: number;
+  /** 플레이어 쪽으로 끌려오는 중 */
+  pulled: boolean;
 }
 
 export interface FloatText {
@@ -331,6 +348,8 @@ const START_SPEED = 0.45;
 const ACCEL = 2.5;
 /** 화면 흔들림 최대(px) */
 const MAX_SHAKE = 7;
+/** 상자를 끌어오는 거리(px). 보석 자석보다 훨씬 넓다 */
+const CHEST_MAGNET = 240;
 
 const DEFAULT_SKIN: Record<EnemyKind, EnemySkin> = {
   normal: 'slime',
@@ -370,12 +389,13 @@ export class Engine {
 
   readonly enemies = new Pool<Enemy>(() => ({
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
-    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, bomb: false, raid: false, step: 0,
+    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, bomb: false, raid: false, step: 0, tint: '',
     t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
   }), 500);
   readonly projectiles = new Pool<Projectile>(() => ({
     active: false, kind: 'feather', x: 0, y: 0, vx: 0, vy: 0, r: 4, dmg: 1, life: 1, pierce: 0, hit: [], blast: 0, flight: 0,
-  }), 400);
+    home: 0, back: false, turned: false, scale: 1,
+  }), 500);
   readonly zones = new Pool<Zone>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 20, dmg: 1, life: 0, maxLife: 1, sprite: '', nextHit: new Map(),
     pull: 0, blast: 0, blastR: 0,
@@ -384,7 +404,7 @@ export class Engine {
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
   }), 300);
   readonly gems = new Pool<Gem>(() => ({ active: false, x: 0, y: 0, value: 1, pulled: false, vacuum: false }), 900);
-  readonly chests = new Pool<Chest>(() => ({ active: false, x: 0, y: 0, grade: 0, t: 0 }), 8);
+  readonly chests = new Pool<Chest>(() => ({ active: false, x: 0, y: 0, grade: 0, t: 0, pulled: false }), 12);
   readonly texts = new Pool<FloatText>(() => ({
     active: false, x: 0, y: 0, text: '', life: 0, maxLife: 1, color: '#fff', size: 12,
   }), 160);
@@ -444,7 +464,7 @@ export class Engine {
     if (!e) return null;
     Object.assign(e, {
       skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, move: 'chase',
-      phase: Math.random() * Math.PI * 2, golden: false, bomb: false, raid: false, step: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+      phase: Math.random() * Math.PI * 2, golden: false, bomb: false, raid: false, step: 0, tint: '', t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
     }, init);
     e.id = this.nextId++;
     e.active = true;
@@ -577,10 +597,14 @@ export class Engine {
 
   fireProjectile(
     x: number, y: number, tx: number, ty: number, speed: number, dmg: number, range: number, pierce: number,
-    kind: ProjectileKind = 'feather', blast = 0,
+    kind: ProjectileKind = 'feather', blast = 0, opts: { home?: number; back?: boolean; scale?: number; r?: number } = {},
   ) {
     const pr = this.projectiles.get();
     if (!pr) return;
+    pr.home = opts.home ?? 0;
+    pr.back = opts.back ?? false;
+    pr.turned = false;
+    pr.scale = opts.scale ?? 1;
     const dx = tx - x;
     const dy = ty - y;
     const d = Math.hypot(dx, dy) || 1;
@@ -590,7 +614,7 @@ export class Engine {
     pr.y = y;
     pr.vx = (dx / d) * speed;
     pr.vy = (dy / d) * speed;
-    pr.r = kind === 'fireball' ? 7 : 5;
+    pr.r = opts.r ?? (kind === 'fireball' ? 7 : 5);
     pr.dmg = dmg;
     pr.life = range / speed;
     pr.pierce = pierce;
@@ -599,10 +623,17 @@ export class Engine {
     pr.flight = 0;
   }
 
-  /** 알 던지기·별똥별: (tx, ty)에 flight초 뒤 떨어져 blast 반경으로 폭발. 날아가는 동안은 아무것도 맞히지 않는다 */
-  lobEgg(x: number, y: number, tx: number, ty: number, flight: number, dmg: number, blast: number, kind: 'egg' | 'meteor') {
+  /**
+   * 던지기: (tx, ty)에 flight초 뒤 떨어져 blast 반경으로 폭발. 날아가는 동안은 아무것도 맞히지 않는다.
+   * egg = 알, meteor = 하늘에서 떨어지는 불덩이, 그 밖엔 이펙트 그림이 포물선으로
+   */
+  lobEgg(x: number, y: number, tx: number, ty: number, flight: number, dmg: number, blast: number, kind: ProjectileKind, scale = 1) {
     const pr = this.projectiles.get();
     if (!pr) return;
+    pr.home = 0;
+    pr.back = false;
+    pr.turned = false;
+    pr.scale = scale;
     pr.active = true;
     pr.kind = kind;
     pr.x = x;
@@ -647,6 +678,7 @@ export class Engine {
     c.y = y;
     c.grade = grade;
     c.t = 0;
+    c.pulled = false;
   }
 
   /** 맵에 떨어진 보석을 전부 끌어온다 */
@@ -1069,6 +1101,21 @@ export class Engine {
   private updateProjectiles(dt: number) {
     for (const pr of this.projectiles.items) {
       if (!pr.active) continue;
+      if (pr.home > 0) this.steerHoming(pr, dt);
+      if (pr.back) {
+        // 부메랑: 플레이어 쪽으로 끌려온다. 돌아서면 맞은 목록을 비워 한 번 더 맞힌다
+        const p = this.player;
+        const dx = p.x - pr.x;
+        const dy = p.y - pr.y;
+        const d = Math.hypot(dx, dy) || 1;
+        pr.vx += (dx / d) * 900 * dt;
+        pr.vy += (dy / d) * 900 * dt;
+        if (!pr.turned && pr.vx * dx + pr.vy * dy > 0) {
+          pr.turned = true;
+          pr.hit.length = 0;
+        }
+        if (pr.turned && d < 18) pr.active = false;
+      }
       pr.x += pr.vx * dt;
       pr.y += pr.vy * dt;
       // 꼬리: 화염구는 불씨, 깃털은 빛 가루
@@ -1077,17 +1124,16 @@ export class Engine {
       pr.life -= dt;
       if (pr.life <= 0) {
         pr.active = false;
-        if (pr.kind === 'egg') this.explode(pr.x, pr.y, pr.blast, pr.dmg, 'star-burst');
-        else if (pr.kind === 'meteor') this.explode(pr.x, pr.y, pr.blast, pr.dmg, 'fire-burst');
+        if (pr.flight > 0) this.explode(pr.x, pr.y, pr.blast, pr.dmg, pr.kind === 'meteor' ? 'fire-burst' : 'star-burst');
         continue;
       }
-      if (pr.kind === 'egg' || pr.kind === 'meteor') continue;
+      if (pr.flight > 0) continue;
       for (const e of this.queryEnemies(pr.x, pr.y, pr.r)) {
         if (pr.hit.includes(e.id)) continue;
         if ((e.x - pr.x) ** 2 + (e.y - pr.y) ** 2 > (e.r + pr.r) ** 2) continue;
         if (pr.blast > 0) {
           pr.active = false;
-          this.explode(pr.x, pr.y, pr.blast, pr.dmg, 'fire-burst');
+          this.explode(pr.x, pr.y, pr.blast, pr.dmg, pr.kind === 'fireball' ? 'fire-burst' : 'purple-burst');
           break;
         }
         pr.hit.push(e.id);
@@ -1099,6 +1145,39 @@ export class Engine {
         }
       }
     }
+  }
+
+  /** 유도: 가까운 적 쪽으로 조금씩 꺾는다 */
+  private steerHoming(pr: Projectile, dt: number) {
+    const t = this.nearestEnemies(pr.x, pr.y, 1, 260)[0];
+    if (!t) return;
+    const sp = Math.hypot(pr.vx, pr.vy) || 1;
+    const cur = Math.atan2(pr.vy, pr.vx);
+    let diff = Math.atan2(t.y - pr.y, t.x - pr.x) - cur;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const a = cur + Math.max(-pr.home * dt, Math.min(pr.home * dt, diff));
+    pr.vx = Math.cos(a) * sp;
+    pr.vy = Math.sin(a) * sp;
+  }
+
+  /** 선분 (x1,y1)→(x2,y2)에서 width 안의 모든 적에게 피해 (레이저·십자) */
+  lineHit(x1: number, y1: number, x2: number, y2: number, width: number, dmg: number, knock = 0): Enemy[] {
+    const hit: Enemy[] = [];
+    const lx = x2 - x1;
+    const ly = y2 - y1;
+    const len2 = lx * lx + ly * ly || 1;
+    const len = Math.sqrt(len2);
+    for (const e of this.enemies.items) {
+      if (!e.active) continue;
+      const t = Math.max(0, Math.min(1, ((e.x - x1) * lx + (e.y - y1) * ly) / len2));
+      const dx = e.x - (x1 + lx * t);
+      const dy = e.y - (y1 + ly * t);
+      if (dx * dx + dy * dy > (width + e.r) ** 2) continue;
+      hit.push(e);
+    }
+    for (const e of hit) this.damageEnemy(e, dmg, (lx / len) * knock, (ly / len) * knock);
+    return hit;
   }
 
   private trail(x: number, y: number, colors: string[], life: number, size: number) {
@@ -1193,7 +1272,18 @@ export class Engine {
     for (const c of this.chests.items) {
       if (!c.active) continue;
       c.t += dt;
-      if (p.dead || (c.x - p.x) ** 2 + (c.y - p.y) ** 2 > (p.r + 18) ** 2) continue;
+      if (p.dead) continue;
+      // 상자는 보석보다 훨씬 멀리서 끌려온다 (웬만하면 안 놓치게)
+      const dx = p.x - c.x;
+      const dy = p.y - c.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < Math.max(CHEST_MAGNET, p.magnet * 3)) c.pulled = true;
+      if (c.pulled) {
+        const sp = 280 + d * 2;
+        c.x += (dx / d) * Math.min(d, sp * dt);
+        c.y += (dy / d) * Math.min(d, sp * dt);
+      }
+      if ((c.x - p.x) ** 2 + (c.y - p.y) ** 2 > (p.r + 18) ** 2) continue;
       c.active = false;
       this.addSprite('star-burst', c.x, c.y - 10, 40, 0.4);
       this.burst(c.x, c.y - 10, 16, ['#ffe066', '#ffffff', '#c8823a'], 220, 0.6, 300, 3);
