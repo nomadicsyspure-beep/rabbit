@@ -50,6 +50,9 @@ export class AutoController implements Controller {
   }
 }
 
+/** AUTO로 움직일 때 속도 (최고 속도 대비). 0.8보다 낮아서 걷기 그림으로 움직인다 */
+const AUTO_SPEED = 0.65;
+
 /**
  * 스테이지 자동 플레이(AUTO): 조이스틱을 만지면 그쪽이 먼저, 손을 떼면 알아서 싸운다.
  * - 보물 상자가 보이면 주우러 간다
@@ -134,12 +137,13 @@ export class AutoPilot implements Controller {
       ax += -this.vy * 0.5 + this.vx;
       ay += this.vx * 0.5 + this.vy;
     }
-    const k = 1 - Math.exp(-7 * dt);
+    // 방향은 천천히 꺾고 속도는 조금 낮춰서 화면이 덜 흔들리게 (멀미 방지)
+    const k = 1 - Math.exp(-3 * dt);
     const len = Math.hypot(ax, ay) || 1;
     this.vx += (ax / len - this.vx) * k;
     this.vy += (ay / len - this.vy) * k;
     const vl = Math.hypot(this.vx, this.vy) || 1;
-    return { x: this.vx / vl, y: this.vy / vl };
+    return { x: (this.vx / vl) * AUTO_SPEED, y: (this.vy / vl) * AUTO_SPEED };
   }
 }
 

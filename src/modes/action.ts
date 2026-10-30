@@ -18,11 +18,12 @@ const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
 const ELITE_HP = 900;
 const BOSS_HP = 2600;
-/** 피버: 게이지(처치 수)가 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN */
+/** 피버: 게이지(처치 수)가 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
 export const FEVER_NEED = 220;
 export const FEVER_SEC = 8;
 const FEVER_BONUS = 5;
-const FEVER_SPAWN = 1.7;
+const FEVER_SPAWN = 2.5;
+const FEVER_MOVE = 1.7;
 
 /** 패턴 웨이브: 첫 웨이브까지 / 웨이브 간격(초) */
 const WAVE_FIRST = 8;
@@ -30,11 +31,11 @@ const WAVE_GAP = 11;
 type Wave = 'ring' | 'stampede' | 'wall';
 const WAVES: Wave[] = ['ring', 'stampede', 'wall'];
 /** 움직이는 중 새 몹이 가는 방향 앞쪽에서 나올 확률 */
-const AHEAD_RATE = 0.7;
+const AHEAD_RATE = 0.8;
 /** 이 각도 안에서 이 시간 넘게 한 방향으로 달리면 앞에 벽 (재사용 대기 WALL_CD초) */
 const STRAIGHT_TOLERANCE = 0.5;
-const STRAIGHT_SEC = 4;
-const WALL_CD = 6;
+const STRAIGHT_SEC = 2;
+const WALL_CD = 3;
 
 /** 이 시간 안에 다음 처치가 없으면 콤보가 끊긴다 */
 export const COMBO_SEC = 2;
@@ -93,6 +94,8 @@ export class ActionMode {
   private straightT = 0;
   private straightDir = 0;
   private wallCd = 0;
+  /** 방향을 안 바꾸고 맞은 벽 수: 계속 버티면 벽이 점점 두꺼워진다 */
+  private wallStreak = 0;
   private baseHp = BASE_HP;
   private endT = -1;
   private chestT = 0;
@@ -160,6 +163,7 @@ export class ActionMode {
     this.waveT = WAVE_FIRST;
     this.straightT = 0;
     this.wallCd = 0;
+    this.wallStreak = 0;
     this.waveIdx = Math.floor(Math.random() * WAVES.length);
     this.endT = -1;
     this.chestT = CHEST_SEC * 0.6;
@@ -215,18 +219,23 @@ export class ActionMode {
     this.wallCd -= dt;
     if (h === null) {
       this.straightT = 0;
+      this.wallStreak = 0;
     } else {
       let diff = Math.abs(h - this.straightDir) % (Math.PI * 2);
       if (diff > Math.PI) diff = Math.PI * 2 - diff;
       if (diff > STRAIGHT_TOLERANCE) {
         this.straightDir = h;
         this.straightT = 0;
+        this.wallStreak = 0;
       }
       this.straightT += dt;
       if (this.straightT > STRAIGHT_SEC && this.wallCd <= 0 && !this.bossSpawned) {
         this.wallCd = WALL_CD;
         this.straightT = 0;
-        this.spawnWave('wall');
+        this.wallStreak++;
+        this.spawnWave('wall', this.wallStreak);
+        // 두 번째 벽부터는 정면에서 돌진 떼까지
+        if (this.wallStreak >= 2) this.spawnHeadOn(this.wallStreak);
       }
     }
 
@@ -309,7 +318,28 @@ export class ActionMode {
     }
   }
 
-  private spawnWave(wave: Wave) {
+  /** 정면에서 플레이어 쪽으로 곧장 달려오는 돌진 떼 (한 방향으로만 버틸 때) */
+  private spawnHeadOn(streak: number) {
+    const eng = this.game.engine;
+    const p = eng.player;
+    const h = this.heading ?? 0;
+    const s = 1 + (this.time / 60) * 0.6;
+    const skins = stageSkins(this.stage);
+    const d = this.diag / 2 + 20;
+    const n = 8 + streak * 4;
+    for (let i = 0; i < n; i++) {
+      const off = (i - (n - 1) / 2) * 18;
+      eng.spawnEnemy({
+        kind: 'fast', skin: skins.fast,
+        x: p.x + Math.cos(h) * (d + (i % 3) * 20) - Math.sin(h) * off,
+        y: p.y + Math.sin(h) * (d + (i % 3) * 20) + Math.cos(h) * off,
+        hp: 4 * s, r: 10, speed: 240, dmg: (5 + streak * 3) * s, xp: 1,
+        move: 'charge', dashX: -Math.cos(h), dashY: -Math.sin(h), t1: (d * 2) / 240,
+      });
+    }
+  }
+
+  private spawnWave(wave: Wave, streak = 0) {
     const eng = this.game.engine;
     const p = eng.player;
     const s = 1 + (this.time / 60) * 0.6;
@@ -353,19 +383,28 @@ export class ActionMode {
         break;
       }
       case 'wall': {
-        // 가는 방향 앞에 단단한 몹으로 벽을 세운다
-        const d = this.diag / 2 - 20;
-        const n = Math.round(12 * crowd);
+        // 가는 방향 앞에 벽: 앞줄은 단단한 몹이 섞이고, 뒷줄은 빠른 몹.
+        // 방향을 안 바꾸고 계속 버티면(streak) 줄이 늘고 더 아프다
+        const d = this.diag / 2 - 40;
+        const n = Math.round(14 * crowd);
         const fx = Math.cos(h);
         const fy = Math.sin(h);
-        for (let i = 0; i < n; i++) {
-          const off = (i - (n - 1) / 2) * 30;
-          const tank = i % 3 === 1;
-          eng.spawnEnemy({
-            kind: tank ? 'tank' : 'normal', skin: tank ? skins.tank : skins.normal,
-            x: p.x + fx * d - fy * off, y: p.y + fy * d + fx * off,
-            hp: (tank ? 24 : 5) * s, r: tank ? 14 : 11, speed: tank ? 40 : 62, dmg: (tank ? 7 : 3) * s, xp: tank ? 3 : 1,
-          });
+        const rows = 2 + Math.min(3, streak);
+        const hurt = 1 + 0.9 * streak;
+        for (let row = 0; row < rows; row++) {
+          for (let i = 0; i < n; i++) {
+            const off = (i - (n - 1) / 2 + row * 0.5) * 28;
+            const dd = d + row * 34;
+            const tank = row % 2 === 0 && i % 3 === 1;
+            const fast = row % 2 === 1;
+            eng.spawnEnemy({
+              kind: tank ? 'tank' : fast ? 'fast' : 'normal',
+              skin: tank ? skins.tank : fast ? skins.fast : skins.normal,
+              x: p.x + fx * dd - fy * off, y: p.y + fy * dd + fx * off,
+              hp: (tank ? 24 : fast ? 4 : 5) * s, r: tank ? 14 : fast ? 10 : 11,
+              speed: tank ? 40 : fast ? 115 : 62, dmg: (tank ? 8 : 4) * s * hurt, xp: tank ? 3 : 1,
+            });
+          }
         }
         this.game.ui.toast('앞을 막는다!');
         break;
@@ -427,6 +466,7 @@ export class ActionMode {
       s.weapon.resetCooldown?.();
     }
     const p = eng.player;
+    p.speed *= FEVER_MOVE;
     eng.addSprite('pillar', p.x, p.y - 30, 60, 0.9, true);
     eng.addEffect('ring', p.x, p.y, 260, 0.7, '#ffb347');
     eng.addShake(7);
@@ -437,6 +477,7 @@ export class ActionMode {
     this.fever = 0;
     this.feverGauge = 0;
     this.game.engine.fever = 0;
+    this.game.engine.player.speed /= FEVER_MOVE;
     for (const s of this.equipped) {
       s.tree.dmg -= FEVER_BONUS;
       s.tree.spd -= FEVER_BONUS;
