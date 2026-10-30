@@ -166,6 +166,10 @@ export interface Weapon {
   update(engine: Engine, dt: number): void;
   /** 쿨다운 진행도 0~1 (1 = 준비됨). HUD 막대용 */
   ready?(): number;
+  /** 수동 발동: 다음에 준비되면(지금 준비됐으면 바로) 쓴다 */
+  trigger?(): void;
+  /** 수동 발동이 필요한 스킬인지 (도는 구체처럼 늘 켜진 건 false) */
+  manual?: boolean;
 }
 
 export class Pool<T extends { active: boolean }> {
@@ -257,6 +261,8 @@ export class Engine {
   followCamera = false;
   dropGems = false;
   showDamageText = true;
+  /** false면 스킬은 trigger()로 눌렀을 때만 나간다 */
+  autoSkills = true;
   time = 0;
   /** 화면 흔들림 세기(px). 폭발·피격 때 올라가고 금방 줄어든다 */
   shake = 0;

@@ -146,6 +146,7 @@ button:disabled {
 .mode-action {
   padding: 0;
   gap: 0;
+  max-width: none;
 }
 
 .mode-action .battle {
@@ -162,7 +163,7 @@ button:disabled {
 }
 
 .app:not(.mode-action) .hud-action,
-.app:not(.mode-action) .skill-slots,
+.app:not(.mode-action) .action-bottom,
 .app:not(.mode-action) .combo {
   display: none;
 }
@@ -419,9 +420,11 @@ button:disabled {
 }
 
 .action-right {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto;
   gap: 4px;
   align-items: center;
+  justify-items: end;
 }
 
 .art-btn.round {
@@ -430,22 +433,123 @@ button:disabled {
 }
 
 /* 장착 스킬 칸 (왼쪽 아래): 아이콘 + 쿨다운 막대 */
-.skill-slots {
+.action-bottom {
   position: absolute;
   left: 8px;
   right: 8px;
   bottom: calc(10px + var(--safe-bottom));
   display: flex;
-  gap: 4px;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 6px;
   pointer-events: none;
+}
+
+/* 세로: 스킬 8칸 한 줄, 자동/수동 버튼은 그 위 오른쪽 */
+.skill-slots {
+  align-self: flex-start;
+  display: flex;
+  gap: 4px;
 }
 
 .slot {
   width: 40px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  pointer-events: none;
+}
+
+/* 스킬 수동: 칸을 눌러 쓴다. 준비된 칸은 빛난다 */
+.manual-skills .slot {
+  pointer-events: auto;
+}
+
+.manual-skills .slot.ready .slot-icon {
+  filter: drop-shadow(0 0 6px #ffe066);
+}
+
+.slot.pressed {
+  transform: scale(0.9);
+}
+
+/* 글자 버튼 (시트에 없는 버튼: 가로 모드, 스킬 자동/수동) */
+.text-btn {
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: rgba(58, 39, 25, 0.9);
+  border: 2px solid var(--line-strong);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.skill-mode.on {
+  color: var(--gold);
+}
+
+.skill-mode:not(.on) {
+  background: #6b4a2e;
+  color: #fff3dc;
+}
+
+/* AUTO: 꺼져 있으면 흐리게 */
+.auto-btn {
+  opacity: 0.5;
+  filter: grayscale(0.6);
+}
+
+.auto-btn.on {
+  opacity: 1;
+  filter: drop-shadow(0 0 6px #ffe066);
+}
+
+/* 가로 화면 (스테이지): 왼손 조이스틱, 오른손 스킬 칸 */
+@media (orientation: landscape) {
+  .mode-action .action-bottom {
+    left: auto;
+    right: calc(12px + env(safe-area-inset-right, 0px));
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .mode-action .skill-slots {
+    align-self: auto;
+  }
+
+  /* 콤보는 스킬 칸과 안 겹치게 가운데 위로 */
+  .mode-action .combo {
+    left: 0;
+    right: 0;
+    top: 26%;
+    text-align: center;
+    transform-origin: center;
+  }
+
+  .mode-action .skill-slots {
+    display: grid;
+    grid-template-columns: repeat(4, 54px);
+    gap: 6px;
+  }
+
+  .mode-action .slot {
+    width: 54px;
+  }
+
+  .mode-action .slot-icon {
+    width: 54px;
+    height: 54px;
+  }
+
+  .mode-action .cd-track {
+    width: 50px;
+  }
 }
 
 .slot-icon {

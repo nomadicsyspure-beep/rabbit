@@ -35,7 +35,10 @@ export const treeCooldown = (t: SkillTree) => 1 / (1 + 0.1 * t.spd);
 /** 쿨다운으로 도는 스킬 공통: 다 차면 fire()를 부르고, 쏠 대상이 없으면 기다린다 */
 abstract class SkillWeapon implements Weapon {
   abstract readonly id: string;
+  readonly manual = true;
   protected cd: number;
+  /** 수동 모드에서 눌러 둔 발동 */
+  private pending = false;
 
   constructor(
     protected readonly stats: WeaponStats,
@@ -61,11 +64,19 @@ abstract class SkillWeapon implements Weapon {
   update(engine: Engine, dt: number) {
     this.cd -= dt;
     if (this.cd > 0) return;
-    if (this.fire(engine)) this.cd = this.cooldown;
+    if (!engine.autoSkills && !this.pending) return;
+    if (this.fire(engine)) {
+      this.cd = this.cooldown;
+      this.pending = false;
+    }
   }
 
   ready() {
     return 1 - Math.max(0, this.cd) / this.cooldown;
+  }
+
+  trigger() {
+    this.pending = true;
   }
 
   /** 발동했으면 true (대상이 없으면 false로 다음 프레임에 다시 시도) */

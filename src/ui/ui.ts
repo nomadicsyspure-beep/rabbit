@@ -143,6 +143,9 @@ export class UI {
   private readonly timerEl: HTMLElement;
   private readonly killsEl: HTMLElement;
   private readonly slotsEl: HTMLElement;
+  private readonly autoBtn: HTMLButtonElement;
+  private readonly rotateBtn: HTMLButtonElement;
+  private readonly skillModeBtn: HTMLButtonElement;
   private readonly comboEl: HTMLElement;
   private slots: SlotEl[] = [];
   private slotKey = '';
@@ -211,13 +214,35 @@ export class UI {
     pauseBtn.append(art('pause'));
     pauseBtn.setAttribute('aria-label', '일시정지');
     pauseBtn.addEventListener('click', () => this.game.action.pause());
+    // 자동 이동 (UI 시트의 AUTO 버튼), 가로 모드
+    this.autoBtn = h('button', 'art-btn auto-btn');
+    this.autoBtn.append(art('btn-auto'));
+    this.autoBtn.setAttribute('aria-label', '자동 이동');
+    this.autoBtn.addEventListener('click', () => {
+      this.game.toggleAutoMove();
+      this.toast(this.game.save.autoMove ? '자동 이동 켜짐 (조이스틱을 쓰면 그동안은 직접 조종)' : '자동 이동 꺼짐');
+      this.refreshToggles();
+    });
+    this.rotateBtn = h('button', 'text-btn', '가로');
+    this.rotateBtn.setAttribute('aria-label', '가로 모드');
+    this.rotateBtn.addEventListener('click', () => void this.game.toggleLandscape());
+    const rotateBtn = this.rotateBtn;
     const right = h('div', 'action-right');
-    right.append(kills, pauseBtn);
+    right.append(kills, pauseBtn, rotateBtn, this.autoBtn);
     this.hudAction.append(player, center, right);
+
+    // 하단: 스킬 칸 (수동일 땐 눌러서 발동) + 스킬 자동/수동 전환
+    const bottom = h('div', 'action-bottom');
     this.slotsEl = h('div', 'skill-slots');
+    this.skillModeBtn = h('button', 'text-btn skill-mode');
+    this.skillModeBtn.addEventListener('click', () => {
+      this.game.toggleAutoSkills();
+      this.refreshToggles();
+    });
+    bottom.append(this.slotsEl, this.skillModeBtn);
     this.comboEl = h('div', 'combo');
 
-    this.battle.append(this.hudIdle, this.challengeBtn, this.hudAction, this.slotsEl, this.comboEl);
+    this.battle.append(this.hudIdle, this.challengeBtn, this.hudAction, bottom, this.comboEl);
 
     // ---- 하단 패널 / 탭 ----
     this.panel = h('section', 'panel');
@@ -247,12 +272,31 @@ export class UI {
   setMode(mode: Mode) {
     this.app.classList.toggle('mode-action', mode === 'action');
     this.closeModal();
+    this.refreshToggles();
+  }
+
+  /** 자동 이동 / 스킬 자동 / 가로 버튼 표시 */
+  refreshToggles() {
+    const save = this.game.save;
+    this.rotateBtn.textContent = this.game.landscapeLocked ? '세로' : '가로';
+    this.autoBtn.classList.toggle('on', save.autoMove);
+    this.skillModeBtn.textContent = save.autoSkills ? '스킬 자동' : '스킬 수동';
+    this.skillModeBtn.classList.toggle('on', save.autoSkills);
+    this.app.classList.toggle('manual-skills', !save.autoSkills);
   }
 
   /** 장착 스킬 칸을 만든다 (스테이지가 시작되어 장착 목록이 바뀌면 다시) */
   private buildSlots() {
     this.slots = this.game.action.equipped.map((s) => {
-      const root = h('div', 'slot');
+      const root = h('button', 'slot');
+      // 수동 모드: 누르면 그 스킬을 쓴다 (쿨다운 중이면 준비되는 대로)
+      root.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        if (this.game.engine.autoSkills || !s.weapon.trigger) return;
+        s.weapon.trigger();
+        root.classList.add('pressed');
+        setTimeout(() => root.classList.remove('pressed'), 120);
+      });
       const icon = skillIcon(s.def, 'slot-icon');
       const track = h('div', 'cd-track');
       const zone = h('div', 'cd-zone');

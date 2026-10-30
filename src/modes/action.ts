@@ -83,7 +83,9 @@ export class ActionMode {
     eng.followCamera = true;
     eng.dropGems = true;
     eng.showDamageText = true;
-    eng.controller = this.game.joystick;
+    eng.controller = this.game.pilot;
+    this.game.pilot.enabled = this.game.save.autoMove;
+    eng.autoSkills = this.game.save.autoSkills;
     eng.onKill = (e) => this.onKill(e);
     eng.onGem = (v) => this.onGem(v);
     eng.onPlayerDead = () => {
