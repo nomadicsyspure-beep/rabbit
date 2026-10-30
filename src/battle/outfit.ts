@@ -13,6 +13,11 @@ import { HERO_FOOT, HERO_SIZE, SPRITES, isReady } from './sprites';
 //   무기: <장비id>.png 한 장
 // 그림이 없으면 모자·무기는 아이콘 글자, 등은 코드로 그린 모양으로 대신한다.
 
+/** 모자·등 장비를 몸에 그릴지 (지금은 꺼 둠: 무기만 옆에 둥둥) */
+const SHOW_BODY_GEAR = false;
+/** 무기가 떠 있는 거리(px) */
+const HAND_DIST = 36;
+
 const DIR_NAMES = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'];
 /** 그림이 없는 왼쪽 방향은 오른쪽 그림을 뒤집어 쓴다: 방향 → [그림 방향, 뒤집기] */
 const MIRROR: [number, boolean][] = [[0, false], [1, false], [2, false], [1, true], [0, true], [7, true], [6, false], [7, false]];
@@ -193,8 +198,8 @@ function drawHand(ctx: CanvasRenderingContext2D, eng: Engine, id: string, footY:
   // 좌우를 바꿀 때 순간이동하지 않게 천천히 옮긴다
   const want = p.faceX < -0.2 ? -1 : p.faceX > 0.2 ? 1 : handSide > 0 ? 1 : -1;
   handSide += (want - handSide) * 0.12;
-  const x = p.x + handSide * 22;
-  const y = footY - HERO_SIZE * 0.55 + Math.sin(eng.time * 3) * 3;
+  const x = p.x + handSide * HAND_DIST;
+  const y = footY - HERO_SIZE * 0.7 + Math.sin(eng.time * 3) * 4;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(Math.sin(eng.time * 2) * 0.2 + handSide * 0.3);
@@ -218,14 +223,14 @@ function drawHand(ctx: CanvasRenderingContext2D, eng: Engine, id: string, footY:
 /** 병아리 뒤에 그릴 것 (등 장비, 위를 볼 땐 무기) */
 export function drawOutfitBehind(ctx: CanvasRenderingContext2D, eng: Engine, at: HeroPlace) {
   const { back, hand } = eng.look;
-  if (back && !facingUp(at.dir)) drawBack(ctx, eng, back, at);
+  if (SHOW_BODY_GEAR && back && !facingUp(at.dir)) drawBack(ctx, eng, back, at);
   if (hand && facingUp(at.dir)) drawHand(ctx, eng, hand, at.top + HERO_SIZE * HERO_FOOT);
 }
 
 /** 병아리 앞에 그릴 것 (모자, 위를 볼 땐 등 장비, 무기) */
 export function drawOutfitFront(ctx: CanvasRenderingContext2D, eng: Engine, at: HeroPlace) {
   const { hat, back, hand } = eng.look;
-  if (back && facingUp(at.dir)) drawBack(ctx, eng, back, at);
-  if (hat) drawHat(ctx, hat, at);
+  if (SHOW_BODY_GEAR && back && facingUp(at.dir)) drawBack(ctx, eng, back, at);
+  if (SHOW_BODY_GEAR && hat) drawHat(ctx, hat, at);
   if (hand && !facingUp(at.dir)) drawHand(ctx, eng, hand, at.top + HERO_SIZE * HERO_FOOT);
 }

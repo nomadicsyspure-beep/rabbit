@@ -7,7 +7,7 @@ import {
   type StatId,
 } from '../data/balance';
 import {
-  BRANCHES, EQUIP_SLOTS, SKILLS, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, type SkillDef, type SkillId,
+  BRANCHES, EQUIP_SLOTS, SKILLS, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, SKILL_BY_ID, type SkillDef,
 } from '../data/skills';
 import { DUNGEON_DAILY, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
@@ -45,13 +45,10 @@ interface StatRow {
   btn: HTMLButtonElement;
 }
 
-interface SkillRow {
+interface SkillTile {
   def: SkillDef;
-  card: HTMLElement;
+  root: HTMLElement;
   lv: HTMLElement;
-  desc: HTMLElement;
-  buy: HTMLButtonElement;
-  equip: HTMLButtonElement;
 }
 
 interface SlotEl {
@@ -99,8 +96,11 @@ export class UI implements UIHost {
 
   private readonly tabButtons = new Map<TabId, HTMLButtonElement>();
   private readonly statRows = new Map<StatId, StatRow>();
-  private skillRows: SkillRow[] = [];
+  private skillTiles: SkillTile[] = [];
   private skillHeader: HTMLElement | null = null;
+  /** 스킬 탭 위쪽 장착 중 4칸 (장착이 바뀔 때만 다시 만든다) */
+  private equipBar: HTMLElement | null = null;
+  private equipKey = '';
   private powerEl: HTMLElement | null = null;
   private dungeonRefresh: (() => void) | null = null;
   /** 장비 탭 같은 추가 화면 갱신 */
@@ -287,8 +287,9 @@ export class UI implements UIHost {
     for (const [tid, b] of this.tabButtons) b.classList.toggle('active', tid === id);
     this.panel.replaceChildren();
     this.statRows.clear();
-    this.skillRows = [];
+    this.skillTiles = [];
     this.skillHeader = null;
+    this.equipBar = null;
     this.powerEl = null;
     this.dungeonRefresh = null;
     this.metaRefresh = null;
@@ -346,48 +347,55 @@ export class UI implements UIHost {
     this.panel.append(extra, h('div', 'hint', '버튼을 누르고 있으면 연속 강화 · 전투 화면을 탭하면 추가 피해'));
   }
 
+  /** 스킬 탭: 위에 장착 중 4칸 고정, 아래는 아이콘 격자(5줄)만 스크롤 */
   private buildSkills() {
-    this.skillHeader = h('div', 'summary');
-    this.panel.append(this.skillHeader);
+    const top = h('div', 'skill-top');
+    this.skillHeader = h('div', 'skill-top-title');
+    this.equipBar = h('div', 'equip-slots');
+    top.append(this.skillHeader, this.equipBar);
+    this.equipKey = '';
+    const grid = h('div', 'skill-grid');
     for (const def of SKILLS) {
-      const card = h('div', 'card row skill-row');
-      const icon = skillIcon(def, 'skill-art');
-      const info = h('div', 'info');
-      const name = h('div', 'title', def.name + ' ');
-      const lv = h('span', 'lv');
-      name.append(lv);
-      const desc = h('div', 'sub');
-      info.append(name, desc);
-      const btns = h('div', 'skill-btns');
-      const buy = h('button', 'buy');
-      buy.addEventListener('click', () => {
-        if (this.game.skillTree(def.id)) return this.showTree(def);
-        if (this.game.learnSkill(def.id)) {
-          this.toast(`${def.name} 습득!`);
-          this.refresh();
-        }
-      });
-      const equip = h('button', 'equip');
-      equip.addEventListener('click', () => this.toggleEquip(def.id));
-      btns.append(buy, equip);
-      card.append(icon, info, btns);
-      // 배운 스킬은 카드를 눌러도 트리가 열린다
-      info.addEventListener('click', () => {
-        if (this.game.skillTree(def.id)) this.showTree(def);
-      });
-      this.panel.append(card);
-      this.skillRows.push({ def, card, lv, desc, buy, equip });
+      const root = h('button', 'skill-tile');
+      const lv = h('span', 'tile-lv');
+      root.append(skillIcon(def, 'tile-icon'), lv, h('span', 'tile-name', def.name));
+      root.addEventListener('click', () => this.showSkill(def));
+      grid.append(root);
+      this.skillTiles.push({ def, root, lv });
     }
-    this.panel.append(h('div', 'hint', `스테이지에서는 장착한 스킬(최대 ${EQUIP_SLOTS}개)만 발동해요 · 강화는 계속 유지돼요`));
+    this.panel.append(top, grid, h('div', 'hint', `스킬을 눌러 배우기·강화·장착 · 스테이지에서는 장착한 ${EQUIP_SLOTS}개만 발동해요`));
   }
 
-  /** 스킬 트리 창: 피해 / 발동 속도 / 개수를 따로 강화 */
-  private showTree(def: SkillDef) {
+  /** 스킬 창: 설명, 배우기 또는 가지 강화, 장착·교체 */
+  private showSkill(def: SkillDef) {
     const g = this.game;
     const head = h('div', 'tree-head');
     const title = h('div', 'info');
-    title.append(h('div', 'modal-title', def.name), h('div', 'modal-sub', def.blurb));
+    const summary = h('div', 'modal-sub');
+    title.append(h('div', 'modal-title', def.name), h('div', 'modal-sub', def.blurb), summary);
     head.append(skillIcon(def, 'skill-art'), title);
+    const gold = h('div', 'tree-gold');
+
+    if (!g.skillTree(def.id)) {
+      // 아직 안 배움: 배우기
+      const learn = h('button', 'buy wide');
+      learn.append(coin(fmt(learnPrice(def))), h('small', '', '배우기'));
+      learn.addEventListener('click', () => {
+        if (!g.learnSkill(def.id)) return;
+        this.toast(`${def.name} 습득!`);
+        this.refresh();
+        this.showSkill(def);
+      });
+      this.treeRefresh = () => {
+        gold.replaceChildren(coin(fmt(g.save.gold)));
+        summary.textContent = skillSummary(def, emptyTree());
+        learn.disabled = !g.canLearn(def.id);
+      };
+      this.openModal(head, gold, learn, this.button('닫기', 'primary', () => this.closeModal()));
+      this.treeRefresh();
+      return;
+    }
+
     const rows = BRANCHES.map((br) => {
       const row = h('div', 'tree-row');
       const info = h('div', 'info');
@@ -405,9 +413,42 @@ export class UI implements UIHost {
       row.append(info, btn);
       return { br, row, name, val, cost, btn };
     });
-    const equip = this.button('', '', () => this.toggleEquip(def.id));
+    // 장착: 칸이 남으면 바로, 가득 차면 바꿀 스킬을 고른다
+    const equipBox = h('div', 'equip-box');
+    const renderEquip = () => {
+      const eq = g.save.equipped;
+      if (eq.includes(def.id)) {
+        equipBox.replaceChildren(this.button(`장착 해제 (${eq.length}/${EQUIP_SLOTS})`, '', () => {
+          g.toggleEquip(def.id);
+          this.refresh();
+          renderEquip();
+        }));
+      } else if (eq.length < EQUIP_SLOTS) {
+        equipBox.replaceChildren(this.button(`장착하기 (${eq.length}/${EQUIP_SLOTS})`, 'primary', () => {
+          g.toggleEquip(def.id);
+          this.refresh();
+          renderEquip();
+        }));
+      } else {
+        const pick = h('div', 'equip-slots');
+        for (const id of eq) {
+          const b = h('button', 'equip-slot');
+          b.append(skillIcon(SKILL_BY_ID[id], 'tile-icon'), h('span', 'tile-name', SKILL_BY_ID[id].name));
+          b.addEventListener('click', () => {
+            g.replaceEquip(id, def.id);
+            this.toast(`${SKILL_BY_ID[id].name} → ${def.name} 교체!`);
+            this.refresh();
+            renderEquip();
+          });
+          pick.append(b);
+        }
+        equipBox.replaceChildren(h('div', 'section-title', '장착 칸이 가득: 바꿀 스킬을 누르세요'), pick);
+      }
+    };
+    renderEquip();
     this.treeRefresh = () => {
       const tree = g.skillTree(def.id) ?? emptyTree();
+      summary.textContent = skillSummary(def, tree);
       for (const r of rows) {
         const lv = tree[r.br.id];
         const maxed = lv >= r.br.max;
@@ -419,22 +460,10 @@ export class UI implements UIHost {
         r.cost.replaceChildren(c === null ? document.createTextNode('MAX') : coin(fmt(c)));
         r.btn.disabled = !g.canUpgradeBranch(def.id, r.br.id);
       }
-      const on = g.save.equipped.includes(def.id);
-      equip.textContent = on ? `장착 해제 (${g.save.equipped.length}/${EQUIP_SLOTS})` : `장착하기 (${g.save.equipped.length}/${EQUIP_SLOTS})`;
-    };
-    const gold = h('div', 'tree-gold');
-    const goldRefresh = this.treeRefresh;
-    this.treeRefresh = () => {
-      goldRefresh();
       gold.replaceChildren(coin(fmt(g.save.gold)));
     };
-    this.openModal(head, gold, ...rows.map((r) => r.row), equip, this.button('닫기', 'primary', () => this.closeModal()));
+    this.openModal(head, gold, ...rows.map((r) => r.row), equipBox, this.button('닫기', 'primary', () => this.closeModal()));
     this.treeRefresh();
-  }
-
-  private toggleEquip(id: SkillId) {
-    if (!this.game.toggleEquip(id)) this.toast(`장착 칸(${EQUIP_SLOTS}개)이 가득 찼어요. 하나를 먼저 해제하세요`);
-    this.refresh();
   }
 
   private buildDungeon() {
@@ -586,27 +615,33 @@ export class UI implements UIHost {
 
   private refreshSkills() {
     this.treeRefresh?.();
-    if (!this.skillHeader) return;
+    if (!this.skillHeader || !this.equipBar) return;
     const g = this.game;
     const eq = g.save.equipped;
-    this.skillHeader.textContent = `장착 ${eq.length}/${EQUIP_SLOTS}  ·  배운 스킬을 눌러 피해·속도·개수를 강화해요`;
-    for (const row of this.skillRows) {
-      const id = row.def.id;
-      const tree = g.skillTree(id);
-      row.card.classList.toggle('unlearned', !tree);
-      row.card.classList.toggle('equipped', eq.includes(id));
-      row.lv.textContent = tree ? `Lv ${treeLevel(tree)}` : '미습득';
-      const book = !tree && g.needsBook(id) ? ` · 📕 스킬북 필요 (보유 ${g.save.mats.skillbook ?? 0})` : '';
-      row.desc.textContent = tree ? skillSummary(row.def, tree) : row.def.blurb + book;
-      if (tree) {
-        row.buy.replaceChildren(h('span', '', '스킬 트리'), h('small', '', '강화'));
-        row.buy.disabled = false;
-      } else {
-        row.buy.replaceChildren(coin(fmt(learnPrice(row.def))), h('small', '', '배우기'));
-        row.buy.disabled = !g.canLearn(id);
+    this.skillHeader.textContent = `장착 중 ${eq.length}/${EQUIP_SLOTS} · 아래에서 눌러 강화·교체`;
+    const key = eq.join();
+    if (key !== this.equipKey) {
+      this.equipKey = key;
+      const slots: HTMLElement[] = [];
+      for (let i = 0; i < EQUIP_SLOTS; i++) {
+        const def = eq[i] ? SKILL_BY_ID[eq[i]] : null;
+        const b = h('button', 'equip-slot' + (def ? '' : ' empty'));
+        if (def) {
+          b.append(skillIcon(def, 'tile-icon'), h('span', 'tile-name', def.name));
+          b.addEventListener('click', () => this.showSkill(def));
+        } else {
+          b.append(h('span', 'tile-plus', '+'), h('span', 'tile-name', '빈 칸'));
+        }
+        slots.push(b);
       }
-      row.equip.textContent = eq.includes(id) ? '해제' : '장착';
-      row.equip.disabled = !tree;
+      this.equipBar.replaceChildren(...slots);
+    }
+    for (const t of this.skillTiles) {
+      const tree = g.skillTree(t.def.id);
+      t.root.classList.toggle('unlearned', !tree);
+      t.root.classList.toggle('equipped', eq.includes(t.def.id));
+      t.root.classList.toggle('can-learn', !tree && g.canLearn(t.def.id));
+      t.lv.textContent = tree ? `Lv${treeLevel(tree)}` : '';
     }
   }
 
@@ -751,6 +786,12 @@ export class UI implements UIHost {
     this.openModal(
       h('div', 'modal-title', '설정'),
       h('div', 'modal-sub', `프로토타입 v0.4 · 빌드 ${new Date(__BUILD_TIME__).toLocaleString('ko-KR')}`),
+      this.button(document.fullscreenElement ? '전체 화면 끄기' : '전체 화면', '', () => {
+        if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+        else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => this.toast('전체 화면을 켤 수 없어요'));
+        else this.toast('이 브라우저는 전체 화면을 지원하지 않아요 (공유 → 홈 화면에 추가하면 전체 화면으로 열려요)');
+        this.closeModal();
+      }),
       this.button(g.save.sound ? '소리 끄기' : '소리 켜기', '', () => {
         g.toggleSound();
         this.closeModal();

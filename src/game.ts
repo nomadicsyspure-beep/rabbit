@@ -679,6 +679,15 @@ export class Game {
     return true;
   }
 
+  /** 장착한 스킬 하나를 다른 스킬로 바꾼다 (같은 칸 자리에) */
+  replaceEquip(oldId: SkillId, newId: SkillId) {
+    const eq = this.save.equipped;
+    const i = eq.indexOf(oldId);
+    if (i < 0 || !this.save.skills[newId] || eq.includes(newId)) return false;
+    eq[i] = newId;
+    return true;
+  }
+
   /** 장착/해제. 칸이 가득 차서 못 끼우면 false */
   toggleEquip(id: SkillId): boolean {
     const eq = this.save.equipped;

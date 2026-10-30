@@ -27,6 +27,9 @@ export interface SkillSpec {
   countStep?: number;
 }
 
+/** 스킬 이펙트·범위 크기 배율 (그림 크기와 실제로 맞는 범위를 같이 줄인다) */
+export const FX = 0.7;
+
 /** 전체 쿨다운 배율 (작을수록 자주 쏜다) */
 export const HASTE = 0.55;
 /** 피해 가지 1레벨당 +25% */
@@ -159,7 +162,7 @@ export class TornadoWeapon extends SkillWeapon {
     const spread = Math.min(0.5, (Math.PI * 2) / n);
     for (let i = 0; i < n; i++) {
       const a = base + (i - (n - 1) / 2) * spread;
-      engine.addZone(p.x, p.y, Math.cos(a) * 180, Math.sin(a) * 180, 26, 2, this.power, 'tornado');
+      engine.addZone(p.x, p.y, Math.cos(a) * 180, Math.sin(a) * 180, 26 * FX, 2, this.power, 'tornado');
     }
     return true;
   }
@@ -179,7 +182,7 @@ export class EggWeapon extends SkillWeapon {
     if (near.length === 0) return false;
     for (let i = 0; i < this.count; i++) {
       const t = near[Math.floor(Math.random() * near.length)];
-      engine.lobEgg(p.x, p.y - 10, t.x + (Math.random() - 0.5) * 20, t.y + (Math.random() - 0.5) * 20, 0.4, this.power, 46, 'egg');
+      engine.lobEgg(p.x, p.y - 10, t.x + (Math.random() - 0.5) * 20, t.y + (Math.random() - 0.5) * 20, 0.4, this.power, 46 * FX, 'egg', FX);
     }
     return true;
   }
@@ -196,7 +199,7 @@ export class FlameWeapon extends RepeatWeapon {
 
   protected hit(engine: Engine, i: number) {
     const p = engine.player;
-    const radius = 70 + i * 18;
+    const radius = (70 + i * 18) * FX;
     engine.addSprite('fire-burst', p.x, p.y - 6, radius * 0.75, 0.35);
     engine.addEffect('ring', p.x, p.y, radius, 0.35, '#ff9a3c');
     engine.addShake(3);
@@ -217,8 +220,8 @@ export class IceWeapon extends SkillWeapon {
     const near = engine.nearestEnemies(p.x, p.y, 60, 260);
     if (near.length === 0) return false;
     for (const t of shuffle(near).slice(0, this.count)) {
-      engine.addSprite('ice-crystals', t.x, t.y - 10, 30, 0.45);
-      for (const e of engine.blast(t.x, t.y, 28, this.power, 0)) e.slowT = 1.5;
+      engine.addSprite('ice-crystals', t.x, t.y - 10, 30 * FX, 0.45);
+      for (const e of engine.blast(t.x, t.y, 28 * FX, this.power, 0)) e.slowT = 1.5;
     }
     return true;
   }
@@ -264,7 +267,7 @@ export class FireballWeapon extends SkillWeapon {
     const p = engine.player;
     const targets = engine.nearestEnemies(p.x, p.y, this.count, 320);
     if (targets.length === 0) return false;
-    for (const t of targets) engine.fireProjectile(p.x, p.y - 8, t.x, t.y, 400, this.power, 380, 0, 'fireball', 42);
+    for (const t of targets) engine.fireProjectile(p.x, p.y - 8, t.x, t.y, 400, this.power, 380, 0, 'fireball', 42 * FX);
     return true;
   }
 }
@@ -280,7 +283,7 @@ export class DarkOrbWeapon implements Weapon {
   update(engine: Engine, dt: number) {
     const p = engine.player;
     const n = this.spec.count + this.tree.cnt;
-    const radius = 55 + n * 2;
+    const radius = (55 + n * 2) * FX;
     this.angle += 4.2 * (1 + 0.1 * this.tree.spd) * dt;
     const dmg = this.stats.power * this.spec.dmg * treeDamage(this.tree);
     if (this.nextHit.size > 600) this.nextHit.clear();
@@ -288,7 +291,7 @@ export class DarkOrbWeapon implements Weapon {
     engine.orbs.length = 0;
     for (let i = 0; i < n; i++) {
       const a = this.angle + (i / n) * Math.PI * 2;
-      const orb = { x: p.x + Math.cos(a) * radius, y: p.y + Math.sin(a) * radius, r: 9 };
+      const orb = { x: p.x + Math.cos(a) * radius, y: p.y + Math.sin(a) * radius, r: 9 * FX };
       engine.orbs.push(orb);
       for (const e of engine.queryEnemies(orb.x, orb.y, orb.r)) {
         if ((e.x - orb.x) ** 2 + (e.y - orb.y) ** 2 > (e.r + orb.r) ** 2) continue;
@@ -324,7 +327,7 @@ export class SlashWeapon extends RepeatWeapon {
 
   protected hit(engine: Engine, i: number) {
     const p = engine.player;
-    const r = 85;
+    const r = 85 * FX;
     // 베는 방향을 번갈아 돌려 그린다
     const a = (i * Math.PI) / 2;
     engine.addSprite('slash', p.x + Math.cos(a) * 20, p.y + Math.sin(a) * 20 - 6, r, 0.22);
@@ -352,7 +355,7 @@ export class ChainWeapon extends SkillWeapon {
     for (let i = 0; i <= this.count && cur; i++) {
       hit.add(cur.id);
       engine.addEffect('bolt', fromX, fromY, 0, 0.22, '#9fe4ff', cur.x, cur.y);
-      engine.addSprite('blue-slash', cur.x, cur.y - 6, 16, 0.2);
+      engine.addSprite('blue-slash', cur.x, cur.y - 6, 16 * FX, 0.2);
       fromX = cur.x;
       fromY = cur.y;
       engine.damageEnemy(cur, this.power);
@@ -376,7 +379,7 @@ export class BlackHoleWeapon extends SkillWeapon {
     if (near.length === 0) return false;
     for (let i = 0; i < this.count; i++) {
       const t = near[Math.floor(Math.random() * near.length)];
-      engine.addZone(t.x, t.y, 0, 0, 34, 2.2, this.power * 0.3, 'purple-pit', 160, this.power * 3, 90);
+      engine.addZone(t.x, t.y, 0, 0, 34 * FX, 2.2, this.power * 0.3, 'purple-pit', 160, this.power * 3, 90 * FX);
     }
     return true;
   }
@@ -398,7 +401,7 @@ export class MeteorWeapon extends SkillWeapon {
       const t = near[Math.floor(Math.random() * near.length)];
       // 조금씩 늦게 떨어지게 해서 다다다 터지는 맛
       const delay = 0.45 + i * 0.07;
-      engine.lobEgg(t.x + (Math.random() - 0.5) * 40, t.y + (Math.random() - 0.5) * 40, t.x, t.y, delay, this.power, 50, 'meteor');
+      engine.lobEgg(t.x + (Math.random() - 0.5) * 40, t.y + (Math.random() - 0.5) * 40, t.x, t.y, delay, this.power, 50 * FX, 'meteor', FX);
     }
     return true;
   }
@@ -417,8 +420,8 @@ export class PillarWeapon extends SkillWeapon {
     const near = engine.nearestEnemies(p.x, p.y, 80, 320);
     if (near.length === 0) return false;
     for (const t of shuffle(near).slice(0, this.count)) {
-      engine.addSprite('pillar', t.x, t.y - 34, 34, 0.4);
-      engine.blast(t.x, t.y, 36, this.power, 0);
+      engine.addSprite('pillar', t.x, t.y - 34 * FX, 34 * FX, 0.4);
+      engine.blast(t.x, t.y, 36 * FX, this.power, 0);
     }
     engine.addShake(2);
     return true;

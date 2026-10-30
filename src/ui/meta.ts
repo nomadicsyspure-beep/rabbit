@@ -103,7 +103,7 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
 
 const MONSTER_NAMES: Record<string, string> = {
   slime: '슬라임', sprout: '새싹', mushroom: '버섯', bat: '박쥐', angel: '천사 유령',
-  golem: '돌 골렘', snail: '달팽이 토끼', rabbit: '토끼 전사', devil: '악마 마왕',
+  golem: '돌 골렘', snail: '달팽이 토끼', rabbit: '토끼 전사', devil: '악마 마왕', firstaid: '구급상자',
 };
 
 /** 도감: 잡은 몬스터·만든 장비 하나마다 공격력·체력 +1% */

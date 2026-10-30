@@ -13,7 +13,8 @@ export type EnemyKind = 'normal' | 'fast' | 'tank' | 'boss';
 export type EnemyMove = 'chase' | 'lead' | 'charge' | 'flee';
 
 /** 그릴 때 쓰는 외형(src/assets/monsters). 행동(kind)과 따로 둔다. */
-export type EnemySkin = 'slime' | 'mushroom' | 'sprout' | 'bat' | 'angel' | 'golem' | 'snail' | 'rabbit' | 'devil';
+/** firstaid = 구급상자 몹 (그림 없이 코드로 그린다. 잡으면 체력 회복템) */
+export type EnemySkin = 'slime' | 'mushroom' | 'sprout' | 'bat' | 'angel' | 'golem' | 'snail' | 'rabbit' | 'devil' | 'firstaid';
 
 export interface Enemy {
   id: number;
@@ -139,6 +140,15 @@ export interface Chest {
   /** 나타난 뒤 지난 시간 (통통 튀는 연출) */
   t: number;
   /** 플레이어 쪽으로 끌려오는 중 */
+  pulled: boolean;
+}
+
+/** 체력 회복템 (구급상자 몹이 떨군다). 상자처럼 멀리서도 끌려온다 */
+export interface HealItem {
+  active: boolean;
+  x: number;
+  y: number;
+  t: number;
   pulled: boolean;
 }
 
@@ -342,12 +352,17 @@ const BURST_COLOR: Record<EnemySkin, string[]> = {
   snail: ['#e0b37a', '#8a5a32', '#f6dcb0'],
   rabbit: ['#f2d6c0', '#ffffff', '#c9a48a'],
   devil: ['#8a3fc8', '#c47aff', '#ff5a8a'],
+  firstaid: ['#ffffff', '#ff4d5e', '#f2f2f2'],
 };
+/** 체력 회복템: 회복 비율(최대 체력 대비) */
+const HEAL_ITEM = 0.35;
 /** 출발 속도(목표 속도 대비)와 가속 세기. 0.45 → 0.8까지 약 0.4초 */
-const START_SPEED = 0.45;
-const ACCEL = 2.5;
+const START_SPEED = 0.85;
+const ACCEL = 6;
 /** 화면 흔들림 최대(px) */
 const MAX_SHAKE = 7;
+/** 황금 몹이 도망치기 시작하는 거리(px) */
+const GOLDEN_FLEE_DIST = 170;
 /** 상자를 끌어오는 거리(px). 보석 자석보다 훨씬 넓다 */
 const CHEST_MAGNET = 240;
 
@@ -404,6 +419,7 @@ export class Engine {
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
   }), 300);
   readonly gems = new Pool<Gem>(() => ({ active: false, x: 0, y: 0, value: 1, pulled: false, vacuum: false }), 900);
+  readonly heals = new Pool<HealItem>(() => ({ active: false, x: 0, y: 0, t: 0, pulled: false }), 10);
   readonly chests = new Pool<Chest>(() => ({ active: false, x: 0, y: 0, grade: 0, t: 0, pulled: false }), 12);
   readonly texts = new Pool<FloatText>(() => ({
     active: false, x: 0, y: 0, text: '', life: 0, maxLife: 1, color: '#fff', size: 12,
@@ -442,6 +458,7 @@ export class Engine {
     this.bullets.clear();
     this.gems.clear();
     this.chests.clear();
+    this.heals.clear();
     this.texts.clear();
     this.effects.clear();
     this.particles.clear();
@@ -683,6 +700,42 @@ export class Engine {
     c.pulled = false;
   }
 
+  spawnHeal(x: number, y: number) {
+    const it = this.heals.get();
+    if (!it) return;
+    it.active = true;
+    it.x = x;
+    it.y = y;
+    it.t = 0;
+    it.pulled = false;
+  }
+
+  private updateHeals(dt: number) {
+    const p = this.player;
+    for (const it of this.heals.items) {
+      if (!it.active) continue;
+      it.t += dt;
+      if (p.dead) continue;
+      const dx = p.x - it.x;
+      const dy = p.y - it.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < Math.max(CHEST_MAGNET, p.magnet * 3)) it.pulled = true;
+      if (it.pulled) {
+        const sp = 280 + d * 2;
+        it.x += (dx / d) * Math.min(d, sp * dt);
+        it.y += (dy / d) * Math.min(d, sp * dt);
+      }
+      if (d > p.r + 14) continue;
+      it.active = false;
+      const v = p.maxHp * HEAL_ITEM;
+      p.hp = Math.min(p.maxHp, p.hp + v);
+      this.addText(p.x, p.y - 34, `+${Math.ceil(v)}`, '#6fdc8c', 18);
+      this.addSprite('heal-circle', p.x, p.y + 4, 34, 0.7, true);
+      this.burst(p.x, p.y - 10, 12, ['#7cf2a0', '#ffffff', '#ff6b7a'], 160, 0.5, 0, 3);
+      sfx.levelUp();
+    }
+  }
+
   /** 맵에 떨어진 보석을 전부 끌어온다 */
   vacuumGems() {
     const p = this.player;
@@ -866,6 +919,7 @@ export class Engine {
     this.updateBullets(dt);
     this.updateGems(dt);
     this.updateChests(dt);
+    this.updateHeals(dt);
 
     for (const pt of this.particles.items) {
       if (!pt.active) continue;
@@ -919,13 +973,19 @@ export class Engine {
           continue;
         }
       } else if (e.move === 'flee') {
-        // 황금 몹: 도망치며 흔들린다. 시간이 지나면 사라진다
-        const wob = Math.sin(this.time * 4 + e.phase) * 0.8;
-        const ux = -dx / d - (dy / d) * wob;
-        const uy = -dy / d + (dx / d) * wob;
-        const ul = Math.hypot(ux, uy) || 1;
-        e.x += (ux / ul) * e.speed * slow * dt;
-        e.y += (uy / ul) * e.speed * slow * dt;
+        // 황금 몹: 가까이 오면 도망치고, 멀면 느릿느릿 어슬렁거린다. 시간이 지나면 사라진다
+        if (d < GOLDEN_FLEE_DIST) {
+          const wob = Math.sin(this.time * 4 + e.phase) * 0.8;
+          const ux = -dx / d - (dy / d) * wob;
+          const uy = -dy / d + (dx / d) * wob;
+          const ul = Math.hypot(ux, uy) || 1;
+          e.x += (ux / ul) * e.speed * slow * dt;
+          e.y += (uy / ul) * e.speed * slow * dt;
+        } else {
+          const a = e.phase + this.time * 0.6;
+          e.x += Math.cos(a) * e.speed * 0.3 * dt;
+          e.y += Math.sin(a) * e.speed * 0.3 * dt;
+        }
         if (Math.random() < 0.3) this.trail(e.x, e.y - e.r, ['#ffe066', '#fff6c8'], 0.4, 2.5);
         e.t1 -= dt;
         if (e.t1 <= 0) {
