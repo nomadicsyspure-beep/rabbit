@@ -4,6 +4,12 @@ import { fmt } from '../core/format';
 // 엔진은 "누가 조종하는지"(Controller)와 "적을 어떻게 내보내는지"(모드)를 모른다.
 
 export type EnemyKind = 'normal' | 'fast' | 'tank' | 'boss';
+/**
+ * 움직임: chase = 지그재그로 흔들리며 쫓기 / lead = 가는 방향을 앞질러 막기 /
+ * charge = 정한 방향으로 곧장 돌진하고 사라짐 (dashX·dashY 방향, t1초 뒤)
+ */
+export type EnemyMove = 'chase' | 'lead' | 'charge';
+
 /** 그릴 때 쓰는 외형(src/assets/monsters). 행동(kind)과 따로 둔다. */
 export type EnemySkin = 'slime' | 'mushroom' | 'sprout' | 'bat' | 'angel' | 'golem' | 'snail' | 'rabbit' | 'devil';
 
@@ -26,6 +32,9 @@ export interface Enemy {
   ky: number;
   /** 남은 느려짐 시간 (얼음) */
   slowT: number;
+  move: EnemyMove;
+  /** 지그재그 위상 (몹마다 다르게) */
+  phase: number;
   /** 보스 패턴용 타이머 */
   t1: number;
   t2: number;
@@ -285,7 +294,7 @@ export class Engine {
 
   readonly enemies = new Pool<Enemy>(() => ({
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
-    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
   }), 500);
   readonly projectiles = new Pool<Projectile>(() => ({
     active: false, kind: 'feather', x: 0, y: 0, vx: 0, vy: 0, r: 4, dmg: 1, life: 1, pierce: 0, hit: [], blast: 0, flight: 0,
@@ -345,7 +354,8 @@ export class Engine {
     const e = this.enemies.get();
     if (!e) return null;
     Object.assign(e, {
-      skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+      skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, move: 'chase',
+      phase: Math.random() * Math.PI * 2, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
     }, init);
     e.id = this.nextId++;
     e.active = true;
@@ -678,12 +688,36 @@ export class Engine {
       const dy = p.y - e.y;
       const d = Math.hypot(dx, dy) || 1;
 
+      const slow = e.slowT > 0 ? 0.5 : 1;
       if (e.kind === 'boss') {
         this.updateBoss(e, dx / d, dy / d, dt);
+      } else if (e.move === 'charge') {
+        // 돌진: 플레이어와 상관없이 곧장 지나가고 시간이 다 되면 사라진다
+        e.x += e.dashX * e.speed * slow * dt;
+        e.y += e.dashY * e.speed * slow * dt;
+        e.t1 -= dt;
+        if (e.t1 <= 0) {
+          e.active = false;
+          continue;
+        }
       } else if (!p.dead) {
-        const slow = e.slowT > 0 ? 0.5 : 1;
-        e.x += (dx / d) * e.speed * slow * dt;
-        e.y += (dy / d) * e.speed * slow * dt;
+        let tx = dx;
+        let ty = dy;
+        if (e.move === 'lead') {
+          // 플레이어가 가는 쪽을 앞질러 막는다 (멀수록 더 앞을 노린다)
+          const ahead = Math.min(1.4, d / Math.max(1, e.speed));
+          const sp = p.moving ? p.curSpeed : 0;
+          tx += p.faceX * sp * ahead;
+          ty += p.faceY * sp * ahead;
+        }
+        const td = Math.hypot(tx, ty) || 1;
+        // 옆으로 살짝 흔들리며 다가온다 (가까우면 곧장)
+        const weave = d > 60 ? Math.sin(this.time * 3 + e.phase) * 0.45 : 0;
+        const ux = tx / td - (ty / td) * weave;
+        const uy = ty / td + (tx / td) * weave;
+        const ul = Math.hypot(ux, uy) || 1;
+        e.x += (ux / ul) * e.speed * slow * dt;
+        e.y += (uy / ul) * e.speed * slow * dt;
       }
       e.slowT -= dt;
 

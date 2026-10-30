@@ -5,7 +5,9 @@ import { clearSave, loadSave, writeSave, type SaveData } from './core/save';
 import {
   OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, idleGoldPerSec, xpToNext, type StatId,
 } from './data/balance';
-import { BRANCHES, EQUIP_SLOTS, SKILL_BY_ID, branchCost, emptyTree, type Branch, type SkillId } from './data/skills';
+import {
+  BRANCHES, EQUIP_SLOTS, SKILL_BY_ID, branchCost, emptyTree, learnPrice, type Branch, type SkillId,
+} from './data/skills';
 import { ActionMode } from './modes/action';
 import { IdleMode } from './modes/idle';
 import { UI } from './ui/ui';
@@ -226,13 +228,13 @@ export class Game {
   }
 
   canLearn(id: SkillId) {
-    return !this.save.skills[id] && this.save.gold >= SKILL_BY_ID[id].learnCost;
+    return !this.save.skills[id] && this.save.gold >= learnPrice(SKILL_BY_ID[id]);
   }
 
   /** 배우기. 빈 장착 칸이 있으면 바로 장착한다 */
   learnSkill(id: SkillId): boolean {
     if (!this.canLearn(id)) return false;
-    this.save.gold -= SKILL_BY_ID[id].learnCost;
+    this.save.gold -= learnPrice(SKILL_BY_ID[id]);
     this.save.skills[id] = emptyTree();
     if (this.save.equipped.length < EQUIP_SLOTS) this.save.equipped.push(id);
     return true;
