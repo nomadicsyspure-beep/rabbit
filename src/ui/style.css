@@ -578,7 +578,8 @@ button:disabled {
   background: var(--art-btn-frame) center / 100% 100% no-repeat;
 }
 
-.fx-icon img {
+.fx-icon img,
+.fx-icon canvas {
   width: 72%;
   height: 72%;
   object-fit: contain;
@@ -1547,4 +1548,192 @@ button:disabled {
   font-weight: 800;
   text-align: center;
   opacity: 0.7;
+}
+
+/* 스크롤바는 숨긴다 (스크롤은 그대로 된다) */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- 주요 버튼: 파란 버튼 대신 UI 시트 나무 틀 + 밝은 나무색 ---- */
+.buy,
+.enter,
+.btn.primary,
+.challenge-btn,
+.claim.ready {
+  border: 7px solid transparent;
+  border-image: var(--art-btn-frame) 30 / 7px stretch;
+  border-radius: 0;
+  background: linear-gradient(#f0b766, #c98440) padding-box;
+  color: #fff8e6;
+  text-shadow: 0 1px 0 #6b3a14, 0 0 3px #6b3a14;
+  box-shadow: none;
+}
+
+.buy:disabled,
+.enter:disabled {
+  border-image: var(--art-btn-frame) 30 / 7px stretch;
+  background: linear-gradient(#7a5a3c, #5e4128) padding-box;
+  color: #c9ae8a;
+  text-shadow: none;
+}
+
+.challenge-btn {
+  padding: 6px 16px;
+  font-size: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.challenge-btn.boss {
+  border-image: var(--art-btn-frame) 30 / 7px stretch;
+  background: linear-gradient(#f07a6a, #c2344f) padding-box;
+  box-shadow: 0 4px 14px rgba(194, 52, 79, 0.5);
+}
+
+.btn.primary {
+  height: 48px;
+}
+
+.claim.ready {
+  border-width: 5px;
+  border-image-width: 5px;
+}
+
+/* ---- 스킬 탭: 위에 장착 중 4칸 고정, 아래 아이콘 격자만 스크롤 ---- */
+.skill-top {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex: none;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 2px solid var(--line-strong);
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.4);
+}
+
+.skill-top-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--gold);
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.equip-slots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.equip-slot,
+.skill-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 2px 0;
+  min-width: 0;
+  color: var(--text);
+}
+
+.equip-slot .tile-icon {
+  width: 52px;
+  height: 52px;
+}
+
+.equip-slot.empty .tile-plus {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  color: var(--muted);
+  border: 2px dashed var(--line-strong);
+  border-radius: 10px;
+}
+
+.skill-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px 4px;
+}
+
+.skill-tile .tile-icon {
+  width: 100%;
+  max-width: 58px;
+  aspect-ratio: 1;
+  height: auto;
+}
+
+.tile-name {
+  max-width: 100%;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tile-lv {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  padding: 0 3px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 9px;
+  font-weight: 900;
+  color: var(--gold);
+}
+
+.tile-lv:empty {
+  display: none;
+}
+
+.skill-tile.unlearned .tile-icon {
+  filter: grayscale(0.9) brightness(0.55);
+}
+
+.skill-tile.unlearned .tile-name {
+  color: var(--muted);
+}
+
+.skill-tile.can-learn::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7cf2a0;
+}
+
+.skill-tile.equipped .tile-icon {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+  border-radius: 10px;
+}
+
+.skill-tile.equipped .tile-name {
+  color: var(--gold);
+}
+
+.buy.wide {
+  width: 100%;
+  height: 56px;
+}
+
+.equip-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }

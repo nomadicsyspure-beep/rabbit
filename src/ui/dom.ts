@@ -1,4 +1,5 @@
-import { FX_URLS, UI_URLS } from '../battle/sprites';
+import { FX_URLS, SPRITES, UI_URLS } from '../battle/sprites';
+import { hueRecolor, recolored } from '../battle/tint';
 import type { SkillDef } from '../data/skills';
 
 // DOM 만들기 도우미 (여러 화면이 같이 쓴다)
@@ -30,11 +31,28 @@ export function art(name: string, cls = '') {
 export function skillIcon(def: SkillDef, cls: string): HTMLElement {
   if (!def.icon.startsWith('fx:')) return art(def.icon, cls);
   const box = h('div', cls + ' fx-icon');
-  const img = h('img');
-  img.src = FX_URLS[def.icon.slice(3)] ?? '';
-  img.alt = '';
-  img.draggable = false;
-  box.append(img);
+  const [name, hue] = def.icon.slice(3).split('@');
+  if (!hue) {
+    const img = h('img');
+    img.src = FX_URLS[name] ?? '';
+    img.alt = '';
+    img.draggable = false;
+    box.append(img);
+    return box;
+  }
+  // 색을 바꾼 이펙트 그림: 불러온 뒤 캔버스에 칠해 넣는다
+  const c = h('canvas');
+  const src = SPRITES.fx[name];
+  const paint = () => {
+    if (!src?.naturalWidth) return;
+    const out = recolored(src, hueRecolor(Number(hue)));
+    c.width = out.width;
+    c.height = out.height;
+    c.getContext('2d')!.drawImage(out, 0, 0);
+  };
+  if (src?.complete) paint();
+  else src?.addEventListener('load', paint, { once: true });
+  box.append(c);
   return box;
 }
 

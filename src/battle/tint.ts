@@ -13,6 +13,9 @@ export interface Recolor {
   set?: number;
 }
 
+/** 스킬 그림을 한 가지 색상(도)으로 칠하기 ('sparkle@195' 같은 이름) */
+export const hueRecolor = (hue: number): Recolor => ({ shift: 0, sat: 1.15, light: 1, set: hue });
+
 const cache = new WeakMap<object, Map<string, HTMLCanvasElement>>();
 
 export const recolorKey = (r: Recolor) => `${r.shift}|${r.sat}|${r.light}|${r.window?.join('-') ?? ''}|${r.set ?? ''}`;

@@ -56,6 +56,8 @@ const CHEST_SEC = 12;
 const GOLDEN_RATE = 0.003;
 const GOLDEN_GOLD = 150;
 const GOLDEN_DIAMONDS = 5;
+/** 구급상자 몹: 나올 확률. 단단하고, 잡으면 체력 회복템 */
+const FIRSTAID_RATE = 0.004;
 /** 웨이브 몹(돌진·포위·벽)은 색이 다르고 더 아프다: 피하라는 신호 */
 const CHARGE_DMG = 2.2;
 const RING_DMG = 2;
@@ -471,8 +473,13 @@ export class ActionMode {
     // 가끔 황금 몹: 도망치고, 잡으면 골드 폭죽
     if (kind === 'normal' && Math.random() < GOLDEN_RATE * this.game.goldenBoost) {
       // 크고 단단하고, 부딪히면 아프다. 잡으면 골드·다이아·금 상자
-      this.spawnMob({ kind, skin: skins.normal, x, y, hp: 80 * s, r: 22, speed: 100, dmg: 6 * s, xp: 20, move: 'flee', golden: true, t1: 15 });
+      this.spawnMob({ kind, skin: skins.normal, x, y, hp: 80 * s, r: 22, speed: 60, dmg: 6 * s, xp: 20, move: 'flee', golden: true, t1: 18 });
       this.game.ui.toast('황금 몹이다! 잡아라!');
+      return;
+    }
+    if (kind === 'normal' && Math.random() < FIRSTAID_RATE) {
+      this.spawnMob({ kind: 'tank', skin: 'firstaid', x, y, hp: 70 * s, r: 15, speed: 32, dmg: 2 * s, xp: 10 });
+      this.game.ui.toast('구급상자 몹! 잡으면 체력 회복');
       return;
     }
     switch (kind) {
@@ -631,6 +638,7 @@ export class ActionMode {
     this.lastKillAt = now;
     sfx.kill(this.combo);
     const eng = this.game.engine;
+    if (e.skin === 'firstaid') eng.spawnHeal(e.x, e.y);
     if (e.golden) {
       const gold = enemyGold(this.stage) * GOLDEN_GOLD;
       this.bonusGold += gold;

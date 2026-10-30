@@ -3,8 +3,9 @@ import type { Joystick } from './controllers';
 import { frameAt } from './anim';
 import { CHEST_COLORS } from '../data/items';
 import { HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites';
-import { recolored, type Recolor } from './tint';
+import { hueRecolor, recolored, type Recolor } from './tint';
 import { drawOutfitBehind, drawOutfitFront } from './outfit';
+import { FX } from './weapons';
 import { CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, skinRecolor } from '../data/shop';
 
 type Pic = HTMLImageElement | HTMLCanvasElement;
@@ -14,11 +15,10 @@ const aspect = (img: Pic) => (img instanceof HTMLImageElement ? img.naturalHeigh
 const PET_SIZE = 26;
 /** 몹 색: 황금 몹, 웨이브 몹(돌진 빨강 / 포위 보라 / 벽 남색) */
 const GOLDEN_COLOR: Recolor = { shift: 0, sat: 1.6, light: 1.25, set: 46 };
-const TINT_COLORS: Record<string, Recolor> = {
-  charge: { shift: 0, sat: 1.5, light: 0.95, set: 2 },
-  ring: { shift: 0, sat: 1.3, light: 0.9, set: 285 },
-  wall: { shift: 0, sat: 1.1, light: 0.75, set: 220 },
-};
+/** 웨이브 몹은 몸 색 대신 발밑 원 테두리 색으로 구분한다 */
+const TINT_RINGS: Record<string, string> = { charge: '#ff3b3b', ring: '#b05cff', wall: '#4f8cff' };
+/** 몹 그림 채도를 조금 낮춘다 (눈이 덜 피곤하게) */
+const MOB_COLOR: Recolor = { shift: 0, sat: 0.8, light: 0.97 };
 
 // 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
 
@@ -70,6 +70,18 @@ export class Renderer {
     ctx.translate(-eng.camX + sx, -eng.camY + sy);
 
     this.drawDecorations(eng);
+    // 배경 채도·밝기를 조금 낮춘다 (몹과 이펙트가 더 잘 보이게)
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, eng.viewW, eng.viewH);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, eng.viewW, eng.viewH);
+    ctx.restore();
 
     for (const g of eng.gems.items) {
       if (!g.active) continue;
@@ -125,6 +137,21 @@ export class Renderer {
         ctx.fillStyle = '#c8823a';
         ctx.fillRect(c.x - 12, c.y - 14 - hop, 24, 18);
       }
+    }
+
+    // 체력 회복템: 초록 빛 위에 하트 십자가 둥실
+    const healImg = SPRITES.fx['heal-cross'];
+    for (const it of eng.heals.items) {
+      if (!it.active) continue;
+      const bob = Math.sin(it.t * 5) * 3;
+      const g = ctx.createRadialGradient(it.x, it.y - 8, 2, it.x, it.y - 8, 22);
+      g.addColorStop(0, 'rgba(124,242,160,0.7)');
+      g.addColorStop(1, 'rgba(124,242,160,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(it.x, it.y - 8, 22, 0, Math.PI * 2);
+      ctx.fill();
+      if (isReady(healImg)) ctx.drawImage(healImg, it.x - 12, it.y - 20 + bob, 24, 24 * aspect(healImg));
     }
 
     // 그림자
@@ -312,18 +339,22 @@ export class Renderer {
       ctx.arc(e.x, e.y - e.r * 0.5, r, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (e.tint === 'charge') {
-      // 돌진 몹: 발밑에 빨간 경고 빛
+    if (e.tint) {
+      // 돌진(빨강)·포위(보라)·벽(파랑) 몹: 발밑에 색 원 테두리
       const ctx = this.ctx;
-      ctx.fillStyle = `rgba(255,40,40,${0.25 + 0.15 * Math.sin(eng.time * 20 + e.id)})`;
+      ctx.strokeStyle = TINT_RINGS[e.tint];
+      ctx.globalAlpha = 0.75 + 0.25 * Math.sin(eng.time * 12 + e.id);
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(e.x, e.y + e.r * 0.8, e.r * 1.4, e.r * 0.55, 0, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.ellipse(e.x, e.y + e.r * 0.85, e.r * 1.2, e.r * 0.45, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
-    if (anim) {
+    if (e.skin === 'firstaid') {
+      this.drawFirstAid(eng, e);
+    } else if (anim) {
       const frame = frameAt(anim, eng.time * 1000 + e.id * 97);
-      const color = e.golden ? GOLDEN_COLOR : e.tint ? TINT_COLORS[e.tint] : null;
-      const img = color ? recolored(frame, color) : frame;
+      const img = recolored(frame, e.golden ? GOLDEN_COLOR : MOB_COLOR);
       const flip = FACES_RIGHT.has(e.skin) && eng.player.x < e.x;
       // 맞으면 옆으로 퍼지고 납작해졌다가 돌아온다
       const hit = Math.max(0, e.flash) / 0.1;
@@ -334,12 +365,41 @@ export class Renderer {
     } else {
       this.drawEnemyShape(eng, e);
     }
-    const top = anim ? e.y + e.r - size * 0.85 : e.y - e.r;
-    const showBar = !eng.followCamera || ((e.kind === 'tank' || e.golden) && e.hp < e.maxHp);
+    const top = anim && e.skin !== 'firstaid' ? e.y + e.r - size * 0.85 : e.y - e.r * 1.3;
+    const showBar = !eng.followCamera || ((e.kind === 'tank' || e.golden) && e.hp < e.maxHp) || e.skin === 'firstaid';
     if (showBar && e.kind !== 'boss') {
       const bw = Math.max(18, e.r * 2);
       this.bar(e.x - bw / 2, top - 6, bw, 3, e.hp / e.maxHp, '#ff5c6c');
     }
+  }
+
+  /** 구급상자 몹: 흰 상자에 빨간 십자, 통통 튄다 */
+  private drawFirstAid(eng: Engine, e: Enemy) {
+    const ctx = this.ctx;
+    const hop = Math.abs(Math.sin(eng.time * 5 + e.id)) * 4;
+    const w = e.r * 2;
+    const h = e.r * 1.6;
+    const x = e.x - w / 2;
+    const y = e.y + e.r - h - hop;
+    ctx.save();
+    // 손잡이
+    ctx.strokeStyle = '#3a1d0b';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(e.x - w * 0.2, y - h * 0.22, w * 0.4, h * 0.3, 3);
+    ctx.stroke();
+    ctx.fillStyle = e.flash > 0 ? '#ffd6d6' : '#f6f6f2';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 5);
+    ctx.fill();
+    ctx.stroke();
+    // 빨간 십자
+    ctx.fillStyle = '#e8333f';
+    const c = Math.min(w, h) * 0.22;
+    ctx.fillRect(e.x - c / 2, y + h / 2 - c * 1.5, c, c * 3);
+    ctx.fillRect(e.x - c * 1.5, y + h / 2 - c / 2, c * 3, c);
+    ctx.restore();
   }
 
   private drawEnemyShape(eng: Engine, e: Enemy) {
@@ -453,11 +513,13 @@ export class Renderer {
     return this.chickColor ? recolored(frame, this.chickColor) : frame;
   }
 
-  /** 스킬 이펙트 그림 (꾸미기 색 적용). 아직 못 불러왔으면 null */
+  /** 스킬 이펙트 그림 (이름@색상이면 그 색으로, 그 위에 꾸미기 색). 아직 못 불러왔으면 null */
   private fx(name: string): Pic | null {
-    const img = SPRITES.fx[name];
+    const [base, hue] = name.split('@');
+    const img = SPRITES.fx[base];
     if (!isReady(img)) return null;
-    return this.fxColor ? recolored(img, this.fxColor) : img;
+    const own = hue ? recolored(img, hueRecolor(Number(hue))) : img;
+    return this.fxColor ? recolored(own, this.fxColor) : own;
   }
 
   /** 동료: 작은 몬스터가 둥실둥실 떠서 따라온다 */
@@ -541,7 +603,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(fx, fy);
       ctx.rotate(Math.atan2(260, -90) + Math.PI);
-      const w = 40;
+      const w = 40 * FX;
       const h = w * aspect(img);
       ctx.drawImage(img, -w * 0.3, -h / 2, w, h);
       ctx.restore();
@@ -595,7 +657,7 @@ export class Renderer {
     if (pr.kind === 'feather') {
       // 깃털 그림은 끝이 위를 향한다
       ctx.rotate(angle + Math.PI / 2);
-      const h = 22;
+      const h = 22 * FX;
       const w = h / aspect(img);
       ctx.drawImage(img, -w / 2, -h / 2, w, h);
     } else if (pr.kind !== 'fireball') {
@@ -607,7 +669,7 @@ export class Renderer {
     } else {
       // 화염구 그림은 왼쪽으로 날아가는 모양
       ctx.rotate(angle + Math.PI);
-      const w = 30;
+      const w = 30 * FX;
       const h = w * aspect(img);
       ctx.drawImage(img, -w * 0.3, -h / 2, w, h);
     }
