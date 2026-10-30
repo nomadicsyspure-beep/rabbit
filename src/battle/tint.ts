@@ -14,11 +14,22 @@ export interface Recolor {
 }
 
 /** 스킬 그림을 한 가지 색상(도)으로 칠하기 ('sparkle@195' 같은 이름) */
-export const hueRecolor = (hue: number): Recolor => ({ shift: 0, sat: 1.15, light: 1, set: hue });
+const hues = new Map<number, Recolor>();
+export function hueRecolor(hue: number): Recolor {
+  let r = hues.get(hue);
+  if (!r) hues.set(hue, (r = { shift: 0, sat: 1.15, light: 1, set: hue }));
+  return r;
+}
 
 const cache = new WeakMap<object, Map<string, HTMLCanvasElement>>();
 
-export const recolorKey = (r: Recolor) => `${r.shift}|${r.sat}|${r.light}|${r.window?.join('-') ?? ''}|${r.set ?? ''}`;
+const keys = new WeakMap<Recolor, string>();
+/** 색 묶음의 캐시 이름 (같은 묶음 객체는 한 번만 만든다: 몹마다 매 프레임 부르니까) */
+export function recolorKey(r: Recolor) {
+  let k = keys.get(r);
+  if (k === undefined) keys.set(r, (k = `${r.shift}|${r.sat}|${r.light}|${r.window?.join('-') ?? ''}|${r.set ?? ''}`));
+  return k;
+}
 
 /** 다시 칠한 그림 (원본이 아직 안 불러졌으면 원본 그대로) */
 export function recolored(src: HTMLCanvasElement | HTMLImageElement, r: Recolor): HTMLCanvasElement | HTMLImageElement {

@@ -17,6 +17,25 @@ const PET_SIZE = 26;
 const GOLDEN_COLOR: Recolor = { shift: 0, sat: 1.6, light: 1.25, set: 46 };
 /** 웨이브 몹은 몸 색 대신 발밑 원 테두리 색으로 구분한다 */
 const TINT_RINGS: Record<string, string> = { charge: '#ff3b3b', ring: '#b05cff', wall: '#4f8cff' };
+/** 떠오르는 글자 글꼴 (크기별로 미리 만들어 둔다) */
+const FONTS: Record<number, string> = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [i, `900 ${i}px system-ui, sans-serif`]));
+
+/** 바닥 장식(돌·잎)도 바닥처럼 톤 다운 */
+const DECO_COLOR: Recolor = { shift: 0, sat: 0.75, light: 0.94 };
+
+/** 바닥 무늬 칸을 한 번만 톤 다운: 채도 25% 낮추고 6% 어둡게 */
+function toneDown(g: CanvasRenderingContext2D, w: number, h: number) {
+  g.globalCompositeOperation = 'saturation';
+  g.globalAlpha = 0.25;
+  g.fillStyle = '#808080';
+  g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'source-over';
+  g.globalAlpha = 0.06;
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, w, h);
+  g.globalAlpha = 1;
+}
+
 /** 몹은 어두운 톤 (채도·밝기를 낮춰서 밝은 병아리가 눈에 띄게) */
 const MOB_COLOR: Recolor = { shift: 0, sat: 0.7, light: 0.62 };
 /** 병아리는 조금 더 쨍하게 */
@@ -72,18 +91,6 @@ export class Renderer {
     ctx.translate(-eng.camX + sx, -eng.camY + sy);
 
     this.drawDecorations(eng);
-    // 배경 채도·밝기를 조금 낮춘다 (몹과 이펙트가 더 잘 보이게)
-    ctx.save();
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.globalCompositeOperation = 'saturation';
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = '#808080';
-    ctx.fillRect(0, 0, eng.viewW, eng.viewH);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.06;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, eng.viewW, eng.viewH);
-    ctx.restore();
 
     for (const g of eng.gems.items) {
       if (!g.active) continue;
@@ -157,13 +164,16 @@ export class Renderer {
     }
 
     // 그림자
+    // 몹 그림자: 경로 하나에 모아서 한 번에 칠한다 (몹이 몰리면 수백 번 칠하던 것)
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
     for (const e of eng.enemies.items) {
       if (!e.active) continue;
-      ctx.beginPath();
-      ctx.ellipse(e.x, e.y + e.r * 0.9, e.r * 0.9, e.r * 0.35, 0, 0, Math.PI * 2);
-      ctx.fill();
+      const cy = e.y + e.r * 0.9;
+      ctx.moveTo(e.x + e.r * 0.9, cy);
+      ctx.ellipse(e.x, cy, e.r * 0.9, e.r * 0.35, 0, 0, Math.PI * 2);
     }
+    ctx.fill();
 
     for (const z of eng.zones.items) if (z.active) this.drawZone(eng, z);
     for (const e of eng.enemies.items) if (e.active) this.drawEnemy(eng, e);
@@ -221,15 +231,18 @@ export class Renderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = '#3a1d0b';
+    // 글꼴 문자열은 바뀔 때만 넣는다 (매번 넣으면 해석 비용이 크다)
+    let font = '';
     for (const t of eng.texts.items) {
       if (!t.active) continue;
       const k = t.life / t.maxLife;
       ctx.globalAlpha = Math.min(1, k * 2);
       // 처음 잠깐 크게 튀어나왔다가 원래 크기로
       const pop = k > 0.8 ? 1 + (k - 0.8) * 3 : 1;
-      ctx.font = `900 ${Math.round(t.size * pop)}px system-ui, sans-serif`;
-      ctx.lineWidth = 3.5;
-      ctx.strokeStyle = '#3a1d0b';
+      const f = FONTS[Math.round(t.size * pop)] ?? `900 ${Math.round(t.size * pop)}px system-ui, sans-serif`;
+      if (f !== font) ctx.font = font = f;
       ctx.strokeText(t.text, t.x, t.y);
       ctx.fillStyle = t.color;
       ctx.fillText(t.text, t.x, t.y);
@@ -320,6 +333,8 @@ export class Renderer {
     };
     for (let i = 0; i < 26; i++) blob(rnd() * size, rnd() * size, 18 + rnd() * 34, rnd() < 0.5 ? colors[1] : colors[2]);
     for (let i = 0; i < 140; i++) blob(rnd() * size, rnd() * size, 1 + rnd() * 2.2, rnd() < 0.5 ? colors[3] : colors[4]);
+    // 바닥 채도·밝기를 조금 낮춘다 (몹과 이펙트가 더 잘 보이게). 예전엔 매 프레임 화면 전체에 합성해서 폰에서 무거웠다
+    toneDown(g, size, size);
     return this.ctx.createPattern(c, 'repeat');
   }
 
@@ -337,12 +352,14 @@ export class Renderer {
       for (let cy = y0; cy <= y1; cy++) {
         const hsh = hash(cx, cy);
         if (hsh % 100 >= 45) continue;
-        const img = imgs[(hsh >>> 8) % imgs.length];
-        if (!isReady(img)) continue;
+        const src = imgs[(hsh >>> 8) % imgs.length];
+        if (!isReady(src)) continue;
+        // 바닥처럼 톤을 낮춘 그림 (한 번 만들어 두고 다시 쓴다)
+        const img = recolored(src, DECO_COLOR);
         const x = cx * DECO_CELL + ((hsh >>> 12) % DECO_CELL);
         const y = cy * DECO_CELL + ((hsh >>> 20) % DECO_CELL);
         const s = 14 + ((hsh >>> 4) % 10);
-        ctx.drawImage(img, x - s / 2, y - s / 2, s, (s * img.naturalHeight) / img.naturalWidth);
+        ctx.drawImage(img, x - s / 2, y - s / 2, s, (s * src.naturalHeight) / src.naturalWidth);
       }
     }
     ctx.globalAlpha = 1;
@@ -352,6 +369,10 @@ export class Renderer {
   /** 발이 (x, footY)에 닿게 스프라이트를 그린다. flash > 0이면 하얗게 번쩍인다. */
   private drawSprite(img: CanvasImageSource, x: number, footY: number, width: number, height: number, flip: boolean, flash: number) {
     const ctx = this.ctx;
+    if (!flip && flash <= 0) {
+      ctx.drawImage(img, x - width / 2, footY - height, width, height);
+      return;
+    }
     ctx.save();
     ctx.translate(x, footY);
     if (flip) ctx.scale(-1, 1);
@@ -367,7 +388,9 @@ export class Renderer {
   private drawEnemy(eng: Engine, e: Enemy) {
     // 그 몹 그림이 아직 없으면 슬라임(또는 불러진 아무 몹) 그림으로 대신한다
     // 그림이름@색상 = 색 바꾼 몹 (레이드 보스·졸개)
-    const [skin, hue] = e.skin.split('@');
+    const at = e.skin.indexOf('@');
+    const skin = at < 0 ? e.skin : e.skin.slice(0, at);
+    const hue = at < 0 ? '' : e.skin.slice(at + 1);
     const anim = SPRITES.monsters[skin] ?? SPRITES.monsters.slime ?? Object.values(SPRITES.monsters)[0];
     const size = e.r * ENEMY_SPRITE_SCALE;
     if (e.golden) {

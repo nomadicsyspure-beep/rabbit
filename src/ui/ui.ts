@@ -21,6 +21,19 @@ import { ICONS } from './icons';
 import { skillPreview } from './preview';
 import { Tutorial } from './tutorial';
 
+/** 매 프레임 바뀌는 화면 값: 진짜 바뀔 때만 DOM에 쓴다 (같은 값을 계속 쓰면 폰에서 스타일 계산이 쌓인다) */
+const lastStyle = new WeakMap<HTMLElement, Record<string, string>>();
+function setStyle(el: HTMLElement, prop: 'width' | 'transform' | 'opacity', v: string) {
+  let m = lastStyle.get(el);
+  if (!m) lastStyle.set(el, (m = {}));
+  if (m[prop] === v) return;
+  m[prop] = v;
+  el.style[prop] = v;
+}
+function setText(el: HTMLElement, v: string) {
+  if (el.textContent !== v) el.textContent = v;
+}
+
 /** 자동 진행: 결과 화면에서 이만큼(초) 기다린 뒤 다음 스테이지 */
 const AUTO_NEXT_SEC = 3;
 
@@ -705,17 +718,17 @@ export class UI implements UIHost {
     const a = this.game.action;
     const feverOn = a.fever > 0;
     this.app.classList.toggle('fever-on', feverOn);
-    this.feverFill.style.width = `${Math.min(1, feverOn ? a.fever / FEVER_SEC : a.feverProgress) * 100}%`;
+    setStyle(this.feverFill, 'width', `${(Math.min(1, feverOn ? a.fever / FEVER_SEC : a.feverProgress) * 100).toFixed(1)}%`);
     // 콤보: 처치할 때마다 크게 튀었다가 줄어들고, 끊기기 직전엔 흐려진다
     const since = this.game.engine.time - a.lastKillAt;
     if (a.combo >= 5 && since <= a.comboSec) {
       const pop = 1 + 0.35 * Math.max(0, 1 - since / 0.15);
-      this.comboEl.textContent = `${a.combo} COMBO`;
-      this.comboEl.style.transform = `scale(${pop.toFixed(3)})`;
-      this.comboEl.style.opacity = String(Math.min(1, (a.comboSec - since) / 0.5));
+      setText(this.comboEl, `${a.combo} COMBO`);
+      setStyle(this.comboEl, 'transform', `scale(${pop.toFixed(2)})`);
+      setStyle(this.comboEl, 'opacity', Math.min(1, (a.comboSec - since) / 0.5).toFixed(2));
       this.comboEl.classList.toggle('hot', a.combo >= 100);
     } else {
-      this.comboEl.style.opacity = '0';
+      setStyle(this.comboEl, 'opacity', '0');
     }
     const eq = a.equipped;
     const key = eq.map((s) => s.def.id).join();
@@ -725,7 +738,7 @@ export class UI implements UIHost {
     }
     for (let i = 0; i < this.slots.length; i++) {
       const ready = eq[i]?.weapon.ready?.() ?? 1;
-      this.slots[i].fill.style.width = `${Math.max(0, Math.min(1, ready)) * 100}%`;
+      setStyle(this.slots[i].fill, 'width', `${(Math.max(0, Math.min(1, ready)) * 100).toFixed(0)}%`);
       this.slots[i].root.classList.toggle('ready', ready >= 1);
     }
   }
@@ -770,19 +783,19 @@ export class UI implements UIHost {
       const a = g.action;
       const p = g.engine.player;
       const hp = Math.max(0, p.hp / p.maxHp);
-      this.hpLost.style.width = `${(1 - hp) * 100}%`;
-      this.hpText.textContent = `${Math.ceil(Math.max(0, p.hp))} / ${Math.ceil(p.maxHp)}`;
-      this.lvEl.textContent = `Lv.${save.level}`;
-      this.xpFill.style.width = `${Math.min(1, save.xp / xpToNext(save.level)) * 100}%`;
+      setStyle(this.hpLost, 'width', `${((1 - hp) * 100).toFixed(1)}%`);
+      setText(this.hpText, `${Math.ceil(Math.max(0, p.hp))} / ${Math.ceil(p.maxHp)}`);
+      setText(this.lvEl, `Lv.${save.level}`);
+      setStyle(this.xpFill, 'width', `${(Math.min(1, save.xp / xpToNext(save.level)) * 100).toFixed(1)}%`);
       if (a.kind === 'stage') {
-        this.plateEl.textContent = `STAGE ${a.stage}`;
-        this.timerEl.textContent = a.bossSpawned ? (a.isBossStage ? '마왕!' : '정예!') : fmtTime(a.duration - a.time);
+        setText(this.plateEl, `STAGE ${a.stage}`);
+        setText(this.timerEl, a.bossSpawned ? (a.isBossStage ? '마왕!' : '정예!') : fmtTime(a.duration - a.time));
       } else {
-        this.plateEl.textContent = { material: '재료 던전', raid: '보스 레이드', infinite: '무한 모드' }[a.kind];
-        this.timerEl.textContent = fmtTime(a.kind === 'infinite' ? a.time : Math.max(0, a.duration - a.time));
+        setText(this.plateEl, { material: '재료 던전', raid: '보스 레이드', infinite: '무한 모드' }[a.kind]);
+        setText(this.timerEl, fmtTime(a.kind === 'infinite' ? a.time : Math.max(0, a.duration - a.time)));
       }
       this.timerEl.classList.toggle('boss', a.bossSpawned);
-      this.killsEl.textContent = String(a.kills);
+      setText(this.killsEl, String(a.kills));
     }
   }
 

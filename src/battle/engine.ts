@@ -299,14 +299,23 @@ export interface Weapon {
 
 export class Pool<T extends { active: boolean }> {
   readonly items: T[] = [];
+  /** 다음에 빈칸을 찾기 시작할 자리 (매번 처음부터 훑지 않게) */
+  private cursor = 0;
   constructor(
     private readonly make: () => T,
     private readonly max: number,
   ) {}
 
   get(): T | null {
-    for (const it of this.items) if (!it.active) return it;
-    if (this.items.length >= this.max) return null;
+    const n = this.items.length;
+    for (let k = 0; k < n; k++) {
+      const i = (this.cursor + k) % n;
+      if (!this.items[i].active) {
+        this.cursor = (i + 1) % n;
+        return this.items[i];
+      }
+    }
+    if (n >= this.max) return null;
     const it = this.make();
     this.items.push(it);
     return it;
@@ -447,14 +456,14 @@ export class Engine {
   readonly chests = new Pool<Chest>(() => ({ active: false, x: 0, y: 0, grade: 0, t: 0, pulled: false }), 12);
   readonly texts = new Pool<FloatText>(() => ({
     active: false, x: 0, y: 0, text: '', life: 0, maxLife: 1, color: '#fff', size: 12,
-  }), 160);
+  }), 70);
   readonly effects = new Pool<Effect>(() => ({
     active: false, kind: 'ring', x: 0, y: 0, x2: 0, y2: 0, r: 0, life: 0, maxLife: 1, color: '#fff', sprite: '', follow: false,
   }), 500);
 
   readonly particles = new Pool<Particle>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 2, color: '#fff', grav: 0,
-  }), 900);
+  }), 360);
   readonly orbs: Orb[] = [];
   pets: Pet[] = [];
   /** 버프: 남은 시간 t, 값 v */
