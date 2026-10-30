@@ -1,7 +1,7 @@
 import { enemyColor, type Effect, type Engine, type Enemy, type Projectile, type Zone } from './engine';
 import type { Joystick } from './controllers';
 import { frameAt } from './anim';
-import { CHEST_COLORS } from '../data/items';
+import { CHEST_COLORS, CHEST_ICONS } from '../data/items';
 import { HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites';
 import { hueRecolor, recolored, type Recolor } from './tint';
 import { drawOutfitBehind, drawOutfitFront } from './outfit';
@@ -116,9 +116,9 @@ export class Renderer {
     }
 
     // 보물 상자: 빛나는 고리 위에서 통통 튄다
-    const chest = SPRITES.ui.chest;
     for (const c of eng.chests.items) {
       if (!c.active) continue;
+      const chest = SPRITES.icons[CHEST_ICONS[c.grade]] ?? SPRITES.ui.chest;
       const glow = 0.5 + 0.5 * Math.sin(c.t * 6);
       // 등급 색 고리 (나무 갈색 / 은 / 금)
       ctx.strokeStyle = CHEST_COLORS[c.grade];
@@ -139,8 +139,8 @@ export class Renderer {
       }
     }
 
-    // 체력 회복템: 초록 빛 위에 하트 십자가 둥실
-    const healImg = SPRITES.fx['heal-cross'];
+    // 체력 회복템: 초록 빛 위에 하트 물약이 둥실
+    const healImg = SPRITES.icons.potion_heart ?? SPRITES.fx['heal-cross'];
     for (const it of eng.heals.items) {
       if (!it.active) continue;
       const bob = Math.sin(it.t * 5) * 3;
@@ -151,7 +151,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(it.x, it.y - 8, 22, 0, Math.PI * 2);
       ctx.fill();
-      if (isReady(healImg)) ctx.drawImage(healImg, it.x - 12, it.y - 20 + bob, 24, 24 * aspect(healImg));
+      if (isReady(healImg)) ctx.drawImage(healImg, it.x - 11, it.y - 26 + bob, 22, 22 * aspect(healImg));
     }
 
     // 그림자
@@ -238,7 +238,51 @@ export class Renderer {
     const boss = eng.boss;
     if (eng.fog > 0) this.drawFog(eng, -eng.camX + eng.player.x, -eng.camY + eng.player.y);
     if (boss && eng.followCamera) this.drawBossBar(eng, boss);
+    if (eng.followCamera) this.drawOffscreenArrows(eng);
     if (joystick?.active) this.drawJoystick(joystick);
+  }
+
+  /** 화면 밖 정예(빨강)·황금 몹(금색)·구급상자 몹(초록)을 화면 테두리 화살표로 가리킨다 */
+  private drawOffscreenArrows(eng: Engine) {
+    const ctx = this.ctx;
+    const w = eng.viewW;
+    const h = eng.viewH;
+    const pad = 22;
+    for (const e of eng.enemies.items) {
+      if (!e.active) continue;
+      const color = e.golden ? '#ffd23f' : e.elite ? '#ff3b3b' : e.skin === 'firstaid' ? '#6fdc8c' : null;
+      if (!color) continue;
+      const sx = e.x - eng.camX;
+      const sy = e.y - eng.camY;
+      if (sx > -e.r && sx < w + e.r && sy > -e.r && sy < h + e.r) continue;
+      // 화면 가운데에서 몹 쪽으로 그은 선이 테두리와 만나는 곳
+      const cx = w / 2;
+      const cy = h / 2;
+      const dx = sx - cx;
+      const dy = sy - cy;
+      const k = Math.min((w / 2 - pad) / Math.abs(dx || 1e-6), (h / 2 - pad) / Math.abs(dy || 1e-6));
+      const ax = cx + dx * k;
+      const ay = cy + dy * k;
+      const a = Math.atan2(dy, dx);
+      const pulse = 1 + 0.15 * Math.sin(eng.time * 8);
+      ctx.save();
+      ctx.translate(ax, ay);
+      ctx.rotate(a);
+      ctx.scale(pulse, pulse);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = '#3a1d0b';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(13, 0);
+      ctx.lineTo(-8, -10);
+      ctx.lineTo(-4, 0);
+      ctx.lineTo(-8, 10);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   private drawBackground(eng: Engine) {
@@ -283,9 +327,10 @@ export class Renderer {
     return this.ctx.createPattern(c, 'repeat');
   }
 
-  /** 칸마다 정해진 자리에 돌·잎을 놓는다 (같은 칸은 항상 같은 장식) */
+  /** 칸마다 정해진 자리에 돌·잎과 지역 장식(나무·바위·묘비 등)을 놓는다 (같은 칸은 항상 같은 장식) */
   private drawDecorations(eng: Engine) {
     const imgs = SPRITES.ground;
+    const deco = eng.deco.map((n) => SPRITES.deco[n]).filter(isReady);
     if (imgs.length === 0) return;
     const ctx = this.ctx;
     const x0 = Math.floor(eng.camX / DECO_CELL) - 1;
@@ -296,11 +341,21 @@ export class Renderer {
     for (let cx = x0; cx <= x1; cx++) {
       for (let cy = y0; cy <= y1; cy++) {
         const hsh = hash(cx, cy);
-        if (hsh % 100 >= 45) continue;
-        const img = imgs[(hsh >>> 8) % imgs.length];
-        if (!isReady(img)) continue;
+        const roll = hsh % 100;
+        if (roll >= 45) continue;
         const x = cx * DECO_CELL + ((hsh >>> 12) % DECO_CELL);
         const y = cy * DECO_CELL + ((hsh >>> 20) % DECO_CELL);
+        if (roll < 14 && deco.length > 0) {
+          // 지역 장식: 원래 크기의 0.4~0.55배, 발이 칸 자리에 오게
+          const img = deco[(hsh >>> 8) % deco.length];
+          const k = 0.4 + ((hsh >>> 4) % 16) / 100;
+          const w = img.naturalWidth * k;
+          const h = img.naturalHeight * k;
+          ctx.drawImage(img, x - w / 2, y - h, w, h);
+          continue;
+        }
+        const img = imgs[(hsh >>> 8) % imgs.length];
+        if (!isReady(img)) continue;
         const s = 14 + ((hsh >>> 4) % 10);
         ctx.drawImage(img, x - s / 2, y - s / 2, s, (s * img.naturalHeight) / img.naturalWidth);
       }
@@ -358,14 +413,23 @@ export class Renderer {
       const flip = FACES_RIGHT.has(e.skin) && eng.player.x < e.x;
       // 맞으면 옆으로 퍼지고 납작해졌다가 돌아온다
       const hit = Math.max(0, e.flash) / 0.1;
-      const sx = 1 + 0.18 * hit;
-      const sy = 1 - 0.15 * hit;
+      let sx = 1 + 0.18 * hit;
+      let sy = 1 - 0.15 * hit;
+      let s = size;
+      if (SPRITES.still.has(e.skin)) {
+        // 한 장짜리 그림: 여백 없이 꽉 차 있어서 조금 작게, 걷는 대신 통통 튄다
+        s *= 0.78;
+        const bob = Math.sin(eng.time * 11 + e.id * 1.7);
+        sx *= 1 + 0.05 * bob;
+        sy *= 1 - 0.07 * bob;
+      }
       // 칸 아래쪽에 1px 여백이 있다
-      this.drawSprite(img, e.x, e.y + e.r + 1, size * sx, size * sy, flip, e.flash);
+      this.drawSprite(img, e.x, e.y + e.r + 1, s * sx, s * sy, flip, e.flash);
     } else {
       this.drawEnemyShape(eng, e);
     }
     const top = anim && e.skin !== 'firstaid' ? e.y + e.r - size * 0.85 : e.y - e.r * 1.3;
+    this.drawStatus(eng, e, top);
     const showBar = !eng.followCamera || ((e.kind === 'tank' || e.golden) && e.hp < e.maxHp) || e.skin === 'firstaid';
     if (showBar && e.kind !== 'boss') {
       const bw = Math.max(18, e.r * 2);
@@ -505,7 +569,74 @@ export class Renderer {
     }
     drawOutfitFront(ctx, eng, at);
     ctx.restore();
+    this.drawBuffs(eng, footY);
     this.bar(p.x - 15, p.y + p.r + 5, 30, 4, p.hp / p.maxHp, '#6fdc8c');
+  }
+
+  /** 버프 표시 (보호막 방울, 분노·신속 등 빛 고리) + 머리 위 감정 표현 */
+  private drawBuffs(eng: Engine, footY: number) {
+    const ctx = this.ctx;
+    const p = eng.player;
+    const cy = footY - HERO_SIZE * 0.45;
+    if (eng.shieldHp > 0) {
+      ctx.globalAlpha = 0.35 + 0.1 * Math.sin(eng.time * 6);
+      ctx.fillStyle = '#9fe4ff';
+      ctx.beginPath();
+      ctx.arc(p.x, cy, 30, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = '#e8fbff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    // 버프마다 색 고리 하나씩 (안쪽부터)
+    const rings: [number, string][] = [
+      [eng.buffOn('rage'), '#ff4d4d'], [eng.buffOn('haste'), '#ffd23f'], [eng.buffOn('sprint'), '#7cf2a0'],
+      [eng.buffOn('thorns'), '#c78bff'], [eng.buffOn('luck'), '#ffb347'], [eng.buffOn('invuln'), '#ffffff'],
+    ];
+    let r = 22;
+    for (const [on, color] of rings) {
+      if (on <= 0) continue;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.7;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(p.x, footY - 2, r, r * 0.38, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      r += 4;
+    }
+    ctx.globalAlpha = 1;
+    if (eng.emote) {
+      const img = SPRITES.icons[`emote-${eng.emote.name}`];
+      if (isReady(img)) {
+        const pop = Math.min(1, (1.2 - eng.emote.t) * 8 + 0.3);
+        const s = 20 * pop;
+        ctx.drawImage(img, p.x + 8, footY - HERO_SIZE - s * 0.9, s, s * aspect(img));
+      }
+    }
+  }
+
+  /** 몹 디버프 표시: 기절 별, 표식, 저주 해골, 지속 피해 연기, 취약 보라 고리 */
+  private drawStatus(eng: Engine, e: Enemy, top: number) {
+    const ctx = this.ctx;
+    if (e.weakT > 0) {
+      ctx.strokeStyle = '#b05cff';
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y + e.r * 0.85, e.r * 1.05, e.r * 0.4, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (e.dotT > 0 && Math.random() < 0.25) eng.burst(e.x, e.y - e.r, 1, e.dotSpread ? ['#9be36a', '#6fbf4a'] : ['#ff7a2a', '#ffd166'], 30, 0.4, -60, 2.5);
+    const icon = e.stunT > 0 ? 'star' : e.markT > 0 ? 'target-red' : e.curseT > 0 ? 'skull_purple' : e.fearT > 0 ? 'emote-alert' : e.confuseT > 0 ? 'emote-dizzy' : '';
+    if (!icon) return;
+    const img = SPRITES.icons[icon];
+    if (!isReady(img)) return;
+    const s = 12;
+    const spin = e.stunT > 0 ? Math.sin(eng.time * 10) * 4 : 0;
+    ctx.drawImage(img, e.x - s / 2 + spin, top - 18, s, s * aspect(img));
   }
 
   /** 꾸미기 색을 입힌 병아리 프레임 */

@@ -9,7 +9,8 @@ import {
 import { PETS, PET_MAX, RARITY_COLORS, RARITY_NAMES, petEffectText } from '../data/pets';
 import { CHICK_SKINS, FX_SKINS, skinPrice, summonCost, type SkinDef } from '../data/shop';
 import type { Game } from '../game';
-import { h } from './dom';
+import { ICON_URLS } from '../battle/sprites';
+import { chip, h, icon } from './dom';
 import type { UIHost } from './meta';
 
 // 동료 탭, 상점 탭, 미션 창(일일·출석·업적·패스).
@@ -34,7 +35,7 @@ function diamondBar(game: Game) {
   const bar = h('div', 'wallet');
   const refresh = () => {
     const s = game.save;
-    const chips = [h('span', 'chip', `💎 ${fmt(s.diamonds)}`)];
+    const chips = [chip('diamond', fmt(s.diamonds))];
     if (s.tickets.pet > 0) chips.push(h('span', 'chip', `🐾 소환권 ${s.tickets.pet}`));
     if (s.tickets.gear > 0) chips.push(h('span', 'chip', `🎟️ 장비 소환권 ${s.tickets.gear}`));
     bar.replaceChildren(...chips);
@@ -53,7 +54,10 @@ function showSummon(game: Game, host: UIHost, kind: 'pet' | 'gear', n: 1 | 10) {
       card.style.setProperty('--rar', RARITY_COLORS[r.def.rarity]);
       card.append(monsterPic(r.def.skin, 40));
     } else {
-      card.append(h('div', 'summon-emoji', r.def.icon));
+      const pic = h('div', 'summon-emoji');
+      if (ICON_URLS[`gear-${r.def.id}`]) pic.append(icon(`gear-${r.def.id}`));
+      else pic.textContent = r.def.icon;
+      card.append(pic);
     }
     card.append(h('div', 'summon-name', r.def.name), h('div', 'summon-text', r.text));
     card.style.animationDelay = `${i * 0.08}s`;
