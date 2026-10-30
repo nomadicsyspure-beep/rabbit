@@ -8,7 +8,7 @@ import {
   BRANCHES, EQUIP_SLOTS, SKILLS, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, type SkillDef, type SkillId,
 } from '../data/skills';
 import type { Game, Mode } from '../game';
-import { COMBO_SEC, FEVER_NEED, FEVER_SEC, type RunResult } from '../modes/action';
+import { COMBO_SEC, FEVER_SEC, type RunResult } from '../modes/action';
 import { ICONS } from './icons';
 
 type TabId = 'growth' | 'skill' | 'gear' | 'pets' | 'dungeon' | 'shop';
@@ -531,7 +531,7 @@ export class UI {
     const a = this.game.action;
     const feverOn = a.fever > 0;
     this.app.classList.toggle('fever-on', feverOn);
-    this.feverFill.style.width = `${Math.min(1, feverOn ? a.fever / FEVER_SEC : a.feverGauge / FEVER_NEED) * 100}%`;
+    this.feverFill.style.width = `${Math.min(1, feverOn ? a.fever / FEVER_SEC : a.feverProgress) * 100}%`;
     // 콤보: 처치할 때마다 크게 튀었다가 줄어들고, 끊기기 직전엔 흐려진다
     const since = this.game.engine.time - a.lastKillAt;
     if (a.combo >= 5 && since <= COMBO_SEC) {

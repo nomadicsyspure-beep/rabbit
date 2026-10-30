@@ -1,4 +1,4 @@
-import type { Enemy, EnemyKind, Weapon } from '../battle/engine';
+import type { Enemy, EnemyKind, Engine, Weapon } from '../battle/engine';
 import type { SkillTree, WeaponStats } from '../battle/weapons';
 import { fmt } from '../core/format';
 import {
@@ -8,19 +8,24 @@ import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
-// 일반 스테이지: 90초 버티면 정예 몬스터 / 보스 스테이지(10단위): 180초 버티면 마왕 보스
-const NORMAL_SECONDS = 90;
-const BOSS_STAGE_SECONDS = 180;
+// 스테이지는 1분: 일반 스테이지는 60초 버티면 정예 몬스터 / 보스 스테이지(10단위)는 마왕 보스
+const NORMAL_SECONDS = 60;
+const BOSS_STAGE_SECONDS = 60;
 const BASE_POWER = 10;
 const BASE_HP = 150;
 const BASE_SPEED = 165;
 const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
-const ELITE_HP = 900;
-const BOSS_HP = 2600;
-/** 피버: 게이지(처치 수)가 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
-export const FEVER_NEED = 220;
-export const FEVER_SEC = 8;
+const ELITE_HP = 1200;
+const BOSS_HP = 3400;
+/** 일반 몹 난이도 배율 (체력 / 부딪힐 때 피해) */
+const MOB_HP = 1.25;
+const MOB_DMG = 1.1;
+/** 몹 수·구성이 최대로 짙어지기까지 걸리는 시간(초) */
+const RAMP_SEC = 90;
+/** 피버: 콤보 FEVER_NEED마다 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
+export const FEVER_NEED = 500;
+export const FEVER_SEC = 10;
 const FEVER_BONUS = 5;
 const FEVER_SPAWN = 2.5;
 const FEVER_MOVE = 1.7;
@@ -101,9 +106,17 @@ export class ActionMode {
   private chestT = 0;
   /** 보물 상자로 번 골드 (결과에 더한다) */
   private bonusGold = 0;
-  /** 피버 남은 시간 / 피버 게이지(처치 수) / 피버 중 처치 수 (골드 2배) */
+  /** 피버 남은 시간 / 피버 중 처치 수 (골드 2배) */
   fever = 0;
-  feverGauge = 0;
+  /** 다음 피버가 터지는 콤보 수 */
+  nextFeverAt = FEVER_NEED;
+
+  /** 피버 게이지 0~1: 지금 콤보가 다음 피버까지 얼마나 찼나 (콤보가 끊겼으면 0) */
+  get feverProgress() {
+    const alive = this.game.engine.time - this.lastKillAt <= COMBO_SEC;
+    if (!alive) return 0;
+    return Math.max(0, Math.min(1, 1 - (this.nextFeverAt - this.combo) / FEVER_NEED));
+  }
   private feverKills = 0;
 
   constructor(private readonly game: Game) {}
@@ -152,7 +165,7 @@ export class ActionMode {
     this.kills = 0;
     this.feverKills = 0;
     this.fever = 0;
-    this.feverGauge = 0;
+    this.nextFeverAt = FEVER_NEED;
     this.combo = 0;
     this.bestCombo = 0;
     this.lastKillAt = -1;
@@ -201,7 +214,7 @@ export class ActionMode {
     const peak = this.isBossStage ? 18 : 14;
     // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
-    const rate = (this.bossSpawned ? 6 : 8 + (this.time / this.duration) * peak) * crowd * (this.fever > 0 ? FEVER_SPAWN : 1);
+    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * (this.fever > 0 ? FEVER_SPAWN : 1);
 
     if (this.fever > 0) {
       this.fever -= dt;
@@ -261,13 +274,18 @@ export class ActionMode {
     this.recycleFarEnemies();
   }
 
+  /** 몹이 짙어지는 정도 0~1 (스테이지 길이와 상관없이 RAMP_SEC초에 걸쳐) */
+  private get ramp() {
+    return Math.min(1, this.time / RAMP_SEC);
+  }
+
   private get diag() {
     const eng = this.game.engine;
     return Math.hypot(eng.viewW, eng.viewH);
   }
 
   private pickKind(): EnemyKind {
-    const k = this.time / this.duration;
+    const k = this.ramp;
     const r = Math.random();
     const tankW = k > 0.33 ? 0.15 + (k - 0.33) * 0.3 : 0;
     const fastW = k > 0.14 ? 0.25 : 0;
@@ -298,20 +316,19 @@ export class ActionMode {
   }
 
   private spawnOne(kind: EnemyKind, angle?: number) {
-    const eng = this.game.engine;
     const { x, y } = this.spawnPos(angle);
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.stage);
     switch (kind) {
       case 'normal':
-        eng.spawnEnemy({ kind, skin: skins.normal, x, y, hp: 5 * s, r: 11, speed: 62, dmg: 3 * s, xp: 1 });
+        this.spawnMob({ kind, skin: skins.normal, x, y, hp: 5 * s, r: 11, speed: 62, dmg: 3 * s, xp: 1 });
         break;
       case 'fast':
         // 빠른 몹은 가는 길목을 앞질러 막는다
-        eng.spawnEnemy({ kind, skin: skins.fast, x, y, hp: 4 * s, r: 10, speed: 115, dmg: 3 * s, xp: 1, move: 'lead' });
+        this.spawnMob({ kind, skin: skins.fast, x, y, hp: 4 * s, r: 10, speed: 115, dmg: 3 * s, xp: 1, move: 'lead' });
         break;
       case 'tank':
-        eng.spawnEnemy({ kind, skin: skins.tank, x, y, hp: 24 * s, r: 14, speed: 40, dmg: 7 * s, xp: 3 });
+        this.spawnMob({ kind, skin: skins.tank, x, y, hp: 24 * s, r: 14, speed: 40, dmg: 7 * s, xp: 3 });
         break;
       case 'boss':
         break;
@@ -329,7 +346,7 @@ export class ActionMode {
     const n = 8 + streak * 4;
     for (let i = 0; i < n; i++) {
       const off = (i - (n - 1) / 2) * 18;
-      eng.spawnEnemy({
+      this.spawnMob({
         kind: 'fast', skin: skins.fast,
         x: p.x + Math.cos(h) * (d + (i % 3) * 20) - Math.sin(h) * off,
         y: p.y + Math.sin(h) * (d + (i % 3) * 20) + Math.cos(h) * off,
@@ -344,7 +361,7 @@ export class ActionMode {
     const p = eng.player;
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.stage);
-    const crowd = 1 + Math.min(1, this.time / this.duration);
+    const crowd = 1 + this.ramp;
     const h = this.heading ?? Math.random() * Math.PI * 2;
     switch (wave) {
       case 'ring': {
@@ -354,7 +371,7 @@ export class ActionMode {
         const gap = Math.random() * Math.PI * 2;
         for (let i = 0; i < n; i++) {
           const a = gap + 0.5 + (i / n) * (Math.PI * 2 - 1);
-          eng.spawnEnemy({
+          this.spawnMob({
             kind: 'normal', skin: skins.normal, x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r,
             hp: 5 * s, r: 11, speed: 70, dmg: 3 * s, xp: 1,
           });
@@ -374,7 +391,7 @@ export class ActionMode {
           // 줄을 가는 방향 쪽으로 조금 밀어서 앞길을 쓸고 지나가게
           const cx = p.x + Math.cos(side) * startD + Math.cos(h) * (along + 60);
           const cy = p.y + Math.sin(side) * startD + Math.sin(h) * (along + 60);
-          eng.spawnEnemy({
+          this.spawnMob({
             kind: 'fast', skin: skins.fast, x: cx, y: cy, hp: 4 * s, r: 10, speed: 230, dmg: 5 * s, xp: 1,
             move: 'charge', dashX: dirX, dashY: dirY, t1: (startD * 2 + 80) / 230,
           });
@@ -397,7 +414,7 @@ export class ActionMode {
             const dd = d + row * 34;
             const tank = row % 2 === 0 && i % 3 === 1;
             const fast = row % 2 === 1;
-            eng.spawnEnemy({
+            this.spawnMob({
               kind: tank ? 'tank' : fast ? 'fast' : 'normal',
               skin: tank ? skins.tank : fast ? skins.fast : skins.normal,
               x: p.x + fx * dd - fy * off, y: p.y + fy * dd + fx * off,
@@ -410,6 +427,11 @@ export class ActionMode {
         break;
       }
     }
+  }
+
+  /** 일반 몹 생성: 난이도 배율(MOB_HP, MOB_DMG)을 곱한다 */
+  private spawnMob(init: Parameters<Engine['spawnEnemy']>[0]) {
+    return this.game.engine.spawnEnemy({ ...init, hp: init.hp * MOB_HP, dmg: (init.dmg ?? 1) * MOB_DMG });
   }
 
   private spawnBoss() {
@@ -442,15 +464,17 @@ export class ActionMode {
 
   private onKill(e: Enemy) {
     this.kills++;
-    if (this.fever > 0) {
-      this.feverKills++;
-    } else if (++this.feverGauge >= FEVER_NEED) {
-      this.startFever();
-    }
+    if (this.fever > 0) this.feverKills++;
     const now = this.game.engine.time;
     this.combo = now - this.lastKillAt <= COMBO_SEC ? this.combo + 1 : 1;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.lastKillAt = now;
+    // 콤보 FEVER_NEED마다 피버 (500, 1000, ...). 콤보가 끊기면 처음부터
+    if (this.combo === 1) this.nextFeverAt = FEVER_NEED;
+    if (this.combo >= this.nextFeverAt) {
+      this.nextFeverAt += FEVER_NEED;
+      if (this.fever <= 0) this.startFever();
+    }
     if (e.kind === 'boss') this.finish(true);
   }
 
@@ -475,7 +499,6 @@ export class ActionMode {
 
   private endFever() {
     this.fever = 0;
-    this.feverGauge = 0;
     this.game.engine.fever = 0;
     this.game.engine.player.speed /= FEVER_MOVE;
     for (const s of this.equipped) {
