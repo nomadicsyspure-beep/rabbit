@@ -29,6 +29,7 @@ export class IdleMode {
     eng.dropGems = false;
     eng.showDamageText = true;
     eng.controller = this.controller;
+    eng.autoSkills = true;
     eng.weapons = [new FeatherWeapon(this.stats, SKILL_BY_ID.feather, emptyTree(), FEATHER_RANGE)];
     eng.onKill = null;
     eng.onGem = null;

@@ -1,4 +1,4 @@
-import { Joystick } from './battle/controllers';
+import { AutoPilot, Joystick } from './battle/controllers';
 import { Engine } from './battle/engine';
 import { Renderer } from './battle/renderer';
 import { clearSave, loadSave, writeSave, type SaveData } from './core/save';
@@ -18,6 +18,8 @@ export type Mode = 'idle' | 'action';
 export class Game {
   readonly engine = new Engine();
   readonly joystick = new Joystick();
+  /** 스테이지 조종: 자동 이동이 켜져 있으면 손을 뗐을 때 알아서 움직인다 */
+  readonly pilot = new AutoPilot(this.joystick);
   readonly save: SaveData = loadSave();
   readonly idle = new IdleMode(this);
   readonly action = new ActionMode(this);
@@ -29,6 +31,8 @@ export class Game {
   private last = 0;
   private saveT = 0;
   private resetting = false;
+  /** 가로 모드 버튼으로 가로 고정 중인지 */
+  landscapeLocked = false;
 
   constructor(root: HTMLElement) {
     this.ui = new UI(this, root);
@@ -111,6 +115,7 @@ export class Game {
   }
 
   enterIdle() {
+    this.exitLandscape();
     this.mode = 'idle';
     this.ui.setMode('idle');
     this.resize();
@@ -137,6 +142,54 @@ export class Game {
     this.save.levels[id]++;
     this.idle.refreshStats();
     return true;
+  }
+
+  // ---- 스테이지 설정 ----
+
+  toggleAutoMove() {
+    this.save.autoMove = !this.save.autoMove;
+    this.pilot.enabled = this.save.autoMove;
+  }
+
+  toggleAutoSkills() {
+    this.save.autoSkills = !this.save.autoSkills;
+    this.engine.autoSkills = this.save.autoSkills;
+  }
+
+  /** 지금 화면이 가로로 넓은지 (두 손 조작 배치) */
+  get isLandscape() {
+    return this.engine.viewW > this.engine.viewH;
+  }
+
+  /**
+   * 가로 모드: 전체 화면 + 가로 고정을 요청한다 (안드로이드 크롬 등).
+   * 아이폰처럼 고정을 못 하는 곳은 폰을 직접 돌리면 같은 배치가 된다.
+   */
+  async toggleLandscape() {
+    if (this.landscapeLocked) return this.exitLandscape();
+    try {
+      await document.documentElement.requestFullscreen?.();
+      const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+      if (!o?.lock) throw new Error('no lock');
+      await o.lock('landscape');
+      this.landscapeLocked = true;
+      this.ui.refreshToggles();
+    } catch {
+      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+      this.ui.toast('폰을 가로로 돌려 주세요 (자동 회전 켜기)');
+    }
+  }
+
+  exitLandscape() {
+    if (!this.landscapeLocked) return;
+    this.landscapeLocked = false;
+    this.ui.refreshToggles();
+    try {
+      screen.orientation?.unlock?.();
+    } catch {
+      // 무시
+    }
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   }
 
   // ---- 캐릭터 레벨 ----
@@ -234,6 +287,8 @@ export class Game {
       if (this.mode === 'idle') {
         this.idle.tap(x, y);
       } else if (this.action.running) {
+        // 가로 화면은 두 손 조작: 왼쪽 절반만 조이스틱 (오른손은 스킬 칸)
+        if (this.isLandscape && x > this.engine.viewW / 2) return;
         c.setPointerCapture(e.pointerId);
         this.joystick.down(e.pointerId, x, y);
       }

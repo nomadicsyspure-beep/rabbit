@@ -51,6 +51,72 @@ export class AutoController implements Controller {
 }
 
 /**
+ * 스테이지 자동 이동: 조이스틱을 만지면 그쪽이 먼저, 손을 떼면 알아서 움직인다.
+ * 가까운 몹은 피하고, 경험치 보석을 주우며, 아무것도 없으면 크게 원을 그리며 돈다.
+ */
+export class AutoPilot implements Controller {
+  enabled = false;
+  private vx = 1;
+  private vy = 0;
+  private lastTime = 0;
+
+  constructor(private readonly joystick: Joystick) {}
+
+  getMove(engine: Engine): Vec {
+    const m = this.joystick.getMove();
+    if (!this.enabled || m.x || m.y) return m;
+    const dt = Math.min(0.05, Math.max(0, engine.time - this.lastTime));
+    this.lastTime = engine.time;
+    const p = engine.player;
+
+    // 몹에게서 멀어지는 힘 (가까울수록 세게)
+    let ax = 0;
+    let ay = 0;
+    for (const e of engine.enemies.items) {
+      if (!e.active) continue;
+      const dx = p.x - e.x;
+      const dy = p.y - e.y;
+      const d2 = dx * dx + dy * dy;
+      const reach = e.kind === 'boss' ? 200 : 110;
+      if (d2 > reach * reach || d2 < 1) continue;
+      const d = Math.sqrt(d2);
+      const w = ((reach - d) / reach) * (e.kind === 'boss' ? 4 : 1);
+      ax += (dx / d) * w;
+      ay += (dy / d) * w;
+    }
+    // 가까운 보석 쪽으로
+    let best = 260 * 260;
+    let gx = 0;
+    let gy = 0;
+    for (const g of engine.gems.items) {
+      if (!g.active || g.pulled) continue;
+      const d2 = (g.x - p.x) ** 2 + (g.y - p.y) ** 2;
+      if (d2 < best) {
+        best = d2;
+        gx = g.x - p.x;
+        gy = g.y - p.y;
+      }
+    }
+    const gd = Math.hypot(gx, gy);
+    if (gd > 0) {
+      ax += (gx / gd) * 0.8;
+      ay += (gy / gd) * 0.8;
+    }
+    // 할 일이 없으면 지금 방향에서 조금씩 꺾으며 원을 그린다
+    if (Math.hypot(ax, ay) < 0.2) {
+      ax += -this.vy * 0.6 + this.vx;
+      ay += this.vx * 0.6 + this.vy;
+    }
+    const k = 1 - Math.exp(-6 * dt);
+    const len = Math.hypot(ax, ay) || 1;
+    this.vx += (ax / len - this.vx) * k;
+    this.vy += (ay / len - this.vy) * k;
+    const vl = Math.hypot(this.vx, this.vy) || 1;
+    return { x: this.vx / vl, y: this.vy / vl };
+  }
+}
+
+/**
  * 플로팅 조이스틱: 화면 아무 데나 누르면 그 자리에 생기고, 떼면 사라진다.
  * 한 손가락만 추적한다.
  */

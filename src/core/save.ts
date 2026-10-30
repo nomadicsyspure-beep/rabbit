@@ -19,6 +19,9 @@ export interface SaveData {
   skills: Partial<Record<SkillId, SkillTree>>;
   /** 장착한 스킬 (최대 EQUIP_SLOTS개). 스테이지에서는 이것만 발동한다 */
   equipped: SkillId[];
+  /** 스테이지 설정: 자동 이동 / 스킬 자동 발동 (끄면 스킬 칸을 눌러 쓴다) */
+  autoMove: boolean;
+  autoSkills: boolean;
 }
 
 export function newSave(): SaveData {
@@ -33,6 +36,8 @@ export function newSave(): SaveData {
     xp: 0,
     skills: { feather: emptyTree() },
     equipped: ['feather'],
+    autoMove: false,
+    autoSkills: true,
   };
 }
 
@@ -73,6 +78,8 @@ export function loadSave(): SaveData {
       xp: data.xp ?? 0,
       skills,
       equipped,
+      autoMove: data.autoMove ?? base.autoMove,
+      autoSkills: data.autoSkills ?? base.autoSkills,
     };
   } catch {
     return newSave();
