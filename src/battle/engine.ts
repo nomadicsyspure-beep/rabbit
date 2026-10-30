@@ -48,6 +48,22 @@ export interface Enemy {
   step: number;
   /** 웨이브 몹 색 (돌진·포위·벽) */
   tint: EnemyTint;
+  /** 정예·마왕 (화면 밖에 있으면 빨간 화살표로 알려 준다) */
+  elite: boolean;
+  /** 디버프 남은 시간: 기절(멈춤) / 공포(도망) / 혼란(갈팡질팡) / 취약(받는 피해 ×1.5) / 표식(치명타 확정) */
+  stunT: number;
+  fearT: number;
+  confuseT: number;
+  weakT: number;
+  markT: number;
+  /** 지속 피해 (화상·독·동상): 남은 시간, 초당 피해, 다음 틱까지, 쓰러지면 옆으로 옮는지 */
+  dotT: number;
+  dotDps: number;
+  dotTick: number;
+  dotSpread: boolean;
+  /** 저주: 걸린 채 쓰러지면 이 피해로 폭발 */
+  curseT: number;
+  curseDmg: number;
   /** 보스 패턴용 타이머 */
   t1: number;
   t2: number;
@@ -142,6 +158,10 @@ export interface Chest {
   /** 플레이어 쪽으로 끌려오는 중 */
   pulled: boolean;
 }
+
+/** 버프 스킬 효과: 분노(피해) / 신속(스킬 쿨) / 질주(이동) / 가시(부딪힌 적에게 피해) / 재생 / 행운(치명타) / 자석 / 무적 */
+export type BuffId = 'rage' | 'haste' | 'sprint' | 'thorns' | 'regen' | 'luck' | 'magnet' | 'invuln';
+export const BUFF_IDS: BuffId[] = ['rage', 'haste', 'sprint', 'thorns', 'regen', 'luck', 'magnet', 'invuln'];
 
 /** 체력 회복템 (구급상자 몹이 떨군다). 상자처럼 멀리서도 끌려온다 */
 export interface HealItem {
@@ -404,7 +424,8 @@ export class Engine {
 
   readonly enemies = new Pool<Enemy>(() => ({
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
-    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, bomb: false, raid: false, step: 0, tint: '',
+    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, bomb: false, raid: false, step: 0, tint: '', elite: false,
+    stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
     t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
   }), 500);
   readonly projectiles = new Pool<Projectile>(() => ({
@@ -433,6 +454,11 @@ export class Engine {
   }), 900);
   readonly orbs: Orb[] = [];
   pet: Pet | null = null;
+  /** 버프: 남은 시간 t, 값 v */
+  readonly buffs = Object.fromEntries(BUFF_IDS.map((id) => [id, { t: 0, v: 0 }])) as Record<BuffId, { t: number; v: number }>;
+  /** 보호막: 남은 흡수량 / 남은 시간 */
+  shieldHp = 0;
+  shieldT = 0;
   readonly hazards: Hazard[] = [];
   /** 몸에 보이는 장비 id (모자 / 등 / 옆에 둥둥 뜨는 무기). 없으면 '' */
   look = { hat: '', back: '', hand: '' };
@@ -464,6 +490,9 @@ export class Engine {
     this.particles.clear();
     this.orbs.length = 0;
     this.hazards.length = 0;
+    for (const id of BUFF_IDS) this.buffs[id].t = 0;
+    this.shieldHp = 0;
+    this.shieldT = 0;
     this.weapons = [];
     this.time = 0;
     this.shake = 0;
@@ -483,7 +512,8 @@ export class Engine {
     if (!e) return null;
     Object.assign(e, {
       skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, move: 'chase',
-      phase: Math.random() * Math.PI * 2, golden: false, bomb: false, raid: false, step: 0, tint: '', t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+      phase: Math.random() * Math.PI * 2, golden: false, bomb: false, raid: false, step: 0, tint: '', elite: false, stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
+      t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
     }, init);
     e.id = this.nextId++;
     e.active = true;
@@ -525,9 +555,41 @@ export class Engine {
     return out;
   }
 
+  /** 버프 걸기 (더 긴 시간 / 더 큰 값으로) */
+  buff(id: BuffId, t: number, v: number) {
+    const b = this.buffs[id];
+    b.v = Math.max(b.t > 0 ? b.v : 0, v);
+    b.t = Math.max(b.t, t);
+  }
+
+  buffOn(id: BuffId) {
+    return this.buffs[id].t > 0 ? this.buffs[id].v : 0;
+  }
+
+  /** 스킬 쿨다운이 줄어드는 속도 (신속 버프) */
+  get skillHaste() {
+    return 1 + this.buffOn('haste');
+  }
+
+  /** 보호막 (이만큼 피해를 먼저 흡수) */
+  addShield(amount: number, t: number) {
+    this.shieldHp = Math.max(this.shieldHp, amount);
+    this.shieldT = Math.max(this.shieldT, t);
+  }
+
+  /** 지속 피해 걸기 (더 센 쪽으로) */
+  addDot(e: Enemy, dps: number, t: number, spread = false) {
+    if (dps >= e.dotDps || e.dotT <= 0) e.dotDps = dps;
+    e.dotT = Math.max(e.dotT, t);
+    e.dotSpread = e.dotSpread || spread;
+  }
+
   damageEnemy(e: Enemy, dmg: number, kx = 0, ky = 0) {
     if (!e.active) return;
-    const crit = Math.random() < this.critChance;
+    // 분노 버프, 취약 디버프
+    dmg *= 1 + this.buffOn('rage');
+    if (e.weakT > 0) dmg *= 1.5;
+    const crit = e.markT > 0 || Math.random() < this.critChance + this.buffOn('luck');
     if (crit) dmg *= CRIT_MUL;
     e.hp -= dmg;
     e.flash = 0.1;
@@ -568,6 +630,15 @@ export class Engine {
 
   private killEnemy(e: Enemy) {
     e.active = false;
+    if (e.curseT > 0) {
+      // 저주: 보라색으로 터져 옆 몹까지
+      this.addSprite('purple-burst', e.x, e.y - 6, 40, 0.35);
+      this.blast(e.x, e.y, 50, e.curseDmg, 80);
+    }
+    if (e.dotT > 0 && e.dotSpread) {
+      // 맹독: 쓰러지면 가까운 몹 둘에게 옮는다
+      for (const o of this.nearestEnemies(e.x, e.y, 3, 90)) if (o !== e) this.addDot(o, e.dotDps, 3, true);
+    }
     const fx = this.addEffect('corpse', e.x, e.y + e.r, e.r, 0.6, '#fff');
     if (fx) fx.sprite = e.skin;
     this.addSprite('dust', e.x, e.y + e.r * 0.4, e.r * 1.3, 0.35);
@@ -600,7 +671,18 @@ export class Engine {
 
   damagePlayer(dmg: number) {
     const p = this.player;
-    if (p.dead || p.invuln > 0 || dmg <= 0) return;
+    if (p.dead || p.invuln > 0 || dmg <= 0 || this.buffOn('invuln') > 0) return;
+    // 보호막이 먼저 막는다
+    if (this.shieldHp > 0) {
+      const absorbed = Math.min(this.shieldHp, dmg);
+      this.shieldHp -= absorbed;
+      dmg -= absorbed;
+      this.addEffect('ring', p.x, p.y, 26, 0.25, '#9fe4ff');
+      if (dmg <= 0) {
+        p.invuln = 0.3;
+        return;
+      }
+    }
     p.hp -= dmg;
     p.invuln = 0.5;
     p.flash = 0.2;
@@ -876,7 +958,7 @@ export class Engine {
       p.moving = len > 0.01;
       p.moveK = p.moving ? Math.min(1, len) : 0;
       // 출발은 느리게, 계속 움직이면 목표 속도까지 가속 (멈추거나 덜 밀면 바로 줄어든다)
-      const target = p.speed * p.moveK;
+      const target = p.speed * p.moveK * (1 + this.buffOn('sprint'));
       if (!p.moving) p.curSpeed = 0;
       else if (p.curSpeed < target * START_SPEED) p.curSpeed = target * START_SPEED;
       else if (p.curSpeed > target) p.curSpeed = target;
@@ -891,10 +973,13 @@ export class Engine {
         p.x = Math.max(p.r, Math.min(this.bounds.w - p.r, p.x));
         p.y = Math.max(p.r, Math.min(this.bounds.h - p.r, p.y));
       }
-      p.hp = Math.min(p.maxHp, p.hp + p.regen * p.maxHp * dt);
+      p.hp = Math.min(p.maxHp, p.hp + (p.regen + this.buffOn('regen')) * p.maxHp * dt);
     }
     p.invuln -= dt;
     p.flash -= dt;
+    for (const id of BUFF_IDS) this.buffs[id].t -= dt;
+    this.shieldT -= dt;
+    if (this.shieldT <= 0) this.shieldHp = 0;
     this.shake = Math.max(0, this.shake - 30 * dt);
 
     if (this.followCamera) {
@@ -961,7 +1046,34 @@ export class Engine {
       const d = Math.hypot(dx, dy) || 1;
 
       const slow = e.slowT > 0 ? 0.5 : 1;
-      if (e.kind === 'boss') {
+      // 디버프 시간 줄이기 + 지속 피해
+      e.weakT -= dt;
+      e.markT -= dt;
+      e.curseT -= dt;
+      if (e.dotT > 0) {
+        e.dotT -= dt;
+        e.dotTick -= dt;
+        if (e.dotTick <= 0) {
+          e.dotTick = 0.5;
+          this.damageEnemy(e, e.dotDps * 0.5);
+          if (!e.active) continue;
+        }
+      }
+      // 보스는 기절·공포·혼란에 안 걸린다
+      const stunned = e.kind !== 'boss' && e.stunT > 0;
+      const feared = e.kind !== 'boss' && e.fearT > 0;
+      const confused = e.kind !== 'boss' && e.confuseT > 0;
+      e.stunT -= dt;
+      e.fearT -= dt;
+      e.confuseT -= dt;
+      if (stunned) {
+        // 기절: 제자리 (밀려나는 것만)
+      } else if (feared || confused) {
+        // 공포: 플레이어 반대쪽으로 / 혼란: 이리저리
+        const a = feared ? Math.atan2(-dy, -dx) : e.phase + this.time * 3;
+        e.x += Math.cos(a) * e.speed * slow * (feared ? 1.1 : 0.7) * dt;
+        e.y += Math.sin(a) * e.speed * slow * (feared ? 1.1 : 0.7) * dt;
+      } else if (e.kind === 'boss') {
         this.updateBoss(e, dx / d, dy / d, dt);
       } else if (e.move === 'charge') {
         // 돌진: 플레이어와 상관없이 곧장 지나가고 시간이 다 되면 사라진다
@@ -1035,7 +1147,12 @@ export class Engine {
         }
       }
 
-      if (!p.dead && d < e.r + p.r) this.damagePlayer(e.dmg);
+      if (!p.dead && d < e.r + p.r) {
+        if (!stunned) this.damagePlayer(e.dmg);
+        // 가시 갑옷: 부딪힌 몹에게 되돌려 준다
+        const thorns = this.buffOn('thorns');
+        if (thorns > 0 && (e.flash <= 0 || e.kind === 'boss')) this.damageEnemy(e, thorns, (-dx / d) * 200, (-dy / d) * 200);
+      }
     }
   }
 
@@ -1314,9 +1431,10 @@ export class Engine {
       const dx = p.x - g.x;
       const dy = p.y - g.y;
       const d = Math.hypot(dx, dy) || 1;
-      if (!p.dead && d < p.magnet) g.pulled = true;
+      const magnet = p.magnet * (1 + this.buffOn('magnet'));
+      if (!p.dead && d < magnet) g.pulled = true;
       if (g.pulled) {
-        const sp = g.vacuum ? 900 + d * 1.5 : 260 + (p.magnet - Math.min(d, p.magnet)) * 4;
+        const sp = g.vacuum ? 900 + d * 1.5 : 260 + (magnet - Math.min(d, magnet)) * 4;
         g.x += (dx / d) * sp * dt;
         g.y += (dy / d) * sp * dt;
         if (d < p.r + 4) {
