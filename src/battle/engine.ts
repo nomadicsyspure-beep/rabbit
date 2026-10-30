@@ -41,6 +41,10 @@ export interface Enemy {
   golden: boolean;
   /** 폭탄 몹: 쓰러지면 터져서 옆 몹과 가까운 플레이어에게 피해 */
   bomb: boolean;
+  /** 레이드 보스: 경고 장판·나선 탄막·돌진·소환을 돌아가며 쓴다 */
+  raid: boolean;
+  /** 레이드 보스가 몇 번째 패턴인지 */
+  step: number;
   /** 보스 패턴용 타이머 */
   t1: number;
   t2: number;
@@ -208,6 +212,16 @@ export interface Pet {
   t: number;
 }
 
+/** 경고 장판: 바닥에 빨간 원이 차오르다가 터진다. 안에 있으면 아프다 */
+export interface Hazard {
+  x: number;
+  y: number;
+  r: number;
+  t: number;
+  maxT: number;
+  dmg: number;
+}
+
 export interface Vec {
   x: number;
   y: number;
@@ -356,7 +370,7 @@ export class Engine {
 
   readonly enemies = new Pool<Enemy>(() => ({
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
-    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, bomb: false,
+    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, bomb: false, raid: false, step: 0,
     t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
   }), 500);
   readonly projectiles = new Pool<Projectile>(() => ({
@@ -383,6 +397,7 @@ export class Engine {
   }), 900);
   readonly orbs: Orb[] = [];
   pet: Pet | null = null;
+  readonly hazards: Hazard[] = [];
   /** 꾸미기: 병아리 색 / 스킬 이펙트 색 (그리는 쪽이 읽는다) */
   chickSkin = 'basic';
   fxSkin = 'basic';
@@ -409,6 +424,7 @@ export class Engine {
     this.effects.clear();
     this.particles.clear();
     this.orbs.length = 0;
+    this.hazards.length = 0;
     this.weapons = [];
     this.time = 0;
     this.shake = 0;
@@ -428,7 +444,7 @@ export class Engine {
     if (!e) return null;
     Object.assign(e, {
       skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, move: 'chase',
-      phase: Math.random() * Math.PI * 2, golden: false, bomb: false, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+      phase: Math.random() * Math.PI * 2, golden: false, bomb: false, raid: false, step: 0, t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
     }, init);
     e.id = this.nextId++;
     e.active = true;
@@ -809,6 +825,7 @@ export class Engine {
     if (!p.dead) for (const w of this.weapons) w.update(this, dt);
     else this.orbs.length = 0;
     if (this.pet) this.updatePet(this.pet, dt);
+    this.updateHazards(dt);
 
     this.updateProjectiles(dt);
     this.updateZones(dt);
@@ -928,7 +945,94 @@ export class Engine {
     }
   }
 
+  private updateHazards(dt: number) {
+    const p = this.player;
+    for (let i = this.hazards.length - 1; i >= 0; i--) {
+      const hz = this.hazards[i];
+      hz.t -= dt;
+      if (hz.t > 0) continue;
+      this.hazards.splice(i, 1);
+      this.addEffect('burst', hz.x, hz.y, hz.r, 0.35, '#ff4d6d');
+      this.burst(hz.x, hz.y, 10, ['#ff4d6d', '#ffb347', '#3a1d0b'], 200, 0.5, 0, 3);
+      this.addShake(2);
+      if (!p.dead && Math.hypot(p.x - hz.x, p.y - hz.y) < hz.r + p.r * 0.5) this.damagePlayer(hz.dmg);
+    }
+  }
+
+  addHazard(x: number, y: number, r: number, t: number, dmg: number) {
+    this.hazards.push({ x, y, r, t, maxT: t, dmg });
+  }
+
+  /**
+   * 레이드 보스: 패턴을 돌아가며 쓴다. 체력 절반 아래(2페이즈)면 더 빠르고 더 많이.
+   * 장판(바닥 경고 원) → 나선 탄막 → 돌진 → 졸개 소환
+   */
+  private updateRaidBoss(e: Enemy, nx: number, ny: number, dt: number) {
+    const p = this.player;
+    const enraged = e.hp < e.maxHp * 0.5;
+    if (e.dashT > 0) {
+      e.dashT -= dt;
+      if (e.dashT < 0.55) {
+        e.x += e.dashX * (enraged ? 560 : 460) * dt;
+        e.y += e.dashY * (enraged ? 560 : 460) * dt;
+      }
+      return;
+    }
+    // 나선 탄막: 제자리에서 빙글빙글 쏜다
+    if (e.t2 > 0) {
+      e.t2 -= dt;
+      e.phase += dt;
+      const gap = enraged ? 0.06 : 0.09;
+      while (e.phase >= gap) {
+        e.phase -= gap;
+        const arms = enraged ? 3 : 2;
+        const base = this.time * (enraged ? 3.4 : 2.6);
+        for (let k = 0; k < arms; k++) this.fireBullet(e.x, e.y, base + (k / arms) * Math.PI * 2, 170, e.dmg * 0.45);
+      }
+      return;
+    }
+    if (!p.dead) {
+      e.x += nx * e.speed * dt;
+      e.y += ny * e.speed * dt;
+    }
+    e.t1 -= dt;
+    if (e.t1 > 0) return;
+    e.t1 = enraged ? 2.1 : 3;
+    // 장판 → 탄막 → 돌진 → 소환 순서로 (2페이즈에선 무작위)
+    const pattern = enraged ? Math.floor(Math.random() * 4) : e.step++ % 4;
+    if (pattern === 0) {
+      // 장판: 플레이어 발밑 하나 + 주변 여러 개
+      const n = enraged ? 7 : 4;
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = i === 0 ? 0 : 50 + Math.random() * 120;
+        this.addHazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 58, enraged ? 1.0 : 1.3, e.dmg * 1.8);
+      }
+    } else if (pattern === 1) {
+      e.t2 = enraged ? 2.6 : 2;
+      e.phase = 0;
+      this.addEffect('ring', e.x, e.y, e.r * 2.2, 0.4, '#c78bff');
+    } else if (pattern === 2) {
+      e.dashT = enraged ? 1.0 : 1.2;
+      e.dashX = nx;
+      e.dashY = ny;
+      this.addEffect('telegraph', e.x, e.y, e.r, 0.65, '#ff4d6d', e.x + nx * 300, e.y + ny * 300);
+    } else {
+      // 졸개 소환: 보스 둘레에 박쥐 떼
+      const n = enraged ? 12 : 8;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        this.spawnEnemy({
+          kind: 'fast', skin: 'bat', x: e.x + Math.cos(a) * 60, y: e.y + Math.sin(a) * 60,
+          hp: e.maxHp * 0.002, r: 10, speed: 120, dmg: e.dmg * 0.25, xp: 1, move: 'lead',
+        });
+      }
+      this.addEffect('ring', e.x, e.y, 90, 0.4, '#9a6ad8');
+    }
+  }
+
   private updateBoss(e: Enemy, nx: number, ny: number, dt: number) {
+    if (e.raid) return this.updateRaidBoss(e, nx, ny, dt);
     const enraged = e.hp < e.maxHp * 0.5;
     if (e.dashT > 0) {
       // 돌진 준비(예고선) → 돌진
