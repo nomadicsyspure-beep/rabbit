@@ -42,8 +42,6 @@ export interface Enemy {
   phase: number;
   /** 황금 몹: 도망치고, 잡으면 골드 폭죽 */
   golden: boolean;
-  /** 폭탄 몹: 쓰러지면 터져서 옆 몹과 가까운 플레이어에게 피해 */
-  bomb: boolean;
   /** 레이드 보스: 경고 장판·나선 탄막·돌진·소환을 돌아가며 쓴다 */
   raid: boolean;
   /** 레이드 보스 패턴 목록과 졸개 그림 */
@@ -416,8 +414,6 @@ export class Engine {
   fever = 0;
   /** 치명타 확률 (장신구로 오른다) */
   critChance = CRIT_CHANCE;
-  /** 안개: 0이 아니면 플레이어 주변 이 반경(px)만 보인다 */
-  fog = 0;
   /** 바닥 색 (지역마다 다르다): 바탕 / 큰 얼룩 둘 / 작은 자갈 둘 */
   ground: readonly string[] = ['#7f5a3a', 'rgba(98,68,42,0.2)', 'rgba(150,112,74,0.15)', 'rgba(60,40,24,0.45)', 'rgba(186,150,108,0.45)'];
   time = 0;
@@ -431,7 +427,7 @@ export class Engine {
 
   readonly enemies = new Pool<Enemy>(() => ({
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
-    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, bomb: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false,
+    gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false,
     stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
     t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
   }), 500);
@@ -504,7 +500,6 @@ export class Engine {
     this.time = 0;
     this.shake = 0;
     this.fever = 0;
-    this.fog = 0;
     const p = this.player;
     p.dead = false;
     p.curSpeed = 0;
@@ -519,7 +514,7 @@ export class Engine {
     if (!e) return null;
     Object.assign(e, {
       skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, move: 'chase',
-      phase: Math.random() * Math.PI * 2, golden: false, bomb: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false, stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
+      phase: Math.random() * Math.PI * 2, golden: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false, stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
       t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
     }, init);
     e.id = this.nextId++;
@@ -654,14 +649,6 @@ export class Engine {
     this.burst(e.x, e.y - e.r * 0.3, e.kind === 'boss' ? 30 : e.kind === 'tank' ? 10 : 7, BURST_COLOR[e.skin.split('@')[0] as EnemySkin], e.kind === 'boss' ? 260 : 170, 0.5, 420, e.kind === 'boss' ? 4 : 3);
     this.addShake(e.kind === 'boss' ? MAX_SHAKE : 0.8);
     if (e.golden) this.burst(e.x, e.y - e.r, 26, ['#ffe066', '#ffd23f', '#fff6c8'], 300, 0.8, 380, 3.5);
-    if (e.bomb) {
-      // 폭탄 몹: 터져서 옆 몹을 같이 날리고, 가까이 있으면 나도 아프다
-      this.addSprite('fire-burst', e.x, e.y - 6, 30, 0.3);
-      sfx.boom();
-      const p = this.player;
-      if (!p.dead && (p.x - e.x) ** 2 + (p.y - e.y) ** 2 < 42 * 42) this.damagePlayer(e.dmg * 1.5);
-      this.blast(e.x, e.y, 42, e.maxHp, 90);
-    }
     if (this.dropGems && e.xp > 0) {
       const g = this.gems.get();
       if (g) {

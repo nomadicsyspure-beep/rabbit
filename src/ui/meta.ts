@@ -170,6 +170,37 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   };
 }
 
+/** 제작 탭: 위에 재료, 아래 부위별 장비 격자 (누르면 만들기·강화·착용 창). 초록 점 = 지금 만들 수 있음 */
+export function buildCraftTab(panel: HTMLElement, game: Game, host: UIHost) {
+  const wallet = walletBar(game);
+  panel.append(wallet.el);
+  const tiles: (() => void)[] = [wallet.refresh];
+  for (const slot of GEAR_SLOTS) {
+    const head = h('div', 'skill-type-head');
+    head.style.setProperty('--type', '#ffd166');
+    head.append(h('span', 'type-name', `${SLOT_ICONS[slot]} ${SLOT_NAMES[slot]}`));
+    const grid = h('div', 'skill-grid');
+    for (const def of GEAR.filter((g) => g.slot === slot)) {
+      const t = h('button', 'skill-tile');
+      const lv = h('span', 'tile-lv');
+      t.append(ibox(def.icon, def.essence ? 'legend' : ''), lv, h('span', 'tile-name', def.name));
+      t.addEventListener('click', () => showGear(game, host, def));
+      grid.append(t);
+      tiles.push(() => {
+        const plus = game.save.gear[def.id];
+        const owned = plus !== undefined;
+        t.classList.toggle('unlearned', !owned);
+        t.classList.toggle('equipped', game.save.wear[slot] === def.id);
+        t.classList.toggle('can-make', !owned && game.canCraft(def.id));
+        lv.textContent = owned ? `+${plus}` : '';
+      });
+    }
+    panel.append(head, grid);
+  }
+  panel.append(h('div', 'hint', '재료는 스테이지 보물 상자·재료 던전에서 · 초록 점 = 지금 만들 수 있음 · 착용은 가방 탭에서도'));
+  return () => tiles.forEach((f) => f());
+}
+
 /** 꾹 누르면 long, 짧게 누르면 tap */
 function longPress(el: HTMLElement, long: () => void, tap: () => void) {
   let t = 0;

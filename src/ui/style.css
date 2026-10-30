@@ -2608,3 +2608,25 @@ button:disabled {
   width: 34px;
   height: 34px;
 }
+
+/* 위 고정 칸(장착 중)은 아래 격자의 NEW·별·등급 표시보다 늘 위에 */
+.skill-top {
+  z-index: 10;
+}
+
+/* 상점 탭 안 '상점 · 동료' 고르기 */
+.shop-seg {
+  flex: none;
+}
+
+.shop-seg .seg-btn.on {
+  background: linear-gradient(180deg, #ffc35a 0%, #f08a22 100%);
+  color: #fff;
+  text-shadow: 0 1px 0 #7a3a08;
+}
+
+.shop-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
