@@ -720,7 +720,7 @@ export class UI {
     const g = this.game;
     this.openModal(
       h('div', 'modal-title', '설정'),
-      h('div', 'modal-sub', '프로토타입 v0.3'),
+      h('div', 'modal-sub', `프로토타입 v0.3 · 빌드 ${new Date(__BUILD_TIME__).toLocaleString('ko-KR')}`),
       this.button('테스트: 골드 지급', '', () => {
         g.save.gold += g.goldPerSec * 500;
         this.refresh();

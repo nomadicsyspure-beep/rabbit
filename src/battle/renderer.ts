@@ -338,7 +338,8 @@ export class Renderer {
     }
 
     // 이동 중: 기본은 걷기, 속도가 붙으면 달리기 / 멈춤: 걷기 첫 프레임
-    const motion = p.moving && p.curSpeed >= p.speed * RUN_RATIO ? 'run' : 'walk';
+    // 피버 중엔 AUTO로 천천히 움직여도 달리기 그림
+    const motion = p.moving && (eng.fever > 0 || p.curSpeed >= p.speed * RUN_RATIO) ? 'run' : 'walk';
     const anim = SPRITES.hero[motion][dir] ?? SPRITES.hero.walk[dir];
     if (!anim) return this.drawPlayerShape(eng);
     const img = p.moving ? frameAt(anim, eng.time * 1000) : anim.frames[0];

@@ -61,6 +61,8 @@ const AUTO_SPEED = 0.65;
  */
 export class AutoPilot implements Controller {
   enabled = false;
+  /** 이번 프레임을 AUTO가 조종했는지 (조이스틱을 만지면 false) */
+  driving = false;
   private vx = 1;
   private vy = 0;
   /** 무리 둘레를 도는 방향 (가끔 바꾼다) */
@@ -72,7 +74,8 @@ export class AutoPilot implements Controller {
 
   getMove(engine: Engine): Vec {
     const m = this.joystick.getMove();
-    if (!this.enabled || m.x || m.y) return m;
+    this.driving = this.enabled && !m.x && !m.y;
+    if (!this.driving) return m;
     const dt = Math.min(0.05, Math.max(0, engine.time - this.lastTime));
     this.lastTime = engine.time;
     const p = engine.player;

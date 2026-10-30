@@ -39,8 +39,8 @@ const WAVES: Wave[] = ['ring', 'stampede', 'wall'];
 const AHEAD_RATE = 0.8;
 /** 이 각도 안에서 이 시간 넘게 한 방향으로 달리면 앞에 벽 (재사용 대기 WALL_CD초) */
 const STRAIGHT_TOLERANCE = 0.5;
-const STRAIGHT_SEC = 2;
-const WALL_CD = 3;
+const STRAIGHT_SEC = 1.5;
+const WALL_CD = 2.5;
 
 /** 이 시간 안에 다음 처치가 없으면 콤보가 끊긴다 */
 export const COMBO_SEC = 2;
@@ -227,10 +227,10 @@ export class ActionMode {
       if (eng.enemies.countActive() < MAX_ALIVE) this.spawnOne(this.pickKind());
     }
 
-    // 한 방향으로만 계속 달리면 앞에 벽이 생긴다
+    // 한 방향으로만 계속 달리면 앞에 벽이 생긴다 (AUTO가 조종하는 동안은 빼 준다)
     const h = this.heading;
     this.wallCd -= dt;
-    if (h === null) {
+    if (h === null || this.game.pilot.driving) {
       this.straightT = 0;
       this.wallStreak = 0;
     } else {
@@ -350,7 +350,7 @@ export class ActionMode {
         kind: 'fast', skin: skins.fast,
         x: p.x + Math.cos(h) * (d + (i % 3) * 20) - Math.sin(h) * off,
         y: p.y + Math.sin(h) * (d + (i % 3) * 20) + Math.cos(h) * off,
-        hp: 4 * s, r: 10, speed: 240, dmg: (5 + streak * 3) * s, xp: 1,
+        hp: 4 * s, r: 10, speed: 240, dmg: (5 + streak * 4) * s, xp: 1,
         move: 'charge', dashX: -Math.cos(h), dashY: -Math.sin(h), t1: (d * 2) / 240,
       });
     }
@@ -407,7 +407,7 @@ export class ActionMode {
         const fx = Math.cos(h);
         const fy = Math.sin(h);
         const rows = 2 + Math.min(3, streak);
-        const hurt = 1 + 0.9 * streak;
+        const hurt = 1 + 1.2 * streak;
         for (let row = 0; row < rows; row++) {
           for (let i = 0; i < n; i++) {
             const off = (i - (n - 1) / 2 + row * 0.5) * 28;
