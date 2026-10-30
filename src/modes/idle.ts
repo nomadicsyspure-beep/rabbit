@@ -33,6 +33,7 @@ export class IdleMode {
     eng.weapons = [new FeatherWeapon(this.stats, SKILL_BY_ID.feather, emptyTree(), FEATHER_RANGE)];
     eng.onKill = null;
     eng.onGem = null;
+    eng.onChest = null;
     eng.onPlayerDead = null;
 
     const p = eng.player;

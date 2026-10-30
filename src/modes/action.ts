@@ -1,5 +1,6 @@
 import type { Enemy, EnemyKind, Weapon } from '../battle/engine';
 import type { WeaponStats } from '../battle/weapons';
+import { fmt } from '../core/format';
 import {
   actionRatio, enemyGold, isBossStage, playerStats, stageClearGold, stageSkins, type ActionRatio,
 } from '../data/balance';
@@ -21,6 +22,9 @@ const BOSS_HP = 2600;
 export const COMBO_SEC = 2;
 /** 처치 1마리당 골드 = 그 스테이지 몹 골드 × 이 값 (이기든 지든) */
 const KILL_GOLD = 0.3;
+/** 보물 상자가 나오는 간격(초)과 상자 하나의 골드 (몹 골드 × 이 값) */
+const CHEST_SEC = 12;
+const CHEST_GOLD = 25;
 
 export interface RunResult {
   win: boolean;
@@ -65,6 +69,9 @@ export class ActionMode {
   private swarms: number[] = [];
   private baseHp = BASE_HP;
   private endT = -1;
+  private chestT = 0;
+  /** 보물 상자로 번 골드 (결과에 더한다) */
+  private bonusGold = 0;
 
   constructor(private readonly game: Game) {}
 
@@ -84,10 +91,10 @@ export class ActionMode {
     eng.dropGems = true;
     eng.showDamageText = true;
     eng.controller = this.game.pilot;
-    this.game.pilot.enabled = this.game.save.autoMove;
-    eng.autoSkills = this.game.save.autoSkills;
+    this.game.applyControls();
     eng.onKill = (e) => this.onKill(e);
     eng.onGem = (v) => this.onGem(v);
+    eng.onChest = (x, y) => this.onChest(x, y);
     eng.onPlayerDead = () => {
       this.endT = 0.9;
     };
@@ -120,6 +127,8 @@ export class ActionMode {
     // 몰려오기 이벤트: 일반 스테이지는 후반 한 번, 보스 스테이지는 두 번
     this.swarms = this.isBossStage ? [60, 120] : [(this.duration * 2) / 3];
     this.endT = -1;
+    this.chestT = CHEST_SEC * 0.6;
+    this.bonusGold = 0;
 
     // 장착한 스킬만 발동한다 (레벨은 성장 탭에서 올린 그대로)
     this.equipped = [];
@@ -163,6 +172,17 @@ export class ActionMode {
       this.swarms.shift();
       this.spawnSwarm(45);
       this.game.ui.toast('몰려온다!');
+    }
+
+    // 일정 시간마다 화면 안 가까운 곳에 보물 상자
+    this.chestT -= dt;
+    if (this.chestT <= 0) {
+      this.chestT = CHEST_SEC;
+      const a = Math.random() * Math.PI * 2;
+      const d = 110 + Math.random() * 90;
+      const p = eng.player;
+      eng.spawnChest(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d * 0.7);
+      this.game.ui.toast('보물 상자 등장!');
     }
 
     this.recycleFarEnemies();
@@ -251,6 +271,14 @@ export class ActionMode {
     if (e.kind === 'boss') this.finish(true);
   }
 
+  /** 보물 상자: 보석은 엔진이 다 끌어오고, 여기선 골드 보너스 */
+  private onChest(x: number, y: number) {
+    const gold = enemyGold(this.stage) * CHEST_GOLD;
+    this.bonusGold += gold;
+    this.game.engine.addText(x, y - 30, `+${fmt(gold)} G`, '#ffe066', 18);
+    this.game.ui.toast('싹쓸이!');
+  }
+
   /** 경험치 보석: 캐릭터 영구 경험치로 바로 쌓는다 */
   private onGem(v: number) {
     this.xpGained += v;
@@ -281,7 +309,7 @@ export class ActionMode {
     this.game.joystick.release();
     const save = this.game.save;
     // 잡은 만큼 골드 + 이기면 클리어 보상
-    let gold = this.kills * enemyGold(this.stage) * KILL_GOLD;
+    let gold = this.kills * enemyGold(this.stage) * KILL_GOLD + this.bonusGold;
     if (win) {
       gold += stageClearGold(this.stage);
       save.maxStage = Math.max(save.maxStage, this.stage);

@@ -51,13 +51,18 @@ export class AutoController implements Controller {
 }
 
 /**
- * 스테이지 자동 이동: 조이스틱을 만지면 그쪽이 먼저, 손을 떼면 알아서 움직인다.
- * 가까운 몹은 피하고, 경험치 보석을 주우며, 아무것도 없으면 크게 원을 그리며 돈다.
+ * 스테이지 자동 플레이(AUTO): 조이스틱을 만지면 그쪽이 먼저, 손을 떼면 알아서 싸운다.
+ * - 보물 상자가 보이면 주우러 간다
+ * - 몹 무리 쪽으로 다가가되 너무 붙지 않고, 무리 둘레를 돌며 스킬로 쓸어 담는다
+ * - 바로 옆에 붙은 몹·보스는 피한다
  */
 export class AutoPilot implements Controller {
   enabled = false;
   private vx = 1;
   private vy = 0;
+  /** 무리 둘레를 도는 방향 (가끔 바꾼다) */
+  private orbit = 1;
+  private orbitT = 0;
   private lastTime = 0;
 
   constructor(private readonly joystick: Joystick) {}
@@ -68,46 +73,68 @@ export class AutoPilot implements Controller {
     const dt = Math.min(0.05, Math.max(0, engine.time - this.lastTime));
     this.lastTime = engine.time;
     const p = engine.player;
+    this.orbitT -= dt;
+    if (this.orbitT <= 0) {
+      this.orbitT = 3 + Math.random() * 3;
+      if (Math.random() < 0.4) this.orbit = -this.orbit;
+    }
 
-    // 몹에게서 멀어지는 힘 (가까울수록 세게)
     let ax = 0;
     let ay = 0;
+    // 몹 무리의 중심 (가까울수록 무겁게)과, 바로 옆에 붙은 몹에게서 밀려나는 힘
+    let cx = 0;
+    let cy = 0;
+    let cw = 0;
     for (const e of engine.enemies.items) {
       if (!e.active) continue;
-      const dx = p.x - e.x;
-      const dy = p.y - e.y;
-      const d2 = dx * dx + dy * dy;
-      const reach = e.kind === 'boss' ? 200 : 110;
-      if (d2 > reach * reach || d2 < 1) continue;
-      const d = Math.sqrt(d2);
-      const w = ((reach - d) / reach) * (e.kind === 'boss' ? 4 : 1);
-      ax += (dx / d) * w;
-      ay += (dy / d) * w;
-    }
-    // 가까운 보석 쪽으로
-    let best = 260 * 260;
-    let gx = 0;
-    let gy = 0;
-    for (const g of engine.gems.items) {
-      if (!g.active || g.pulled) continue;
-      const d2 = (g.x - p.x) ** 2 + (g.y - p.y) ** 2;
-      if (d2 < best) {
-        best = d2;
-        gx = g.x - p.x;
-        gy = g.y - p.y;
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d > 340) continue;
+      const w = 1 / (40 + d);
+      cx += e.x * w;
+      cy += e.y * w;
+      cw += w;
+      const danger = e.kind === 'boss' ? 150 : 48;
+      if (d < danger) {
+        const k = ((danger - d) / danger) * (e.kind === 'boss' ? 5 : 3);
+        ax -= (dx / d) * k;
+        ay -= (dy / d) * k;
       }
     }
-    const gd = Math.hypot(gx, gy);
-    if (gd > 0) {
-      ax += (gx / gd) * 0.8;
-      ay += (gy / gd) * 0.8;
+    if (cw > 0) {
+      const tx = cx / cw - p.x;
+      const ty = cy / cw - p.y;
+      const d = Math.hypot(tx, ty) || 1;
+      // 알맞은 거리(약 90px)를 유지하며 둘레를 돈다
+      const pull = d > 110 ? 1 : d < 70 ? -0.8 : 0;
+      ax += (tx / d) * pull + (-ty / d) * 0.7 * this.orbit;
+      ay += (ty / d) * pull + (tx / d) * 0.7 * this.orbit;
     }
-    // 할 일이 없으면 지금 방향에서 조금씩 꺾으며 원을 그린다
-    if (Math.hypot(ax, ay) < 0.2) {
-      ax += -this.vy * 0.6 + this.vx;
-      ay += this.vx * 0.6 + this.vy;
+    // 보물 상자가 최우선
+    let chest: { x: number; y: number } | null = null;
+    let best = 500 * 500;
+    for (const c of engine.chests.items) {
+      if (!c.active) continue;
+      const d2 = (c.x - p.x) ** 2 + (c.y - p.y) ** 2;
+      if (d2 < best) {
+        best = d2;
+        chest = c;
+      }
     }
-    const k = 1 - Math.exp(-6 * dt);
+    if (chest) {
+      const dx = chest.x - p.x;
+      const dy = chest.y - p.y;
+      const d = Math.hypot(dx, dy) || 1;
+      ax += (dx / d) * 2.5;
+      ay += (dy / d) * 2.5;
+    }
+    // 아무것도 없으면 지금 방향에서 조금씩 꺾으며 돌아다닌다
+    if (Math.hypot(ax, ay) < 0.15) {
+      ax += -this.vy * 0.5 + this.vx;
+      ay += this.vx * 0.5 + this.vy;
+    }
+    const k = 1 - Math.exp(-7 * dt);
     const len = Math.hypot(ax, ay) || 1;
     this.vx += (ax / len - this.vx) * k;
     this.vy += (ay / len - this.vy) * k;

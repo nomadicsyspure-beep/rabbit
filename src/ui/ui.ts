@@ -217,19 +217,21 @@ export class UI {
     // 자동 이동 (UI 시트의 AUTO 버튼), 가로 모드
     this.autoBtn = h('button', 'art-btn auto-btn');
     this.autoBtn.append(art('btn-auto'));
-    this.autoBtn.setAttribute('aria-label', '자동 이동');
+    this.autoBtn.setAttribute('aria-label', '자동 플레이');
     this.autoBtn.addEventListener('click', () => {
       this.game.toggleAutoMove();
-      this.toast(this.game.save.autoMove ? '자동 이동 켜짐 (조이스틱을 쓰면 그동안은 직접 조종)' : '자동 이동 꺼짐');
+      this.toast(this.game.save.autoMove ? 'AUTO 켜짐: 알아서 싸워요 (조이스틱을 쓰면 그동안은 직접 조종)' : 'AUTO 꺼짐');
       this.refreshToggles();
     });
     this.rotateBtn = h('button', 'text-btn', '가로');
     this.rotateBtn.setAttribute('aria-label', '가로 모드');
     this.rotateBtn.addEventListener('click', () => void this.game.toggleLandscape());
     const rotateBtn = this.rotateBtn;
+    const left = h('div', 'action-left');
+    left.append(player, this.autoBtn);
     const right = h('div', 'action-right');
-    right.append(kills, pauseBtn, rotateBtn, this.autoBtn);
-    this.hudAction.append(player, center, right);
+    right.append(kills, pauseBtn, rotateBtn);
+    this.hudAction.append(left, center, right);
 
     // 하단: 스킬 칸 (수동일 땐 눌러서 발동) + 스킬 자동/수동 전환
     const bottom = h('div', 'action-bottom');
@@ -280,9 +282,11 @@ export class UI {
     const save = this.game.save;
     this.rotateBtn.textContent = this.game.landscapeLocked ? '세로' : '가로';
     this.autoBtn.classList.toggle('on', save.autoMove);
-    this.skillModeBtn.textContent = save.autoSkills ? '스킬 자동' : '스킬 수동';
-    this.skillModeBtn.classList.toggle('on', save.autoSkills);
-    this.app.classList.toggle('manual-skills', !save.autoSkills);
+    // AUTO 중엔 스킬도 늘 자동
+    this.skillModeBtn.textContent = save.autoMove ? '스킬 자동 (AUTO)' : save.autoSkills ? '스킬 자동' : '스킬 수동';
+    this.skillModeBtn.disabled = save.autoMove;
+    this.skillModeBtn.classList.toggle('on', this.game.skillsAuto);
+    this.app.classList.toggle('manual-skills', !this.game.skillsAuto);
   }
 
   /** 장착 스킬 칸을 만든다 (스테이지가 시작되어 장착 목록이 바뀌면 다시) */

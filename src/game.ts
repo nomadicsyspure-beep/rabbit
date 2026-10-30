@@ -146,14 +146,25 @@ export class Game {
 
   // ---- 스테이지 설정 ----
 
+  /** AUTO = 플레이 전체 자동: 알아서 움직이고 스킬도 자동으로 쓴다 */
   toggleAutoMove() {
     this.save.autoMove = !this.save.autoMove;
-    this.pilot.enabled = this.save.autoMove;
+    this.applyControls();
   }
 
   toggleAutoSkills() {
     this.save.autoSkills = !this.save.autoSkills;
-    this.engine.autoSkills = this.save.autoSkills;
+    this.applyControls();
+  }
+
+  /** 스킬이 지금 자동으로 나가는지 (AUTO 중이면 늘 자동) */
+  get skillsAuto() {
+    return this.save.autoSkills || this.save.autoMove;
+  }
+
+  applyControls() {
+    this.pilot.enabled = this.save.autoMove;
+    this.engine.autoSkills = this.skillsAuto;
   }
 
   /** 지금 화면이 가로로 넓은지 (두 손 조작 배치) */
