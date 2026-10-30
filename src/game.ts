@@ -110,7 +110,7 @@ export class Game {
     if (this.mode === 'idle') {
       this.idle.update(dt);
       this.engine.update(dt);
-    } else if (this.action.running) {
+    } else if (this.action.running && !this.ui.tutorial.freeze) {
       this.action.update(dt);
       if (this.action.running) this.engine.update(dt);
     }
