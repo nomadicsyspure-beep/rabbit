@@ -47,6 +47,7 @@ export class IdleMode {
     p.magnet = 0;
     this.refreshStats();
     p.hp = p.maxHp;
+    this.game.applyPet(this.stats.power);
     this.spawnT = 0.3;
   }
 
@@ -61,6 +62,7 @@ export class IdleMode {
     this.stats.aps = st.aps;
     const p = this.game.engine.player;
     p.maxHp = p.hp = st.hp;
+    if (this.game.engine.pet) this.game.engine.pet.power = st.atk;
   }
 
   update(dt: number) {

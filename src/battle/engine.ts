@@ -194,6 +194,20 @@ export interface Player {
   curSpeed: number;
 }
 
+/** 따라다니는 동료 (몬스터 그림). 공격·포자·회복은 여기서, 나머지 효과는 능력치에 이미 들어 있다 */
+export interface Pet {
+  skin: string;
+  ability: string;
+  /** 능력 값 (공격 배율·회복 비율 등) */
+  value: number;
+  /** 이 화면의 공격력 */
+  power: number;
+  x: number;
+  y: number;
+  /** 다음 능력까지 남은 시간 */
+  t: number;
+}
+
 export interface Vec {
   x: number;
   y: number;
@@ -368,6 +382,10 @@ export class Engine {
     active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 2, color: '#fff', grav: 0,
   }), 900);
   readonly orbs: Orb[] = [];
+  pet: Pet | null = null;
+  /** 꾸미기: 병아리 색 / 스킬 이펙트 색 (그리는 쪽이 읽는다) */
+  chickSkin = 'basic';
+  fxSkin = 'basic';
   weapons: Weapon[] = [];
   controller: Controller = { getMove: () => ({ x: 0, y: 0 }) };
 
@@ -707,6 +725,44 @@ export class Engine {
     }
   }
 
+  /** 동료: 병아리 뒤를 둥실둥실 따라오며 능력을 쓴다 */
+  private updatePet(pet: Pet, dt: number) {
+    const p = this.player;
+    const tx = p.x - p.faceX * 26;
+    const ty = p.y - p.faceY * 18 - 10;
+    const k = 1 - Math.exp(-5 * dt);
+    pet.x += (tx - pet.x) * k;
+    pet.y += (ty - pet.y) * k;
+    if (p.dead) return;
+    pet.t -= dt;
+    if (pet.t > 0) return;
+    if (pet.ability === 'attack') {
+      const e = this.nearestEnemies(pet.x, pet.y, 1, 170)[0];
+      pet.t = 0.45;
+      if (!e) return;
+      this.addEffect('bolt', pet.x, pet.y, 0, 0.15, '#c78bff', e.x, e.y);
+      this.damageEnemy(e, pet.power * pet.value);
+    } else if (pet.ability === 'spore') {
+      pet.t = 3;
+      if (this.nearestEnemies(pet.x, pet.y, 1, 90).length === 0) {
+        pet.t = 0.5;
+        return;
+      }
+      this.blast(pet.x, pet.y, 85, pet.power * pet.value, 60);
+      this.addEffect('burst', pet.x, pet.y, 85, 0.4, '#9be36a');
+      this.burst(pet.x, pet.y, 14, ['#9be36a', '#d8ff9a', '#6fbf4a'], 140, 0.6, 0);
+    } else if (pet.ability === 'heal') {
+      pet.t = 5;
+      if (p.hp >= p.maxHp) return;
+      const v = p.maxHp * pet.value;
+      p.hp = Math.min(p.maxHp, p.hp + v);
+      this.addText(p.x, p.y - 30, `+${Math.ceil(v)}`, '#6fdc8c', 14);
+      this.addEffect('ring', p.x, p.y, 34, 0.4, '#a8ffb8');
+    } else {
+      pet.t = 999;
+    }
+  }
+
   update(dt: number) {
     this.time += dt;
     const p = this.player;
@@ -752,6 +808,7 @@ export class Engine {
 
     if (!p.dead) for (const w of this.weapons) w.update(this, dt);
     else this.orbs.length = 0;
+    if (this.pet) this.updatePet(this.pet, dt);
 
     this.updateProjectiles(dt);
     this.updateZones(dt);

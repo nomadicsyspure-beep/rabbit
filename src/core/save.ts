@@ -3,6 +3,7 @@ import type { StatId } from '../data/balance';
 import { EQUIP_SLOTS, SKILL_BY_ID, emptyTree, type SkillId } from '../data/skills';
 import type { GearSlot } from '../data/gear';
 import type { MatId } from '../data/world';
+import { emptyDaily, type AttendState, type DailyState } from '../data/missions';
 
 const KEY = 'rabbit.save.v1';
 
@@ -40,6 +41,21 @@ export interface SaveData {
   rebirth: { count: number; feathers: number; ups: { atk: number; gold: number; xp: number } };
   /** 보스의 정수 (보스 레이드) */
   essence: number;
+  /** 환생해도 남는 역대 최고 스테이지 (업적용) */
+  bestStageEver: number;
+  /** 동료: 가진 동료 → 레벨 / 데리고 다니는 동료 */
+  pets: Record<string, number>;
+  pet: string | null;
+  /** 소환권 (출석 보상) */
+  tickets: { pet: number; gear: number };
+  /** 꾸미기: 가진 색과 쓰는 색 */
+  skins: { chick: string[]; fx: string[]; chickOn: string; fxOn: string };
+  daily: DailyState;
+  attend: AttendState;
+  /** 업적 id → 받은 단계 수 */
+  achieve: Record<string, number>;
+  /** 패스: 경험치, 무료 보상 받은 레벨 */
+  pass: { xp: number; claimed: number[] };
 }
 
 export function newSave(): SaveData {
@@ -65,6 +81,15 @@ export function newSave(): SaveData {
     seen: { monsters: [], gear: [] },
     rebirth: { count: 0, feathers: 0, ups: { atk: 0, gold: 0, xp: 0 } },
     essence: 0,
+    bestStageEver: 0,
+    pets: {},
+    pet: null,
+    tickets: { pet: 0, gear: 0 },
+    skins: { chick: ['basic'], fx: ['basic'], chickOn: 'basic', fxOn: 'basic' },
+    daily: emptyDaily(),
+    attend: { last: '', days: 0 },
+    achieve: {},
+    pass: { xp: 0, claimed: [] },
   };
 }
 
@@ -116,6 +141,15 @@ export function loadSave(): SaveData {
       seen: { monsters: [...(data.seen?.monsters ?? [])], gear: [...(data.seen?.gear ?? [])] },
       rebirth: { ...base.rebirth, ...data.rebirth, ups: { ...base.rebirth.ups, ...data.rebirth?.ups } },
       essence: data.essence ?? 0,
+      bestStageEver: Math.max(data.bestStageEver ?? 0, data.maxStage ?? 0),
+      pets: { ...data.pets },
+      pet: data.pet ?? null,
+      tickets: { ...base.tickets, ...data.tickets },
+      skins: { ...base.skins, ...data.skins },
+      daily: data.daily ? { ...base.daily, ...data.daily, counts: { ...base.daily.counts, ...data.daily.counts } } : base.daily,
+      attend: { ...base.attend, ...data.attend },
+      achieve: { ...data.achieve },
+      pass: { ...base.pass, ...data.pass },
     };
   } catch {
     return newSave();
