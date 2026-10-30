@@ -208,6 +208,7 @@ export class Game {
     s.gear[id] = 0;
     if (!s.wear[def.slot]) s.wear[def.slot] = id;
     if (!s.seen.gear.includes(id)) s.seen.gear.push(id);
+    this.applyLook();
     this.idle.refreshStats();
     return true;
   }
@@ -240,6 +241,7 @@ export class Game {
     const def = GEAR_BY_ID[id];
     if (this.save.gear[id] === undefined) return;
     this.save.wear[def.slot] = this.save.wear[def.slot] === id ? undefined : id;
+    this.applyLook();
     this.idle.refreshStats();
   }
 
@@ -257,7 +259,7 @@ export class Game {
       atk: col * (1 + REBIRTH_UPS.atk.per * s.rebirth.ups.atk),
       hp: col,
       gold: 1 + REBIRTH_UPS.gold.per * s.rebirth.ups.gold,
-      magnet: 1, chest: 0, combo: 0, fever: 1, crit: 0,
+      magnet: 1, chest: 0, combo: 0, fever: 1, crit: 0, speed: 0,
       weapon: null as { skill: SkillId; plus: number } | null,
     };
     const w = this.worn('weapon');
@@ -267,15 +269,18 @@ export class Game {
     }
     const hat = this.worn('hat');
     if (hat) b.hp *= 1 + hat.def.hp! * gearScale(hat.plus);
-    const acc = this.worn('acc');
-    if (acc) {
-      const v = acc.def.value! * gearScale(acc.plus);
-      if (acc.def.effect === 'magnet') b.magnet += v;
-      else if (acc.def.effect === 'chest') b.chest += v;
-      else if (acc.def.effect === 'combo') b.combo += v;
-      else if (acc.def.effect === 'fever') b.fever += v;
-      else if (acc.def.effect === 'gold') b.gold *= 1 + v;
-      else if (acc.def.effect === 'crit') b.crit += v;
+    // 장신구·등 장비 효과
+    for (const slot of ['acc', 'back'] as const) {
+      const it = this.worn(slot);
+      if (!it) continue;
+      const v = it.def.value! * gearScale(it.plus);
+      if (it.def.effect === 'magnet') b.magnet += v;
+      else if (it.def.effect === 'chest') b.chest += v;
+      else if (it.def.effect === 'combo') b.combo += v;
+      else if (it.def.effect === 'fever') b.fever += v;
+      else if (it.def.effect === 'gold') b.gold *= 1 + v;
+      else if (it.def.effect === 'crit') b.crit += v;
+      else if (it.def.effect === 'speed') b.speed += v;
     }
     const pet = this.petInfo;
     if (pet) {
@@ -409,6 +414,7 @@ export class Game {
     const out = [];
     for (let i = 0; i < n; i++) out.push(kind === 'pet' ? this.gainPet(rollPet()) : this.gainGear(rollGear()));
     addDaily(s, 'summons', n);
+    this.applyLook();
     if (this.mode === 'idle') this.idle.enter();
     this.persist();
     return out;
@@ -433,8 +439,15 @@ export class Game {
     this.applySkins();
   }
 
+  /** 엔진에 몸에 보이는 장비를 알려 준다 */
+  applyLook() {
+    const w = this.save.wear;
+    this.engine.look = { hat: w.hat ?? '', back: w.back ?? '', hand: w.weapon ?? '' };
+  }
+
   /** 엔진에 지금 색을 알려 준다 (그리는 쪽이 읽는다) */
   applySkins() {
+    this.applyLook();
     this.engine.chickSkin = this.save.skins.chickOn;
     this.engine.fxSkin = this.save.skins.fxOn;
   }

@@ -214,7 +214,7 @@ export class ActionMode {
     p.y = 0;
     p.regen = 0;
     p.maxHp = p.hp = this.baseHp;
-    p.speed = BASE_SPEED * st.spd;
+    p.speed = BASE_SPEED * st.spd * (1 + bonus.speed);
     p.magnet = BASE_MAGNET * bonus.magnet;
     // 장신구 효과
     this.comboSec = COMBO_SEC + bonus.combo;

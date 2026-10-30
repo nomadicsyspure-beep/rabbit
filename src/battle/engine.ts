@@ -418,6 +418,8 @@ export class Engine {
   readonly orbs: Orb[] = [];
   pet: Pet | null = null;
   readonly hazards: Hazard[] = [];
+  /** 몸에 보이는 장비 id (모자 / 등 / 옆에 둥둥 뜨는 무기). 없으면 '' */
+  look = { hat: '', back: '', hand: '' };
   /** 꾸미기: 병아리 색 / 스킬 이펙트 색 (그리는 쪽이 읽는다) */
   chickSkin = 'basic';
   fxSkin = 'basic';
