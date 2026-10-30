@@ -193,7 +193,6 @@ export function buildShopTab(panel: HTMLElement, game: Game, host: UIHost) {
   const pet = summonCard(game, host, 'pet');
   const gear = summonCard(game, host, 'gear');
   panel.append(h('div', 'section-title', '소환'), pet.el, gear.el);
-  const chick = skinSection(panel, game, host, 'chick');
   const fx = skinSection(panel, game, host, 'fx');
 
   panel.append(h('div', 'section-title', '💎 다이아 충전'));
@@ -210,7 +209,6 @@ export function buildShopTab(panel: HTMLElement, game: Game, host: UIHost) {
     wallet.refresh();
     pet.refresh();
     gear.refresh();
-    chick();
     fx();
   };
 }

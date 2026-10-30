@@ -24,10 +24,10 @@ export interface BoxDef {
 export const GRADES: Grade[] = ['S', 'A', 'B', 'C', 'D'];
 
 export const SKILL_BOXES: BoxDef[] = [
-  { id: 'wood', name: '나무 상자', icon: '📦', goldSec: 300, odds: { B: 10, C: 35, D: 55 } },
-  { id: 'silver', name: '은 상자', icon: '🎁', diamonds: 30, book: true, odds: { A: 10, B: 30, C: 40, D: 20 } },
-  { id: 'gold', name: '금 상자', icon: '💛', diamonds: 100, odds: { S: 7, A: 28, B: 45, C: 20 } },
-  { id: 'legend', name: '전설 상자', icon: '💜', diamonds: 300, odds: { S: 25, A: 50, B: 25 } },
+  { id: 'wood', name: '나무 상자', icon: '📦', goldSec: 600, odds: { B: 10, C: 35, D: 55 } },
+  { id: 'silver', name: '은 상자', icon: '🎁', diamonds: 40, book: true, odds: { A: 10, B: 30, C: 40, D: 20 } },
+  { id: 'gold', name: '금 상자', icon: '💛', diamonds: 150, odds: { S: 7, A: 28, B: 45, C: 20 } },
+  { id: 'legend', name: '전설 상자', icon: '💜', diamonds: 450, odds: { S: 25, A: 50, B: 25 } },
 ];
 
 export const BOX_BY_ID = Object.fromEntries(SKILL_BOXES.map((b) => [b.id, b])) as Record<BoxId, BoxDef>;
@@ -35,7 +35,7 @@ export const BOX_BY_ID = Object.fromEntries(SKILL_BOXES.map((b) => [b.id, b])) a
 /** 상자 n회 값. 골드 상자는 { gold }, 다이아 상자는 { diamonds } */
 export function boxCost(box: BoxDef, n: 1 | 10, maxStage: number): { gold?: number; diamonds?: number } {
   const mult = n === 1 ? 1 : 9;
-  if (box.goldSec) return { gold: Math.max(500, Math.round(idleGoldPerSec(maxStage) * box.goldSec)) * mult };
+  if (box.goldSec) return { gold: Math.max(1000, Math.round(idleGoldPerSec(maxStage) * box.goldSec)) * mult };
   return { diamonds: (DIAMOND_OVERRIDE ?? box.diamonds!) * mult };
 }
 

@@ -244,6 +244,7 @@ export class Game {
     this.save.wear[def.slot] = this.save.wear[def.slot] === id ? undefined : id;
     this.applyLook();
     this.idle.refreshStats();
+    if (this.mode === 'idle' && def.slot === 'weapon') this.idle.setWeapon();
   }
 
   /** 착용한 부위의 장비와 강화 단계 */
@@ -449,7 +450,8 @@ export class Game {
   /** 엔진에 지금 색을 알려 준다 (그리는 쪽이 읽는다) */
   applySkins() {
     this.applyLook();
-    this.engine.chickSkin = this.save.skins.chickOn;
+    // 병아리 색 바꾸기는 상점에서 뺐다 (원래 색 고정)
+    this.engine.chickSkin = 'basic';
     this.engine.fxSkin = this.save.skins.fxOn;
   }
 
