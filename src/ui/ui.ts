@@ -1,5 +1,5 @@
 import { sfx } from '../audio/sfx';
-import { CHEST_ICONS, CHEST_NAMES, rewardText } from '../data/items';
+import { CHEST_NAMES, rewardText } from '../data/items';
 import { regionOf, stageRule } from '../data/world';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
@@ -7,12 +7,12 @@ import {
   type StatId,
 } from '../data/balance';
 import {
-  BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_TYPES, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, SKILL_BY_ID, type SkillDef,
+  BRANCHES, EQUIP_SLOTS, SKILLS, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, SKILL_BY_ID, type SkillDef,
 } from '../data/skills';
 import { DUNGEON_DAILY, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
-import { art, coin, h, holdRepeat, icon, skillIcon, svgIcon } from './dom';
+import { art, coin, h, holdRepeat, skillIcon, svgIcon } from './dom';
 import { buildGearTab, showCollection, showRebirth, type UIHost } from './meta';
 import { buildPetsTab, buildShopTab, showMissions } from './shop';
 import { ICONS } from './icons';
@@ -30,10 +30,6 @@ const TABS: { id: TabId; name: string; locked: boolean }[] = [
 
 /** 탭 아이콘: UI 시트에 있는 건 그 그림, 없는 건 선 아이콘 */
 const TAB_ART: Partial<Record<TabId, string>> = { growth: 'icon-stats', dungeon: 'icon-map' };
-/** 탭 아이콘 (src/assets/icons) */
-const TAB_ICON: Partial<Record<TabId, string>> = { skill: 'el-bolt', gear: 'gear-sword', pets: 'heart', shop: 'gift' };
-/** 능력치 아이콘 (src/assets/icons) */
-const STAT_ICON: Record<StatId, string> = { atk: 'tile-sword', hp: 'tile-heart', aps: 'tile-up-orange', spd: 'tile-boot' };
 
 const STAT_META: Record<StatId, { color: string; fmt: (v: number) => string }> = {
   atk: { color: '#e05a5a', fmt: (v) => fmt(v) },
@@ -143,8 +139,7 @@ export class UI implements UIHost {
     this.challengeBtn.append(this.challengeLabel);
     this.challengeBtn.addEventListener('click', () => this.game.enterAction());
     // 미션·출석·업적·패스 (받을 게 있으면 빨간 점)
-    this.missionBtn = h('button', 'mission-btn');
-    this.missionBtn.append(icon('calendar', 'mission-icon'), h('span', '', '미션'));
+    this.missionBtn = h('button', 'mission-btn', '📋 미션');
     this.missionBtn.addEventListener('click', () => showMissions(this.game, this));
 
     // 액션 HUD: 왼쪽 위 초상화+체력+레벨, 가운데 스테이지·시간, 오른쪽 처치 수·일시정지
@@ -219,7 +214,6 @@ export class UI implements UIHost {
       const b = h('button', 'tab' + (t.locked ? ' locked' : ''));
       const pic = TAB_ART[t.id];
       if (pic) b.append(art(pic, 'tab-art'));
-      else if (TAB_ICON[t.id]) b.append(icon(TAB_ICON[t.id]!, 'tab-art'));
       else b.insertAdjacentHTML('beforeend', ICONS[t.id]);
       b.append(h('span', '', t.name));
       b.addEventListener('click', () => this.selectTab(t.id));
@@ -323,8 +317,9 @@ export class UI implements UIHost {
     this.panel.append(this.powerEl);
     for (const id of STAT_ORDER) {
       const def = STATS[id];
+      const meta = STAT_META[id];
       const card = h('div', 'card row');
-      const pic = icon(STAT_ICON[id], 'stat-icon');
+      const icon = svgIcon(ICONS[id], meta.color);
       const info = h('div', 'info');
       const name = h('div', 'title', def.name + ' ');
       const lv = h('span', 'lv');
@@ -339,7 +334,7 @@ export class UI implements UIHost {
         if (ok) this.refresh();
         return ok;
       });
-      card.append(pic, info, btn);
+      card.append(icon, info, btn);
       this.panel.append(card);
       this.statRows.set(id, { lv, val, cost, btn });
     }
@@ -359,23 +354,16 @@ export class UI implements UIHost {
     this.equipBar = h('div', 'equip-slots');
     top.append(this.skillHeader, this.equipBar);
     this.equipKey = '';
-    this.panel.append(top);
-    // 형태별로 나눠서 (공격형 · 타겟형 · 디버프형 · 버프형)
-    for (const type of SKILL_TYPES) {
-      const head = h('div', 'skill-type-head');
-      head.append(icon(type.icon, 'type-icon'), h('span', 'type-name', type.name), h('span', 'type-desc', type.desc));
-      const grid = h('div', 'skill-grid');
-      for (const def of SKILLS.filter((d) => d.type === type.id)) {
-        const root = h('button', 'skill-tile');
-        const lv = h('span', 'tile-lv');
-        root.append(skillIcon(def, 'tile-icon'), lv, h('span', 'tile-name', def.name));
-        root.addEventListener('click', () => this.showSkill(def));
-        grid.append(root);
-        this.skillTiles.push({ def, root, lv });
-      }
-      this.panel.append(head, grid);
+    const grid = h('div', 'skill-grid');
+    for (const def of SKILLS) {
+      const root = h('button', 'skill-tile');
+      const lv = h('span', 'tile-lv');
+      root.append(skillIcon(def, 'tile-icon'), lv, h('span', 'tile-name', def.name));
+      root.addEventListener('click', () => this.showSkill(def));
+      grid.append(root);
+      this.skillTiles.push({ def, root, lv });
     }
-    this.panel.append(h('div', 'hint', '형태마다 한 칸씩 장착 · 스킬을 눌러 배우기·강화·장착'));
+    this.panel.append(top, grid, h('div', 'hint', `스킬을 눌러 배우기·강화·장착 · 스테이지에서는 장착한 ${EQUIP_SLOTS}개만 발동해요`));
   }
 
   /** 스킬 창: 설명, 배우기 또는 가지 강화, 장착·교체 */
@@ -425,19 +413,37 @@ export class UI implements UIHost {
       row.append(info, btn);
       return { br, row, name, val, cost, btn };
     });
-    // 장착: 형태마다 한 칸. 같은 형태가 끼워져 있으면 바꿔 낀다
+    // 장착: 칸이 남으면 바로, 가득 차면 바꿀 스킬을 고른다
     const equipBox = h('div', 'equip-box');
-    const typeName = SKILL_TYPES.find((t) => t.id === def.type)!.name;
     const renderEquip = () => {
-      const on = g.save.equipped.includes(def.id);
-      const cur = g.equippedOfType(def.type);
-      const label = on ? `장착 해제 (${typeName} 칸)` : cur ? `${typeName} 칸 교체 (${SKILL_BY_ID[cur].name} → ${def.name})` : `${typeName} 칸에 장착`;
-      equipBox.replaceChildren(this.button(label, on ? '' : 'primary', () => {
-        g.toggleEquip(def.id);
-        if (!on && cur) this.toast(`${SKILL_BY_ID[cur].name} → ${def.name} 교체!`);
-        this.refresh();
-        renderEquip();
-      }));
+      const eq = g.save.equipped;
+      if (eq.includes(def.id)) {
+        equipBox.replaceChildren(this.button(`장착 해제 (${eq.length}/${EQUIP_SLOTS})`, '', () => {
+          g.toggleEquip(def.id);
+          this.refresh();
+          renderEquip();
+        }));
+      } else if (eq.length < EQUIP_SLOTS) {
+        equipBox.replaceChildren(this.button(`장착하기 (${eq.length}/${EQUIP_SLOTS})`, 'primary', () => {
+          g.toggleEquip(def.id);
+          this.refresh();
+          renderEquip();
+        }));
+      } else {
+        const pick = h('div', 'equip-slots');
+        for (const id of eq) {
+          const b = h('button', 'equip-slot');
+          b.append(skillIcon(SKILL_BY_ID[id], 'tile-icon'), h('span', 'tile-name', SKILL_BY_ID[id].name));
+          b.addEventListener('click', () => {
+            g.replaceEquip(id, def.id);
+            this.toast(`${SKILL_BY_ID[id].name} → ${def.name} 교체!`);
+            this.refresh();
+            renderEquip();
+          });
+          pick.append(b);
+        }
+        equipBox.replaceChildren(h('div', 'section-title', '장착 칸이 가득: 바꿀 스킬을 누르세요'), pick);
+      }
     };
     renderEquip();
     this.treeRefresh = () => {
@@ -612,23 +618,22 @@ export class UI implements UIHost {
     if (!this.skillHeader || !this.equipBar) return;
     const g = this.game;
     const eq = g.save.equipped;
-    this.skillHeader.textContent = `장착 중 ${eq.length}/${EQUIP_SLOTS} · 형태마다 한 칸`;
+    this.skillHeader.textContent = `장착 중 ${eq.length}/${EQUIP_SLOTS} · 아래에서 눌러 강화·교체`;
     const key = eq.join();
     if (key !== this.equipKey) {
       this.equipKey = key;
-      const slots = SKILL_TYPES.map((type) => {
-        const id = g.equippedOfType(type.id);
-        const def = id ? SKILL_BY_ID[id] : null;
+      const slots: HTMLElement[] = [];
+      for (let i = 0; i < EQUIP_SLOTS; i++) {
+        const def = eq[i] ? SKILL_BY_ID[eq[i]] : null;
         const b = h('button', 'equip-slot' + (def ? '' : ' empty'));
-        b.append(icon(type.icon, 'slot-type'));
         if (def) {
           b.append(skillIcon(def, 'tile-icon'), h('span', 'tile-name', def.name));
           b.addEventListener('click', () => this.showSkill(def));
         } else {
-          b.append(h('span', 'tile-plus', '+'), h('span', 'tile-name', type.name));
+          b.append(h('span', 'tile-plus', '+'), h('span', 'tile-name', '빈 칸'));
         }
-        return b;
-      });
+        slots.push(b);
+      }
       this.equipBar.replaceChildren(...slots);
     }
     for (const t of this.skillTiles) {
@@ -739,7 +744,7 @@ export class UI implements UIHost {
     const opens: (() => void)[] = [];
     for (const c of chests) {
       const el = h('button', `chest-item grade-${c.grade}`);
-      el.append(icon(CHEST_ICONS[c.grade], 'chest-pic'), h('span', '', CHEST_NAMES[c.grade]));
+      el.append(art('chest'), h('span', '', CHEST_NAMES[c.grade]));
       let opened = false;
       const open = () => {
         if (opened) return;
