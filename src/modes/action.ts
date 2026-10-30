@@ -9,7 +9,7 @@ import {
 } from '../data/balance';
 import { CHEST_NAMES, rollChest, type ChestGrade } from '../data/items';
 import { regionOf, stageRule, stageSkins, type RuleDef } from '../data/world';
-import { SKILL_BY_ID, createSkill, type Branch, type SkillDef, type SkillId } from '../data/skills';
+import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
@@ -440,9 +440,7 @@ export class ActionMode {
     const skins = stageSkins(this.skinStage);
     // 가끔 황금 몹: 도망치고, 잡으면 골드 폭죽
     if (kind === 'normal' && Math.random() < GOLDEN_RATE * this.game.goldenBoost) {
-      // 크고 단단하고, 부딪히면 아프다. 잡으면 골드·다이아·금 상자
-      this.spawnMob({ kind, skin: skins.normal, x, y, hp: 80 * s, r: 22, speed: 60, dmg: 6 * s, xp: 20, move: 'flee', golden: true, t1: 18 });
-      this.game.ui.toast('황금 몹이다! 잡아라!');
+      this.spawnGolden(x, y);
       return;
     }
     if (kind === 'normal' && Math.random() < FIRSTAID_RATE) {
@@ -667,10 +665,18 @@ export class ActionMode {
     }
   }
 
-  /** 스테이지 중 스킬 강화: 이번 판 스킬에도 한 단계 더한다 (피버 보너스는 그대로) */
-  applyUpgrade(id: SkillId, branch: Branch) {
-    const s = this.equipped.find((x) => x.def.id === id);
-    if (s) s.tree[branch]++;
+  /** 황금 몹: 크고 단단하고 도망친다, 부딪히면 아프다. 잡으면 골드·다이아·금 상자 (x, y 없으면 화면 안 가까이: 튜토리얼) */
+  spawnGolden(x?: number, y?: number) {
+    const p = this.game.engine.player;
+    if (x === undefined || y === undefined) {
+      const a = Math.random() * Math.PI * 2;
+      x = p.x + Math.cos(a) * 110;
+      y = p.y + Math.sin(a) * 80;
+    }
+    const s = 1 + (this.time / 60) * 0.6;
+    const skins = stageSkins(this.skinStage);
+    this.spawnMob({ kind: 'normal', skin: skins.normal, x, y, hp: 80 * s, r: 22, speed: 60, dmg: 6 * s, xp: 20, move: 'flee', golden: true, t1: 18 });
+    this.game.ui.toast('황금 몹이다! 잡아라!');
   }
 
   pause() {

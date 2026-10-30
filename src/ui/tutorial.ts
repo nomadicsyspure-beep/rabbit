@@ -39,29 +39,46 @@ export class Tutorial {
   constructor(private readonly game: Game, host: HTMLElement, modalOpen: () => boolean) {
     const idle = () => game.mode === 'idle' && !modalOpen();
     const action = () => game.mode === 'action' && game.action.state === 'playing';
+    // 튜토리얼 상자는 나무 상자 1회 값만큼 골드를 채워 준다
+    const fillWood = () => {
+      const s = game.save;
+      const c = boxCost(BOX_BY_ID.wood, 1, s.maxStage).gold ?? 0;
+      if (s.gold < c) s.gold = c;
+      $('.box-wood')?.scrollIntoView({ block: 'center' });
+    };
     const tab = (name: string) => () => [...document.querySelectorAll<HTMLElement>('.tab')].find((t) => t.textContent?.includes(name)) ?? null;
     this.steps = [
       { when: idle, text: '삐요! 나는 병아리 용사야. 몬스터를 물리치고 쑥쑥 강해지자!', button: '좋아!' },
       { when: idle, target: () => $('.challenge-btn'), text: '먼저 스테이지에 도전해 보자! 도전 버튼을 눌러 봐' },
       { when: action, freeze: true, text: '화면을 끌면 병아리가 움직여. 스킬은 저절로 나가! 1분이 지나면 보스가 나타나는데, 그 보스를 쓰러뜨리면 스테이지 클리어야', button: '알겠어!' },
       { when: action, freeze: true, target: () => $('.auto-btn'), text: '귀찮으면 AUTO! 누르면 알아서 싸워 (조이스틱을 쓰면 그동안은 직접)' },
+      {
+        when: action, freeze: true, target: () => $('.hud-action .fever'), button: '좋아!',
+        text: '몹을 잡을수록 FEVER 게이지가 차! 가득 차면 10초 동안 피버 타임: 스킬이 엄청 세지고 골드도 2배야',
+      },
+      {
+        when: action, freeze: true, button: '잡으러 가자!',
+        text: '반짝이는 황금 몹이 나타났어! 도망 다니지만 잡으면 골드·다이아·금 상자를 줘. 화면 밖에 있으면 금색 화살표가 가리켜',
+        enter: () => game.action.spawnGolden(),
+      },
       { when: idle, target: tab('스킬'), text: '잘했어! 이제 스킬을 얻으러 가자. 스킬 탭을 눌러 봐' },
       {
-        when: idle, target: () => $('.box-wood .box-btns .buy'), text: '스킬은 상자에서 나와. 나무 상자를 열어 보자! (이번엔 골드를 채워 줄게)',
-        enter: () => {
-          const s = game.save;
-          const c = boxCost(BOX_BY_ID.wood, 1, s.maxStage).gold ?? 0;
-          if (s.gold < c) s.gold = c;
-          $('.box-wood')?.scrollIntoView({ block: 'center' });
-        },
+        when: idle, target: () => $('.box-wood .box-btns .buy'), text: '스킬은 상자를 까서 얻어! 나무 상자를 열어 보자 (이번엔 골드를 채워 줄게)',
+        enter: fillWood,
       },
-      { when: () => modalOpen(), target: () => $('.modal .btn.primary'), text: '새 스킬은 빈 칸에 바로 장착돼! 비싼 상자일수록 S급이 잘 나와' },
+      { when: () => modalOpen(), target: () => $('.modal .btn.primary'), text: '새 스킬 획득! 새 스킬은 비어 있는 칸에 바로 장착돼. 비싼 상자일수록 좋은 등급이 잘 나와' },
       {
-        when: idle, target: () => $('.equip-slot:not(.empty)'), text: '장착한 스킬을 눌러 봐',
+        when: idle, target: () => $('.box-wood .box-btns .buy'), text: '한 번 더 열어 보자! 이미 가진 스킬이 또 나오면 그 스킬의 ⭐스킬 포인트를 줘',
+        enter: fillWood,
+      },
+      { when: () => modalOpen(), target: () => $('.modal .btn.primary'), text: '같은 스킬이 겹쳤어! ⭐스킬 포인트 +1. 이제 포인트를 찍으러 가자' },
+      {
+        when: idle, target: () => $('.equip-slot:not(.empty)'), text: '포인트를 받은 공격형 스킬을 눌러 봐',
         enter: () => $('.panel')?.scrollTo({ top: 0 }),
       },
+      { when: () => modalOpen(), target: () => $('.modal .tree-row .buy'), text: '피해·발동 속도·개수 중 골라서 포인트를 찍어 (개수는 2점). 피해를 올려 보자!' },
       { when: () => modalOpen(), target: () => $('.modal .skill-art'), text: '스킬 아이콘을 누르면 어떻게 나가는지 미리 볼 수 있어' },
-      { when: () => modalOpen(), target: () => $('.modal .btn.primary'), text: '같은 스킬이 상자에서 또 나오면 스킬 포인트! 피해·발동 속도·개수 중 골라서 찍어. 이제 닫아 보자' },
+      { when: () => modalOpen(), target: () => $('.modal .btn.primary:last-child'), text: '스킬은 골드로 못 올려. 상자를 많이 까서 포인트를 모으자! 이제 닫아 보자' },
       { when: idle, target: tab('성장'), text: '성장 탭에서는 병아리 능력치를 올려' },
       {
         when: idle, target: () => $('.panel .card.row .buy'), text: '공격력을 한 번 올려 보자! (누르고 있으면 연속 강화)',
@@ -174,7 +191,7 @@ export class Tutorial {
   /** 말풍선: 뚫린 곳이 위쪽이면 그 아래에, 아래쪽이면 그 위에 */
   private place(b: HTMLElement, hole: { top: number; bottom: number } | null, vh: number) {
     if (!hole) {
-      b.style.top = `${vh * 0.35}px`;
+      b.style.top = `${vh * 0.12}px`;
       b.style.bottom = '';
       return;
     }
