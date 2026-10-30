@@ -73,7 +73,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'tornado', type: 'attack', name: '회오리', icon: 'skill-tornado', blurb: '바라보는 쪽으로 회오리가 쓸고 지나간다',
-    dmg: 0.6, cd: 3.2, count: 1, countLabel: '회오리', learnCost: 30,
+    dmg: 1.9, cd: 3.2, count: 1, countLabel: '회오리', learnCost: 30,
     create: (s, spec, t) => new TornadoWeapon(s, spec, t),
   },
   {
@@ -83,7 +83,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'flame', type: 'attack', name: '화염 폭발', icon: 'skill-flame', blurb: '주변을 불꽃으로 날려 버린다 (개수만큼 점점 크게 연속 폭발)',
-    dmg: 1.2, cd: 2.6, count: 1, countLabel: '연속 폭발', learnCost: 80,
+    dmg: 1.49, cd: 2.6, count: 1, countLabel: '연속 폭발', learnCost: 80,
     create: (s, spec, t) => new FlameWeapon(s, spec, t),
   },
   {
@@ -103,7 +103,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'dark', type: 'attack', name: '암흑 구체', icon: 'skill-dark', blurb: '주위를 도는 구체 (발동 속도 = 회전 속도)',
-    dmg: 0.5, cd: 0, count: 2, countLabel: '구체', continuous: true, learnCost: 200,
+    dmg: 0.97, cd: 0, count: 2, countLabel: '구체', continuous: true, learnCost: 200,
     create: (s, spec, t) => new DarkOrbWeapon(s, spec, t),
   },
   {
@@ -113,7 +113,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'chain', type: 'target', name: '번개 연쇄', icon: 'fx:blue-slash', blurb: '번개가 적에서 적으로 튀어 다닌다',
-    dmg: 1.2, cd: 1.5, count: 4, countStep: 2, countLabel: '튀는 횟수', learnCost: 180,
+    dmg: 1.37, cd: 1.5, count: 4, countStep: 2, countLabel: '튀는 횟수', learnCost: 180,
     create: (s, spec, t) => new ChainWeapon(s, spec, t),
   },
   {
@@ -123,23 +123,23 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'meteor', type: 'target', name: '별똥별', icon: 'fx:gold-sparkle', blurb: '적들 위로 별이 쏟아진다',
-    dmg: 2.2, cd: 2.8, count: 3, countLabel: '별', learnCost: 300,
+    dmg: 1.71, cd: 2.8, count: 3, countLabel: '별', learnCost: 300,
     create: (s, spec, t) => new MeteorWeapon(s, spec, t),
   },
   {
     id: 'pillar', type: 'target', name: '빛의 기둥', icon: 'fx:pillar', blurb: '무작위 적들에게 빛 기둥이 내리꽂힌다',
-    dmg: 2.5, cd: 3, count: 2, countLabel: '기둥', learnCost: 250,
+    dmg: 2.18, cd: 3, count: 2, countLabel: '기둥', learnCost: 250,
     create: (s, spec, t) => new PillarWeapon(s, spec, t),
   },
   // ---- 추가 스킬 (나중에 추려서 밸런스 조정) ----
   {
     id: 'boomerang', type: 'attack', name: '부메랑', icon: 'fx:slash', blurb: '날아갔다 돌아오며 오가는 길의 적을 전부 벤다',
-    dmg: 1.1, cd: 1.8, count: 1, countLabel: '부메랑', learnCost: 90,
+    dmg: 3.3, cd: 1.8, count: 3, countLabel: '부메랑', learnCost: 90,
     create: (s, spec, t) => new BoomerangWeapon(s, spec, t),
   },
   {
     id: 'firefly', type: 'target', name: '반딧불', icon: 'fx:sparkle', blurb: '적을 끝까지 쫓아가는 빛 구슬',
-    dmg: 0.9, cd: 1.4, count: 3, countLabel: '구슬', learnCost: 70,
+    dmg: 1.55, cd: 1.4, count: 3, countLabel: '구슬', learnCost: 70,
     create: (s, spec, t) => new FireflyWeapon(s, spec, t),
   },
   {
@@ -149,12 +149,12 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'quake', type: 'attack', name: '지진', icon: 'fx:star-burst', blurb: '발밑에서 점점 커지는 땅울림 (개수만큼 연달아)',
-    dmg: 1.1, cd: 2.6, count: 3, countLabel: '울림', learnCost: 140,
+    dmg: 0.94, cd: 2.6, count: 3, countLabel: '울림', learnCost: 140,
     create: (s, spec, t) => new QuakeWeapon(s, spec, t),
   },
   {
     id: 'thunder', type: 'target', name: '낙뢰', icon: 'fx:blue-slash', blurb: '하늘에서 번개가 무작위 적에게 내리꽂힌다',
-    dmg: 2, cd: 2.2, count: 3, countLabel: '번개', learnCost: 260,
+    dmg: 1.67, cd: 2.2, count: 3, countLabel: '번개', learnCost: 260,
     create: (s, spec, t) => new ThunderWeapon(s, spec, t),
   },
   {
@@ -164,17 +164,17 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'nova', type: 'attack', name: '별 폭죽', icon: 'fx:star-burst', blurb: '사방으로 별이 터져 나간다',
-    dmg: 0.9, cd: 2, count: 6, countStep: 2, countLabel: '별 줄기', learnCost: 100,
+    dmg: 2.4, cd: 2, count: 6, countStep: 2, countLabel: '별 줄기', learnCost: 100,
     create: (s, spec, t) => new NovaWeapon(s, spec, t),
   },
   {
     id: 'firetrail', type: 'attack', name: '불길', icon: 'fx:fire-burst', blurb: '지나간 자리에 불꽃이 남아 밟는 적을 태운다',
-    dmg: 0.5, cd: 0.5, count: 1, countLabel: '불꽃', learnCost: 120,
+    dmg: 0.44, cd: 0.5, count: 1, countLabel: '불꽃', learnCost: 120,
     create: (s, spec, t) => new FireTrailWeapon(s, spec, t),
   },
   {
     id: 'bigegg', type: 'target', name: '거대 알', icon: 'skill-egg', blurb: '집채만 한 알을 던져 화면이 흔들리게 펑',
-    dmg: 4, cd: 4.5, count: 1, countLabel: '거대 알', learnCost: 350,
+    dmg: 3.0, cd: 4.5, count: 1, countLabel: '거대 알', learnCost: 350,
     create: (s, spec, t) => new BigEggWeapon(s, spec, t),
   },
   {
@@ -184,7 +184,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'cross', type: 'attack', name: '성스러운 십자', icon: 'fx:heal-cross', blurb: '십자로 빛줄기가 뻗는다 (번갈아 돌려서 연달아)',
-    dmg: 1.3, cd: 2.4, count: 2, countLabel: '십자', learnCost: 180,
+    dmg: 1.09, cd: 2.4, count: 2, countLabel: '십자', learnCost: 180,
     create: (s, spec, t) => new CrossWeapon(s, spec, t),
   },
   {
@@ -194,7 +194,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'laser', type: 'target', name: '레이저', icon: 'fx:pillar', blurb: '화면을 가르는 광선이 한 줄을 통째로 지운다',
-    dmg: 1.8, cd: 2.2, count: 1, countLabel: '광선', learnCost: 320,
+    dmg: 1.39, cd: 2.2, count: 1, countLabel: '광선', learnCost: 320,
     create: (s, spec, t) => new LaserWeapon(s, spec, t),
   },
   {
@@ -204,33 +204,33 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'firework', type: 'target', name: '폭죽', icon: 'fx:gold-sparkle', blurb: '반짝이를 높이 던져 적 무리 위에서 펑펑',
-    dmg: 1.7, cd: 2.6, count: 4, countLabel: '폭죽', learnCost: 280,
+    dmg: 1.27, cd: 2.6, count: 4, countLabel: '폭죽', learnCost: 280,
     create: (s, spec, t) => new FireworkWeapon(s, spec, t),
   },
   {
     id: 'wisp', type: 'attack', name: '도깨비불', icon: 'fx:purple-flame', blurb: '둘레에 생긴 불꽃 고리가 바깥으로 퍼진다',
-    dmg: 0.7, cd: 2.2, count: 4, countStep: 2, countLabel: '불꽃', learnCost: 150,
+    dmg: 0.63, cd: 2.2, count: 4, countStep: 2, countLabel: '불꽃', learnCost: 150,
     create: (s, spec, t) => new WispWeapon(s, spec, t),
   },
   {
     id: 'featherstorm', type: 'attack', name: '깃털 폭풍', icon: 'skill-feather', blurb: '사방으로 깃털이 한꺼번에 쏟아진다',
-    dmg: 0.8, cd: 2, count: 10, countStep: 3, countLabel: '깃털', learnCost: 90,
+    dmg: 1.34, cd: 2, count: 10, countStep: 3, countLabel: '깃털', learnCost: 90,
     create: (s, spec, t) => new FeatherStormWeapon(s, spec, t),
   },
   // ---- 설정으로 만든 스킬 (그림 이름@색상) ----
   {
     id: 'shuriken', type: 'target', name: '수리검', icon: 'fx:slash@200', blurb: '빙글빙글 도는 표창이 적 둘을 꿰뚫는다',
-    dmg: 1.0, cd: 1.3, count: 3, countLabel: '표창', learnCost: 80,
+    dmg: 1.16, cd: 1.3, count: 3, countLabel: '표창', learnCost: 80,
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'shuriken', sprite: 'slash@200', speed: 520, range: 360, pierce: 2, pattern: 'fan', gap: 0.25, r: 9, scale: 0.8 }),
   },
   {
     id: 'bubble', type: 'target', name: '물방울', icon: 'fx:sparkle@195', blurb: '둥실둥실 적을 따라가는 물방울',
-    dmg: 0.9, cd: 1.4, count: 4, countLabel: '물방울', learnCost: 70,
+    dmg: 1.36, cd: 1.4, count: 4, countLabel: '물방울', learnCost: 70,
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'bubble', sprite: 'sparkle@195', speed: 200, range: 520, pierce: 0, pattern: 'random', home: 3, r: 8, scale: 1.2 }),
   },
   {
     id: 'petal', type: 'attack', name: '꽃잎 폭풍', icon: 'fx:feather@330', blurb: '사방으로 꽃잎이 흩날린다',
-    dmg: 0.7, cd: 1.8, count: 10, countStep: 3, countLabel: '꽃잎', learnCost: 90,
+    dmg: 1.09, cd: 1.8, count: 10, countStep: 3, countLabel: '꽃잎', learnCost: 90,
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'petal', sprite: 'feather@330', speed: 420, range: 300, pierce: 1, pattern: 'ring', r: 6 }),
   },
   {
@@ -240,17 +240,17 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'windblade', type: 'attack', name: '바람 칼날', icon: 'fx:blue-slash@160', blurb: '일직선으로 모두 베고 지나가는 바람',
-    dmg: 1.1, cd: 1.5, count: 2, countLabel: '칼날', learnCost: 120,
+    dmg: 1.78, cd: 1.5, count: 2, countLabel: '칼날', learnCost: 120,
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'windblade', sprite: 'blue-slash@160', speed: 620, range: 320, pierce: 999, pattern: 'fan', gap: 0.35, r: 12, scale: 1.3 }),
   },
   {
     id: 'note', type: 'target', name: '음표', icon: 'fx:sparkle@280', blurb: '통통 튀며 적을 쫓아가는 음표',
-    dmg: 0.8, cd: 1.2, count: 3, countLabel: '음표', learnCost: 80,
+    dmg: 1.36, cd: 1.2, count: 3, countLabel: '음표', learnCost: 80,
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'note', sprite: 'sparkle@280', speed: 260, range: 520, pierce: 0, pattern: 'random', home: 5, r: 7 }),
   },
   {
     id: 'skullfire', type: 'target', name: '도깨비 해골불', icon: 'fx:purple-flame', blurb: '느리게 쫓아가며 셋을 꿰뚫는 저주의 불',
-    dmg: 1.2, cd: 2, count: 2, countLabel: '해골불', learnCost: 150,
+    dmg: 1.48, cd: 2, count: 2, countLabel: '해골불', learnCost: 150,
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'skullfire', sprite: 'purple-flame', speed: 190, range: 520, pierce: 2, pattern: 'random', home: 3, r: 10, scale: 1.2 }),
   },
   {
@@ -260,27 +260,27 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'candy', type: 'target', name: '별사탕', icon: 'fx:star-burst@300', blurb: '사방으로 퍼졌다가 적을 쫓아가는 별사탕',
-    dmg: 0.7, cd: 1.6, count: 6, countStep: 2, countLabel: '별사탕', learnCost: 100,
+    dmg: 1.07, cd: 1.6, count: 6, countStep: 2, countLabel: '별사탕', learnCost: 100,
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'candy', sprite: 'star-burst@300', speed: 300, range: 420, pierce: 0, pattern: 'ring', home: 3, r: 7 }),
   },
   {
     id: 'phoenix', type: 'attack', name: '불사조', icon: 'fx:fireball@25', blurb: '크게 돌아오는 불새 부메랑',
-    dmg: 1.6, cd: 2.6, count: 1, countLabel: '불새', learnCost: 260,
-    create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'phoenix', sprite: 'fireball@25', speed: 620, range: 1600, pierce: 999, pattern: 'fan', gap: 0.5, back: true, r: 16, scale: 1.6 }),
+    dmg: 4.8, cd: 2.6, count: 2, countLabel: '불새', learnCost: 260,
+    create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'phoenix', sprite: 'fireball@25', speed: 620, range: 1600, pierce: 999, pattern: 'fan', gap: 0.5, back: true, r: 26, scale: 1.6 }),
   },
   {
     id: 'arrowrain', type: 'target', name: '화살비', icon: 'fx:feather@40', blurb: '하늘에서 화살이 우수수',
-    dmg: 1.0, cd: 1.8, count: 6, countStep: 2, countLabel: '화살', learnCost: 100,
+    dmg: 0.79, cd: 1.8, count: 6, countStep: 2, countLabel: '화살', learnCost: 100,
     create: (s, spec, t) => new StrikeSkill(s, spec, t, { id: 'arrowrain', sprite: 'feather@40', radius: 24, size: 30 }),
   },
   {
     id: 'eruption', type: 'target', name: '화산 분출', icon: 'fx:fire-burst', blurb: '적 발밑에서 용암이 솟구친다',
-    dmg: 2.0, cd: 2.8, count: 3, countLabel: '분출', learnCost: 200,
+    dmg: 1.59, cd: 2.8, count: 3, countLabel: '분출', learnCost: 200,
     create: (s, spec, t) => new StrikeSkill(s, spec, t, { id: 'eruption', sprite: 'fire-burst', radius: 44, knock: 160, shake: 3 }),
   },
   {
     id: 'frostspike', type: 'debuff', name: '서리 가시', icon: 'fx:ice-crystals@205', blurb: '얼음 가시가 솟아 꽁꽁 (느려짐)',
-    dmg: 1.2, cd: 2, count: 4, countLabel: '가시', learnCost: 140,
+    dmg: 1.2, cd: 2.6, count: 4, countLabel: '가시', learnCost: 140,
     create: (s, spec, t) => new StrikeSkill(s, spec, t, { id: 'frostspike', sprite: 'ice-crystals@205', radius: 30, slow: 2 }),
   },
   {
@@ -295,7 +295,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'holymark', type: 'target', name: '신성 낙인', icon: 'fx:heal-cross@50', blurb: '금빛 십자가 적에게 내리꽂힌다',
-    dmg: 1.8, cd: 2.4, count: 3, countLabel: '낙인', learnCost: 210,
+    dmg: 1.5, cd: 2.4, count: 3, countLabel: '낙인', learnCost: 210,
     create: (s, spec, t) => new StrikeSkill(s, spec, t, { id: 'holymark', sprite: 'heal-cross@50', radius: 32, bolt: '#fff6a0', shake: 1.5 }),
   },
   {
@@ -305,12 +305,12 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'pollen', type: 'attack', name: '꽃가루 폭발', icon: 'fx:gold-sparkle@320', blurb: '달콤한 꽃가루가 펑펑',
-    dmg: 0.9, cd: 2, count: 3, countLabel: '폭발', learnCost: 110,
+    dmg: 0.81, cd: 2, count: 3, countLabel: '폭발', learnCost: 110,
     create: (s, spec, t) => new PulseSkill(s, spec, t, { id: 'pollen', color: '#ffb3e6', radius: 50, step: 25, sprite: 'gold-sparkle@320', knock: 60 }),
   },
   {
     id: 'frostwave', type: 'debuff', name: '얼음 파동', icon: 'fx:ice-crystals', blurb: '차가운 파동이 퍼져 주변을 느리게',
-    dmg: 0.8, cd: 2.6, count: 2, countLabel: '파동', learnCost: 150,
+    dmg: 0.8, cd: 3.2, count: 2, countLabel: '파동', learnCost: 150,
     create: (s, spec, t) => new PulseSkill(s, spec, t, { id: 'frostwave', color: '#bfe8ff', radius: 70, step: 30, knock: 40, slow: 2.5 }),
   },
   {
@@ -321,17 +321,17 @@ export const SKILLS: SkillDef[] = [
   {
     id: 'swamp', type: 'debuff', name: '늪', icon: 'fx:dust@60', blurb: '적 무리 밑에 끈적한 늪',
     dmg: 0.4, cd: 3.2, count: 2, countLabel: '늪', learnCost: 120,
-    create: (s, spec, t) => new ZoneSkill(s, spec, t, { id: 'swamp', sprite: 'dust@60', r: 50, life: 4, at: 'enemy', pull: 30 }),
+    create: (s, spec, t) => new ZoneSkill(s, spec, t, { id: 'swamp', sprite: 'dust@60', r: 50, life: 2.5, at: 'enemy', pull: 15 }),
   },
   {
     id: 'firepillar', type: 'target', name: '불기둥', icon: 'fx:fire-burst@10', blurb: '적 자리에 불기둥이 잠깐 솟는다',
-    dmg: 1.2, cd: 2, count: 3, countLabel: '불기둥', learnCost: 160,
+    dmg: 0.9, cd: 2, count: 3, countLabel: '불기둥', learnCost: 160,
     create: (s, spec, t) => new ZoneSkill(s, spec, t, { id: 'firepillar', sprite: 'fire-burst@10', r: 26, life: 1.4, at: 'enemy' }),
   },
   {
     id: 'vortex', type: 'debuff', name: '작은 소용돌이', icon: 'fx:purple-pit@200', blurb: '적을 빨아들이는 작은 소용돌이',
     dmg: 0.5, cd: 3, count: 2, countLabel: '소용돌이', learnCost: 200,
-    create: (s, spec, t) => new ZoneSkill(s, spec, t, { id: 'vortex', sprite: 'purple-pit@200', r: 30, life: 2.2, at: 'enemy', pull: 140 }),
+    create: (s, spec, t) => new ZoneSkill(s, spec, t, { id: 'vortex', sprite: 'purple-pit@200', r: 30, life: 1.6, at: 'enemy', pull: 80 }),
   },
   {
     id: 'icetrail', type: 'debuff', name: '얼음길', icon: 'fx:ice-crystals@190', blurb: '지나간 자리에 얼음 결정이 남는다',
@@ -340,7 +340,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'starfall', type: 'attack', name: '별무리', icon: 'fx:star-burst@50', blurb: '작은 별들이 사방으로 튕겨 나간다',
-    dmg: 0.8, cd: 1.6, count: 8, countStep: 2, countLabel: '별', learnCost: 120,
+    dmg: 1.43, cd: 1.6, count: 8, countStep: 2, countLabel: '별', learnCost: 120,
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'starfall', sprite: 'star-burst@50', speed: 360, range: 300, pierce: 1, pattern: 'ring', r: 7 }),
   },
   {
@@ -356,13 +356,13 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'roar', type: 'debuff', name: '공포의 외침', icon: 'fx:purple-burst@20', blurb: '크게 울어서 주변 적이 겁먹고 도망친다',
-    dmg: 0.2, cd: 5, count: 2, countLabel: '범위', learnCost: 140,
-    create: (s, spec, t) => new DebuffSkill(s, spec, t, { id: 'roar', kind: 'fear', t: 2.5, area: 100, sprite: 'purple-burst@20', color: '#ff8a5c' }),
+    dmg: 0.2, cd: 4, count: 2, countLabel: '범위', learnCost: 140,
+    create: (s, spec, t) => new DebuffSkill(s, spec, t, { id: 'roar', kind: 'fear', t: 3.5, area: 130, sprite: 'purple-burst@20', color: '#ff8a5c' }),
   },
   {
     id: 'dizzy', type: 'debuff', name: '혼란의 가루', icon: 'fx:sparkle@320', blurb: '가루를 뿌려 적들이 갈팡질팡',
-    dmg: 0.3, cd: 3.5, count: 4, countLabel: '대상', learnCost: 120,
-    create: (s, spec, t) => new DebuffSkill(s, spec, t, { id: 'dizzy', kind: 'confuse', t: 3, sprite: 'sparkle@320', color: '#ffb3e6' }),
+    dmg: 0.3, cd: 3.5, count: 6, countLabel: '대상', learnCost: 120,
+    create: (s, spec, t) => new DebuffSkill(s, spec, t, { id: 'dizzy', kind: 'confuse', t: 4, sprite: 'sparkle@320', color: '#ffb3e6' }),
   },
   {
     id: 'sleepdust', type: 'debuff', name: '수면 가루', icon: 'fx:sparkle@240', blurb: '잠 가루를 뿌려 적 몇 마리를 재운다',
@@ -376,8 +376,8 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'hex', type: 'debuff', name: '약화의 고리', icon: 'fx:purple-pit@300', blurb: '주변 적 전부 받는 피해 1.5배',
-    dmg: 0.2, cd: 5, count: 2, countLabel: '범위', learnCost: 210,
-    create: (s, spec, t) => new DebuffSkill(s, spec, t, { id: 'hex', kind: 'weak', t: 3.5, area: 90, sprite: 'purple-pit@300', color: '#d07aff' }),
+    dmg: 0.2, cd: 3.5, count: 2, countLabel: '범위', learnCost: 210,
+    create: (s, spec, t) => new DebuffSkill(s, spec, t, { id: 'hex', kind: 'weak', t: 5, area: 90, sprite: 'purple-pit@300', color: '#d07aff' }),
   },
   {
     id: 'huntmark', type: 'debuff', name: '사냥꾼의 표식', icon: 'fx:blue-slash@0', blurb: '표식이 붙은 적은 모든 공격이 치명타',
@@ -386,7 +386,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'ignite', type: 'debuff', name: '점화', icon: 'fx:fire-burst', blurb: '적에게 불을 붙여 계속 태운다',
-    dmg: 0.8, cd: 2.4, count: 3, countLabel: '대상', learnCost: 130,
+    dmg: 1.4, cd: 2.4, count: 3, countLabel: '대상', learnCost: 130,
     create: (s, spec, t) => new DebuffSkill(s, spec, t, { id: 'ignite', kind: 'burn', t: 4, sprite: 'fire-burst', color: '#ff7a2a' }),
   },
   {
@@ -421,8 +421,8 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'shield', type: 'buff', name: '보호막', icon: 'fx:heal-circle@195', blurb: '피해를 막아 주는 방울 보호막',
-    dmg: 1, cd: 6, count: 4, countStep: 0.5, countLabel: '지속', countUnit: '초', learnCost: 150,
-    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'shield', buff: 'shield', v: 0.25, color: '#9fe4ff' }),
+    dmg: 1, cd: 9, count: 4, countStep: 0.5, countLabel: '지속', countUnit: '초', learnCost: 150,
+    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'shield', buff: 'shield', v: 0.1, color: '#9fe4ff' }),
   },
   {
     id: 'rage', type: 'buff', name: '분노', icon: 'fx:fire-burst@0', blurb: '잠깐 동안 모든 피해 증가',
@@ -436,23 +436,23 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'haste', type: 'buff', name: '신속', icon: 'fx:gold-sparkle', blurb: '잠깐 동안 스킬이 더 빨리 돈다',
-    dmg: 1, cd: 8, count: 4, countStep: 0.5, countLabel: '지속', countUnit: '초', learnCost: 200,
-    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'haste', buff: 'haste', v: 0.6, sprite: 'gold-sparkle', color: '#ffd23f' }),
+    dmg: 1, cd: 10, count: 4, countStep: 0.5, countLabel: '지속', countUnit: '초', learnCost: 200,
+    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'haste', buff: 'haste', v: 0.22, sprite: 'gold-sparkle', color: '#ffd23f' }),
   },
   {
     id: 'overdrive', type: 'buff', name: '과부하', icon: 'fx:blue-slash@50', blurb: '짧고 강하게: 스킬 쿨 크게 감소',
-    dmg: 1, cd: 11, count: 2.5, countStep: 0.25, countLabel: '지속', countUnit: '초', learnCost: 260,
-    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'overdrive', buff: 'haste', v: 1.2, color: '#ffe066' }),
+    dmg: 1, cd: 13, count: 2.5, countStep: 0.25, countLabel: '지속', countUnit: '초', learnCost: 260,
+    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'overdrive', buff: 'haste', v: 0.4, color: '#ffe066' }),
   },
   {
     id: 'sprint', type: 'buff', name: '질주', icon: 'fx:feather@120', blurb: '잠깐 동안 이동 속도 증가',
-    dmg: 1, cd: 6, count: 3, countStep: 0.5, countLabel: '지속', countUnit: '초', learnCost: 110,
-    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'sprint', buff: 'sprint', v: 0.45, color: '#7cf2a0' }),
+    dmg: 1, cd: 4.5, count: 3, countStep: 0.5, countLabel: '지속', countUnit: '초', learnCost: 110,
+    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'sprint', buff: 'sprint', v: 0.8, color: '#7cf2a0' }),
   },
   {
     id: 'thorns', type: 'buff', name: '가시 갑옷', icon: 'fx:purple-burst@280', blurb: '부딪힌 적에게 피해를 되돌려 준다',
-    dmg: 1.5, cd: 7, count: 4, countStep: 0.5, countLabel: '지속', countUnit: '초', learnCost: 160,
-    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'thorns', buff: 'thorns', v: 1, color: '#c78bff' }),
+    dmg: 1.5, cd: 5, count: 4, countStep: 0.5, countLabel: '지속', countUnit: '초', learnCost: 160,
+    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'thorns', buff: 'thorns', v: 3, color: '#c78bff' }),
   },
   {
     id: 'regen', type: 'buff', name: '재생', icon: 'fx:heal-circle', blurb: '잠깐 동안 체력이 계속 찬다',
@@ -462,12 +462,12 @@ export const SKILLS: SkillDef[] = [
   {
     id: 'luck', type: 'buff', name: '행운', icon: 'fx:sparkle@40', blurb: '잠깐 동안 치명타 확률 크게 증가',
     dmg: 1, cd: 7, count: 4, countStep: 0.5, countLabel: '지속', countUnit: '초', learnCost: 150,
-    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'luck', buff: 'luck', v: 0.3, sprite: 'sparkle@40', color: '#ffb347' }),
+    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'luck', buff: 'luck', v: 0.45, sprite: 'sparkle@40', color: '#ffb347' }),
   },
   {
     id: 'magnetstorm', type: 'buff', name: '자석 폭풍', icon: 'fx:gold-sparkle@50', blurb: '보석을 전부 끌어오고 자석 범위 증가',
     dmg: 1, cd: 9, count: 4, countStep: 0.5, countLabel: '지속', countUnit: '초', learnCost: 120,
-    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'magnetstorm', buff: 'magnet', v: 2, color: '#ffe066' }),
+    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'magnetstorm', buff: 'magnet', v: 3, color: '#ffe066' }),
   },
   {
     id: 'invincible', type: 'buff', name: '무적', icon: 'fx:pillar@50', blurb: '잠깐 동안 아무 피해도 안 받는다',
@@ -476,7 +476,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'bless', type: 'buff', name: '축복', icon: 'fx:pillar@300', blurb: '다른 스킬의 쿨다운을 즉시 채운다',
-    dmg: 1, cd: 9, count: 1, countLabel: '축복', learnCost: 260,
+    dmg: 1, cd: 6, count: 1, countLabel: '축복', learnCost: 260,
     create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'bless', buff: 'bless', v: 1, sprite: 'pillar@300', color: '#ffb3e6' }),
   },
   {
@@ -486,12 +486,12 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'darkwave', type: 'attack', name: '암흑 파동', icon: 'fx:purple-burst', blurb: '보랏빛 파동이 퍼져 나간다',
-    dmg: 1.0, cd: 2.2, count: 2, countLabel: '파동', learnCost: 150,
+    dmg: 0.92, cd: 2.2, count: 2, countLabel: '파동', learnCost: 150,
     create: (s, spec, t) => new PulseSkill(s, spec, t, { id: 'darkwave', color: '#b05cff', radius: 55, step: 35, sprite: 'purple-burst', knock: 120 }),
   },
   {
     id: 'emberring', type: 'attack', name: '불씨 고리', icon: 'fx:fire-burst@20', blurb: '둘레에서 불씨들이 퍼져 나간다',
-    dmg: 0.8, cd: 2.4, count: 6, countStep: 2, countLabel: '불씨', learnCost: 140,
+    dmg: 0.69, cd: 2.4, count: 6, countStep: 2, countLabel: '불씨', learnCost: 140,
     create: (s, spec, t) => new ZoneSkill(s, spec, t, { id: 'emberring', sprite: 'fire-burst@20', r: 16, life: 1.6, at: 'ring', speed: 140 }),
   },
   {
@@ -501,7 +501,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'icemeteor', type: 'target', name: '얼음 운석', icon: 'fx:ice-crystals@190', blurb: '얼음덩이가 떨어져 주변을 얼린다',
-    dmg: 1.6, cd: 2.4, count: 3, countLabel: '운석', learnCost: 180,
+    dmg: 1.36, cd: 2.4, count: 3, countLabel: '운석', learnCost: 180,
     create: (s, spec, t) => new StrikeSkill(s, spec, t, { id: 'icemeteor', sprite: 'ice-crystals@190', radius: 40, slow: 1.5, shake: 2 }),
   },
   {
@@ -512,16 +512,16 @@ export const SKILLS: SkillDef[] = [
 ];
 
 /**
- * 밸런스 테스트 결과 (스킬 Lv 5 = 피해 2·속도 1·개수 1, 스테이지 13, 같은 난수로 40초씩 4~8번).
+ * 밸런스 테스트 결과 (밸런스 패치 후 다시 잼. 스킬 Lv 5 = 피해 2·속도 1·개수 1, 스테이지 13, 같은 난수로 40초씩 4~8번).
  * 공격형·타겟형: 혼자 장착했을 때 준 피해. 디버프형·버프형: 회전 베기+깃털과 같이 썼을 때 처치 수·버틴 정도.
  * 형태마다 센 순서 (앞일수록 셈)와 등급: 위 15% S · 20% A · 30% B · 20% C · 15% D
  */
 export type Grade = 'S' | 'A' | 'B' | 'C' | 'D';
 const RANKING: Record<SkillType, [SkillId, Grade][]> = {
-  attack: [['cross', 'S'], ['quake', 'S'], ['emberring', 'S'], ['firetrail', 'A'], ['pollen', 'A'], ['wisp', 'A'], ['darkwave', 'A'], ['shockwave', 'B'], ['sunflare', 'B'], ['tornadoring', 'B'], ['slash', 'B'], ['flame', 'B'], ['petal', 'B'], ['windblade', 'B'], ['featherstorm', 'C'], ['starfall', 'C'], ['nova', 'C'], ['dark', 'C'], ['tornado', 'D'], ['boomerang', 'D'], ['phoenix', 'D']],
-  target: [['firepillar', 'S'], ['bigegg', 'S'], ['firework', 'S'], ['laser', 'S'], ['meteor', 'A'], ['arrowrain', 'A'], ['eruption', 'A'], ['holymark', 'A'], ['thunder', 'A'], ['icemeteor', 'B'], ['pillar', 'B'], ['iceorb', 'B'], ['fire', 'B'], ['egg', 'B'], ['feather', 'B'], ['shadowbolt', 'B'], ['acid', 'B'], ['lance', 'B'], ['goldspear', 'C'], ['heartbeam', 'C'], ['chain', 'C'], ['shuriken', 'C'], ['skullfire', 'C'], ['bubble', 'D'], ['candy', 'D'], ['note', 'D'], ['firefly', 'D']],
-  debuff: [['swamp', 'S'], ['vortex', 'S'], ['frostwave', 'S'], ['frostspike', 'S'], ['poisonbolt', 'A'], ['blackhole', 'A'], ['blizzard', 'A'], ['shadowhand', 'A'], ['curse', 'A'], ['poison', 'B'], ['timestop', 'B'], ['venom', 'B'], ['gravity', 'B'], ['flash', 'B'], ['ice', 'B'], ['icetrail', 'B'], ['sleepdust', 'B'], ['terror', 'C'], ['frostbite', 'C'], ['huntmark', 'C'], ['plague', 'C'], ['weaken', 'C'], ['roar', 'D'], ['dizzy', 'D'], ['ignite', 'D'], ['hex', 'D']],
-  buff: [['overdrive', 'S'], ['haste', 'S'], ['shield', 'A'], ['regen', 'A'], ['heal', 'A'], ['vampire', 'B'], ['rage', 'B'], ['invincible', 'B'], ['berserk', 'B'], ['luck', 'C'], ['magnetstorm', 'C'], ['bless', 'C'], ['thorns', 'D'], ['sprint', 'D']],
+  attack: [['cross', 'S'], ['quake', 'S'], ['firetrail', 'S'], ['emberring', 'A'], ['pollen', 'A'], ['shockwave', 'A'], ['wisp', 'A'], ['darkwave', 'B'], ['tornadoring', 'B'], ['sunflare', 'B'], ['slash', 'B'], ['flame', 'B'], ['tornado', 'B'], ['dark', 'B'], ['featherstorm', 'C'], ['starfall', 'C'], ['windblade', 'C'], ['petal', 'C'], ['nova', 'D'], ['boomerang', 'D'], ['phoenix', 'D']],
+  target: [['firepillar', 'S'], ['bigegg', 'S'], ['firework', 'S'], ['meteor', 'S'], ['icemeteor', 'A'], ['eruption', 'A'], ['arrowrain', 'A'], ['thunder', 'A'], ['laser', 'A'], ['holymark', 'B'], ['lance', 'B'], ['pillar', 'B'], ['egg', 'B'], ['shadowbolt', 'B'], ['feather', 'B'], ['iceorb', 'B'], ['fire', 'B'], ['chain', 'B'], ['acid', 'C'], ['skullfire', 'C'], ['goldspear', 'C'], ['heartbeam', 'C'], ['shuriken', 'C'], ['candy', 'D'], ['bubble', 'D'], ['note', 'D'], ['firefly', 'D']],
+  debuff: [['swamp', 'S'], ['vortex', 'S'], ['frostwave', 'S'], ['blackhole', 'S'], ['blizzard', 'A'], ['curse', 'A'], ['icetrail', 'A'], ['frostspike', 'A'], ['timestop', 'A'], ['shadowhand', 'B'], ['poisonbolt', 'B'], ['venom', 'B'], ['gravity', 'B'], ['poison', 'B'], ['frostbite', 'B'], ['ice', 'B'], ['flash', 'B'], ['dizzy', 'C'], ['plague', 'C'], ['roar', 'C'], ['huntmark', 'C'], ['terror', 'C'], ['hex', 'D'], ['ignite', 'D'], ['sleepdust', 'D'], ['weaken', 'D']],
+  buff: [['overdrive', 'S'], ['regen', 'S'], ['shield', 'A'], ['heal', 'A'], ['haste', 'A'], ['vampire', 'B'], ['luck', 'B'], ['berserk', 'B'], ['rage', 'B'], ['invincible', 'C'], ['bless', 'C'], ['magnetstorm', 'C'], ['thorns', 'D'], ['sprint', 'D']],
 };
 export const SKILL_GRADE = Object.fromEntries(Object.values(RANKING).flat()) as Record<SkillId, Grade>;
 const RANK = new Map(Object.values(RANKING).flat().map(([id], i) => [id, i]));
