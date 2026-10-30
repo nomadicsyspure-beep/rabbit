@@ -20,11 +20,11 @@ const BASE_HP = 150;
 const BASE_SPEED = 165;
 const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
-const ELITE_HP = 1200;
-const BOSS_HP = 3400;
+const ELITE_HP = 1800;
+const BOSS_HP = 5000;
 /** 일반 몹 난이도 배율 (체력 / 부딪힐 때 피해) */
-const MOB_HP = 1.25;
-const MOB_DMG = 1.1;
+const MOB_HP = 1.8;
+const MOB_DMG = 1.5;
 /** 몹 수·구성이 최대로 짙어지기까지 걸리는 시간(초) */
 const RAMP_SEC = 90;
 /** 피버: 게이지(처치 수, 콤보와 상관없이 쌓임)가 FEVER_NEED만큼 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */

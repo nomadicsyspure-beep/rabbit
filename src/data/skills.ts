@@ -8,7 +8,7 @@ import {
 // 스킬은 골드로 배우고, 가지(피해 / 발동 속도 / 개수)마다 따로 강화한다 (영구).
 // 스테이지에서는 장착한 스킬(최대 EQUIP_SLOTS개)만 발동한다.
 
-export const EQUIP_SLOTS = 8;
+export const EQUIP_SLOTS = 4;
 
 export type SkillId =
   | 'feather' | 'tornado' | 'egg' | 'flame' | 'ice' | 'heal' | 'fire' | 'dark'

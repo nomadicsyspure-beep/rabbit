@@ -2,12 +2,14 @@ import type { Recolor } from '../battle/tint';
 import { GEAR, type GearDef } from './gear';
 import { PETS, type PetDef } from './pets';
 
-// 상점: 다이아 소환(동료·장비), 병아리 색, 스킬 색, 광고 보상(지금은 광고 없이 바로 지급).
+// 상점: 다이아 소환(동료·장비), 병아리 색, 스킬 색.
 
-export const SUMMON_COST = { one: 50, ten: 450 };
-/** 광고 보상: 하루 횟수와 다이아 */
-export const AD_DAILY = 10;
-export const AD_DIAMONDS = 30;
+/** 테스트 중: 다이아 값은 전부 이 값 (null로 바꾸면 원래 값) */
+export const DIAMOND_OVERRIDE: number | null = 1;
+const SUMMON_COST = { one: 50, ten: 450 };
+
+export const summonCost = (n: 1 | 10) => DIAMOND_OVERRIDE ?? (n === 1 ? SUMMON_COST.one : SUMMON_COST.ten);
+export const skinPrice = (skin: SkinDef) => (skin.price > 0 ? DIAMOND_OVERRIDE ?? skin.price : 0);
 
 /** 동료 소환: 보통 70% / 희귀 26% / 전설 4% */
 export function rollPet(): PetDef {
