@@ -3,8 +3,9 @@ import { Engine } from './battle/engine';
 import { Renderer } from './battle/renderer';
 import { clearSave, loadSave, writeSave, type SaveData } from './core/save';
 import {
-  OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, idleGoldPerSec, type StatId,
+  OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, idleGoldPerSec, xpToNext, type StatId,
 } from './data/balance';
+import { EQUIP_SLOTS, SKILL_BY_ID, SKILL_MAX_LEVEL, skillCost, type SkillId } from './data/skills';
 import { ActionMode } from './modes/action';
 import { IdleMode } from './modes/idle';
 import { UI } from './ui/ui';
@@ -135,6 +136,60 @@ export class Game {
     this.save.gold -= this.statCost(id);
     this.save.levels[id]++;
     this.idle.refreshStats();
+    return true;
+  }
+
+  // ---- 캐릭터 레벨 ----
+
+  /** 경험치를 더하고 오른 레벨 수를 돌려준다 */
+  addXp(v: number) {
+    const save = this.save;
+    save.xp += v;
+    let ups = 0;
+    while (save.xp >= xpToNext(save.level)) {
+      save.xp -= xpToNext(save.level);
+      save.level++;
+      ups++;
+    }
+    if (ups > 0 && this.mode === 'idle') this.idle.refreshStats();
+    return ups;
+  }
+
+  // ---- 스킬 ----
+
+  skillLevel(id: SkillId) {
+    return this.save.skills[id] ?? 0;
+  }
+
+  skillUpgradeCost(id: SkillId) {
+    return skillCost(SKILL_BY_ID[id], this.skillLevel(id));
+  }
+
+  canUpgradeSkill(id: SkillId) {
+    const lv = this.skillLevel(id);
+    return lv < SKILL_MAX_LEVEL && this.save.gold >= this.skillUpgradeCost(id);
+  }
+
+  /** 배우기(0 → 1) 또는 강화. 처음 배운 스킬은 빈 칸이 있으면 바로 장착한다 */
+  upgradeSkill(id: SkillId): boolean {
+    if (!this.canUpgradeSkill(id)) return false;
+    const lv = this.skillLevel(id);
+    this.save.gold -= this.skillUpgradeCost(id);
+    this.save.skills[id] = lv + 1;
+    if (lv === 0 && this.save.equipped.length < EQUIP_SLOTS) this.save.equipped.push(id);
+    return true;
+  }
+
+  /** 장착/해제. 칸이 가득 차서 못 끼우면 false */
+  toggleEquip(id: SkillId): boolean {
+    const eq = this.save.equipped;
+    const i = eq.indexOf(id);
+    if (i >= 0) {
+      eq.splice(i, 1);
+      return true;
+    }
+    if (this.skillLevel(id) <= 0 || eq.length >= EQUIP_SLOTS) return false;
+    eq.push(id);
     return true;
   }
 

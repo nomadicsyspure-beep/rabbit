@@ -1,27 +1,33 @@
+import { UI_URLS } from '../battle/sprites';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
-  STATS, STAT_ORDER, actionRatio, isBossStage, playerPower, playerStats, recommendedPower, stageClearGold,
+  STATS, STAT_ORDER, actionRatio, isBossStage, playerPower, playerStats, recommendedPower, stageClearGold, xpToNext,
   type StatId,
 } from '../data/balance';
-import { SKILL_MAX_LEVEL } from '../data/skills';
+import { EQUIP_SLOTS, SKILLS, SKILL_MAX_LEVEL, type SkillDef, type SkillId } from '../data/skills';
 import type { Game, Mode } from '../game';
-import type { LevelUpCard, RunResult } from '../modes/action';
+import type { RunResult } from '../modes/action';
 import { ICONS } from './icons';
 
-type TabId = 'growth' | 'gear' | 'pets' | 'dungeon' | 'shop';
+type TabId = 'growth' | 'skill' | 'gear' | 'pets' | 'dungeon' | 'shop';
 
 const TABS: { id: TabId; name: string; locked: boolean }[] = [
   { id: 'growth', name: '성장', locked: false },
+  { id: 'skill', name: '스킬', locked: false },
   { id: 'gear', name: '장비', locked: true },
   { id: 'pets', name: '동료', locked: true },
   { id: 'dungeon', name: '던전', locked: false },
   { id: 'shop', name: '상점', locked: true },
 ];
 
+/** 탭 아이콘: UI 시트에 있는 건 그 그림, 없는 건 선 아이콘 */
+const TAB_ART: Partial<Record<TabId, string>> = { growth: 'icon-stats', dungeon: 'icon-map' };
+
 const STAT_META: Record<StatId, { color: string; fmt: (v: number) => string }> = {
   atk: { color: '#e05a5a', fmt: (v) => fmt(v) },
   hp: { color: '#6fdc8c', fmt: (v) => fmt(v) },
   aps: { color: '#7ad7ff', fmt: (v) => v.toFixed(2) + '/초' },
+  spd: { color: '#ffd166', fmt: (v) => Math.round(v * 100) + '%' },
 };
 
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
@@ -38,9 +44,18 @@ function svgIcon(svg: string, color?: string) {
   return el;
 }
 
+/** UI 시트 그림 한 장 */
+function art(name: string, cls = '') {
+  const img = h('img', cls);
+  img.src = UI_URLS[name] ?? '';
+  img.alt = '';
+  img.draggable = false;
+  return img;
+}
+
 function coin(text: string) {
   const s = h('span', 'gold');
-  s.append(h('i', 'coin'), document.createTextNode(text));
+  s.append(art('coin', 'coin'), document.createTextNode(text));
   return s;
 }
 
@@ -72,6 +87,23 @@ interface StatRow {
   btn: HTMLButtonElement;
 }
 
+interface SkillRow {
+  def: SkillDef;
+  card: HTMLElement;
+  lv: HTMLElement;
+  desc: HTMLElement;
+  cost: HTMLElement;
+  label: HTMLElement;
+  buy: HTMLButtonElement;
+  equip: HTMLButtonElement;
+}
+
+interface SlotEl {
+  root: HTMLElement;
+  icon: HTMLImageElement;
+  fill: HTMLElement;
+}
+
 export class UI {
   readonly battle: HTMLElement;
   readonly canvas: HTMLCanvasElement;
@@ -92,19 +124,25 @@ export class UI {
 
   // 액션 HUD
   private readonly hudAction: HTMLElement;
-  private readonly xpFill: HTMLElement;
+  private readonly hpLost: HTMLElement;
+  private readonly hpText: HTMLElement;
   private readonly lvEl: HTMLElement;
+  private readonly xpFill: HTMLElement;
+  private readonly plateEl: HTMLElement;
   private readonly timerEl: HTMLElement;
   private readonly killsEl: HTMLElement;
-  private readonly skillsEl: HTMLElement;
+  private readonly slotsEl: HTMLElement;
+  private slots: SlotEl[] = [];
+  private slotKey = '';
 
   private readonly tabButtons = new Map<TabId, HTMLButtonElement>();
   private readonly statRows = new Map<StatId, StatRow>();
+  private skillRows: SkillRow[] = [];
+  private skillHeader: HTMLElement | null = null;
   private powerEl: HTMLElement | null = null;
   private dungeonRefresh: (() => void) | null = null;
   private tickT = 0;
   private toastT = 0;
-  private lastSkillKey = '';
 
   constructor(private readonly game: Game, root: HTMLElement) {
     this.app = h('div', 'app');
@@ -116,15 +154,15 @@ export class UI {
     this.battle.append(this.canvas);
 
     this.hudIdle = h('div', 'hud hud-idle');
-    const goldBox = h('div', 'pill');
-    this.goldEl = h('span');
-    goldBox.append(h('i', 'coin'), this.goldEl);
+    const goldBox = h('div', 'pill-art pill-coin');
+    this.goldEl = h('span', 'pill-text');
+    goldBox.append(this.goldEl);
     const stageBox = h('div', 'stage-box');
-    this.stageEl = h('div', 'stage-name');
+    this.stageEl = h('div', 'plate');
     this.incomeEl = h('div', 'income');
     stageBox.append(this.stageEl, this.incomeEl);
-    const settingsBtn = h('button', 'icon-btn');
-    settingsBtn.innerHTML = ICONS.settings;
+    const settingsBtn = h('button', 'art-btn');
+    settingsBtn.append(art('btn-gear'));
     settingsBtn.setAttribute('aria-label', '설정');
     settingsBtn.addEventListener('click', () => this.showSettings());
     this.hudIdle.append(goldBox, stageBox, settingsBtn);
@@ -135,31 +173,46 @@ export class UI {
     this.challengeBtn.append(this.challengeLabel);
     this.challengeBtn.addEventListener('click', () => this.game.enterAction());
 
+    // 액션 HUD: 왼쪽 위 초상화+체력+레벨, 가운데 스테이지·시간, 오른쪽 처치 수·일시정지
     this.hudAction = h('div', 'hud hud-action');
-    const xpBar = h('div', 'xp-bar');
-    this.xpFill = h('div', 'fill');
-    xpBar.append(this.xpFill);
-    const row = h('div', 'action-row');
-    this.lvEl = h('div', 'pill');
+    // 그림 속 체력 막대·경험치 칸 위치에 맞춘 영역 (style.css의 .hp-zone, .xp-zone)
+    const player = h('div', 'hud-player');
+    const hpZone = h('div', 'hp-zone');
+    this.hpLost = h('div', 'hp-lost');
+    this.hpText = h('div', 'hp-text');
+    hpZone.append(this.hpLost, this.hpText);
+    this.lvEl = h('div', 'lv-text');
+    const xpZone = h('div', 'xp-zone');
+    this.xpFill = h('div', 'xp-fill');
+    xpZone.append(this.xpFill);
+    player.append(hpZone, this.lvEl, xpZone);
+    const center = h('div', 'stage-box');
+    this.plateEl = h('div', 'plate');
     this.timerEl = h('div', 'timer');
-    this.killsEl = h('div', 'pill');
-    const pauseBtn = h('button', 'icon-btn', 'Ⅱ');
+    center.append(this.plateEl, this.timerEl);
+    const kills = h('div', 'pill-art pill-skull');
+    this.killsEl = h('span', 'pill-text');
+    kills.append(this.killsEl);
+    const pauseBtn = h('button', 'art-btn round');
+    pauseBtn.append(art('pause'));
     pauseBtn.setAttribute('aria-label', '일시정지');
     pauseBtn.addEventListener('click', () => this.game.action.pause());
     const right = h('div', 'action-right');
-    right.append(this.killsEl, pauseBtn);
-    row.append(this.lvEl, this.timerEl, right);
-    this.skillsEl = h('div', 'skill-icons');
-    this.hudAction.append(xpBar, row);
+    right.append(kills, pauseBtn);
+    this.hudAction.append(player, center, right);
+    this.slotsEl = h('div', 'skill-slots');
 
-    this.battle.append(this.hudIdle, this.challengeBtn, this.hudAction, this.skillsEl);
+    this.battle.append(this.hudIdle, this.challengeBtn, this.hudAction, this.slotsEl);
 
     // ---- 하단 패널 / 탭 ----
     this.panel = h('section', 'panel');
     this.tabBar = h('nav', 'tabs');
     for (const t of TABS) {
       const b = h('button', 'tab' + (t.locked ? ' locked' : ''));
-      b.innerHTML = `${ICONS[t.id]}<span>${t.name}</span>`;
+      const pic = TAB_ART[t.id];
+      if (pic) b.append(art(pic, 'tab-art'));
+      else b.insertAdjacentHTML('beforeend', ICONS[t.id]);
+      b.append(h('span', '', t.name));
       b.addEventListener('click', () => this.selectTab(t.id));
       this.tabButtons.set(t.id, b);
       this.tabBar.append(b);
@@ -169,6 +222,9 @@ export class UI {
     this.toastEl = h('div', 'toast');
     this.app.append(this.battle, this.panel, this.tabBar, this.overlay, this.toastEl);
 
+    // 시트 그림은 CSS 변수로 넘겨 배경·테두리에 쓴다
+    for (const [name, url] of Object.entries(UI_URLS)) this.app.style.setProperty(`--art-${name}`, `url("${url}")`);
+
     this.selectTab('growth');
     this.setMode('idle');
   }
@@ -176,8 +232,22 @@ export class UI {
   setMode(mode: Mode) {
     this.app.classList.toggle('mode-action', mode === 'action');
     this.closeModal();
-    this.skillsEl.replaceChildren();
-    this.lastSkillKey = '';
+  }
+
+  /** 장착 스킬 칸을 만든다 (스테이지가 시작되어 장착 목록이 바뀌면 다시) */
+  private buildSlots() {
+    this.slots = this.game.action.equipped.map((s) => {
+      const root = h('div', 'slot');
+      const icon = art(`skill-${s.def.icon}`, 'slot-icon');
+      const track = h('div', 'cd-track');
+      const zone = h('div', 'cd-zone');
+      const fill = h('div', 'cd-fill');
+      zone.append(fill);
+      track.append(zone);
+      root.append(icon, track);
+      return { root, icon, fill };
+    });
+    this.slotsEl.replaceChildren(...this.slots.map((s) => s.root));
   }
 
   // ---- 탭 ----
@@ -186,11 +256,14 @@ export class UI {
     for (const [tid, b] of this.tabButtons) b.classList.toggle('active', tid === id);
     this.panel.replaceChildren();
     this.statRows.clear();
+    this.skillRows = [];
+    this.skillHeader = null;
     this.powerEl = null;
     this.dungeonRefresh = null;
     const def = TABS.find((t) => t.id === id)!;
     if (def.locked) this.buildLocked(def.name);
     else if (id === 'growth') this.buildGrowth();
+    else if (id === 'skill') this.buildSkills();
     else if (id === 'dungeon') this.buildDungeon();
     this.refresh();
   }
@@ -232,6 +305,43 @@ export class UI {
     this.panel.append(h('div', 'hint', '버튼을 누르고 있으면 연속 강화 · 전투 화면을 탭하면 추가 피해'));
   }
 
+  private buildSkills() {
+    this.skillHeader = h('div', 'summary');
+    this.panel.append(this.skillHeader);
+    for (const def of SKILLS) {
+      const card = h('div', 'card row skill-row');
+      const icon = art(`skill-${def.icon}`, 'skill-art');
+      const info = h('div', 'info');
+      const name = h('div', 'title', def.name + ' ');
+      const lv = h('span', 'lv');
+      name.append(lv);
+      const desc = h('div', 'sub');
+      info.append(name, desc);
+      const btns = h('div', 'skill-btns');
+      const buy = h('button', 'buy');
+      const cost = h('span');
+      const label = h('small');
+      buy.append(cost, label);
+      holdRepeat(buy, () => {
+        const ok = this.game.upgradeSkill(def.id);
+        if (ok) this.refresh();
+        return ok;
+      });
+      const equip = h('button', 'equip');
+      equip.addEventListener('click', () => this.toggleEquip(def.id));
+      btns.append(buy, equip);
+      card.append(icon, info, btns);
+      this.panel.append(card);
+      this.skillRows.push({ def, card, lv, desc, cost, label, buy, equip });
+    }
+    this.panel.append(h('div', 'hint', `스테이지에서는 장착한 스킬(최대 ${EQUIP_SLOTS}개)만 발동해요 · 강화한 레벨은 계속 유지돼요`));
+  }
+
+  private toggleEquip(id: SkillId) {
+    if (!this.game.toggleEquip(id)) this.toast(`장착 칸(${EQUIP_SLOTS}개)이 가득 찼어요. 하나를 먼저 해제하세요`);
+    this.refresh();
+  }
+
   private buildDungeon() {
     // 다음 스테이지 도전
     const card = h('div', 'card dungeon');
@@ -255,10 +365,11 @@ export class UI {
     }
 
     this.dungeonRefresh = () => {
+      const save = this.game.save;
       const stage = this.game.nextStage;
       title.textContent = isBossStage(stage) ? `스테이지 ${stage} · 마왕` : `스테이지 ${stage}`;
       sub.textContent = `권장 전투력 ${fmt(recommendedPower(stage))} · 클리어 보상 ${fmt(stageClearGold(stage))}`;
-      const r = actionRatio(playerStats(this.game.save.levels), stage);
+      const r = actionRatio(playerStats(save.levels, save.level), stage);
       const worst = Math.min(r.atk, r.hp);
       const [label, cls] = worst < 0.6 ? ['위험', 'bad'] : worst < 0.9 ? ['도전', 'mid'] : ['여유', 'good'];
       ratio.className = 'ratio ' + cls;
@@ -273,10 +384,26 @@ export class UI {
       this.toastT -= dt;
       if (this.toastT <= 0) this.toastEl.classList.remove('show');
     }
+    if (this.game.mode === 'action') this.refreshSlots();
     this.tickT -= dt;
     if (this.tickT > 0) return;
     this.tickT = 0.1;
     this.refresh();
+  }
+
+  /** 쿨다운 막대는 부드럽게 보이도록 매 프레임 */
+  private refreshSlots() {
+    const eq = this.game.action.equipped;
+    const key = eq.map((s) => s.def.id).join();
+    if (key !== this.slotKey) {
+      this.slotKey = key;
+      this.buildSlots();
+    }
+    for (let i = 0; i < this.slots.length; i++) {
+      const ready = eq[i]?.weapon.ready?.() ?? 1;
+      this.slots[i].fill.style.width = `${Math.max(0, Math.min(1, ready)) * 100}%`;
+      this.slots[i].root.classList.toggle('ready', ready >= 1);
+    }
   }
 
   private refresh() {
@@ -290,8 +417,10 @@ export class UI {
       this.challengeLabel.textContent = isBossStage(next) ? `스테이지 ${next} 마왕 도전` : `스테이지 ${next} 도전`;
       this.challengeBtn.classList.toggle('boss', isBossStage(next));
 
-      const st = playerStats(save.levels);
-      if (this.powerEl) this.powerEl.textContent = `전투력 ${fmt(playerPower(st))}  ·  마왕 처치 ${save.bossKills}회`;
+      const st = playerStats(save.levels, save.level);
+      if (this.powerEl) {
+        this.powerEl.textContent = `Lv ${save.level} (경험치 ${Math.floor(save.xp)}/${xpToNext(save.level)})  ·  전투력 ${fmt(playerPower(st))}  ·  마왕 처치 ${save.bossKills}회`;
+      }
       for (const [id, row] of this.statRows) {
         const def = STATS[id];
         const meta = STAT_META[id];
@@ -302,29 +431,42 @@ export class UI {
         row.cost.replaceChildren(maxed ? document.createTextNode('MAX') : coin(fmt(def.cost(lv))));
         row.btn.disabled = !g.canUpgrade(id);
       }
+      this.refreshSkills();
       this.dungeonRefresh?.();
     } else {
       const a = g.action;
-      this.xpFill.style.width = `${(a.xp / a.xpNext) * 100}%`;
-      this.lvEl.textContent = `Lv ${a.level}`;
+      const p = g.engine.player;
+      const hp = Math.max(0, p.hp / p.maxHp);
+      this.hpLost.style.width = `${(1 - hp) * 100}%`;
+      this.hpText.textContent = `${Math.ceil(Math.max(0, p.hp))} / ${Math.ceil(p.maxHp)}`;
+      this.lvEl.textContent = `Lv.${save.level}`;
+      this.xpFill.style.width = `${Math.min(1, save.xp / xpToNext(save.level)) * 100}%`;
+      this.plateEl.textContent = `STAGE ${a.stage}`;
       this.timerEl.textContent = a.bossSpawned ? (a.isBossStage ? '마왕!' : '정예!') : fmtTime(a.duration - a.time);
       this.timerEl.classList.toggle('boss', a.bossSpawned);
-      this.killsEl.textContent = `처치 ${a.kills}`;
+      this.killsEl.textContent = String(a.kills);
+    }
+  }
 
-      const owned = a.ownedSkills();
-      const key = owned.map(([s, l]) => s.id + l).join();
-      if (key !== this.lastSkillKey) {
-        this.lastSkillKey = key;
-        this.skillsEl.replaceChildren(
-          ...owned.map(([s, l]) => {
-            const el = h('div', 'skill-icon', s.icon);
-            el.style.borderColor = s.color;
-            el.style.color = s.color;
-            el.append(h('b', '', String(l)));
-            return el;
-          }),
-        );
-      }
+  private refreshSkills() {
+    if (!this.skillHeader) return;
+    const g = this.game;
+    const eq = g.save.equipped;
+    this.skillHeader.textContent = `장착 ${eq.length}/${EQUIP_SLOTS}  ·  골드로 배우고 강화해요`;
+    for (const row of this.skillRows) {
+      const id = row.def.id;
+      const lv = g.skillLevel(id);
+      const learned = lv > 0;
+      const maxed = lv >= SKILL_MAX_LEVEL;
+      row.card.classList.toggle('unlearned', !learned);
+      row.card.classList.toggle('equipped', eq.includes(id));
+      row.lv.textContent = learned ? `Lv ${lv}` : '미습득';
+      row.desc.textContent = maxed ? `${row.def.desc(lv)} (최대)` : learned ? `${row.def.desc(lv)} → 다음 Lv ${lv + 1}` : row.def.desc(1);
+      row.cost.replaceChildren(maxed ? document.createTextNode('MAX') : coin(fmt(g.skillUpgradeCost(id))));
+      row.label.textContent = learned ? '강화' : '배우기';
+      row.buy.disabled = !g.canUpgradeSkill(id);
+      row.equip.textContent = eq.includes(id) ? '해제' : '장착';
+      row.equip.disabled = !learned;
     }
   }
 
@@ -367,30 +509,6 @@ export class UI {
     return b;
   }
 
-  showLevelUp(cards: LevelUpCard[], pick: (card: LevelUpCard | null) => void) {
-    const list = h('div', 'cards');
-    const choose = (c: LevelUpCard | null) => {
-      this.closeModal();
-      pick(c);
-    };
-    for (const c of cards) {
-      const el = h('button', 'skill-card');
-      const icon = h('div', 'icon', c.skill.icon);
-      icon.style.color = c.skill.color;
-      icon.style.borderColor = c.skill.color;
-      const info = h('div', 'info');
-      const title = h('div', 'title', c.skill.name + ' ');
-      title.append(h('span', c.nextLevel === 1 ? 'tag new' : 'tag', c.nextLevel === 1 ? 'NEW' : `Lv ${c.nextLevel}`));
-      info.append(title, h('div', 'sub', c.skill.descs[c.nextLevel - 1]));
-      if (c.nextLevel === SKILL_MAX_LEVEL) info.append(h('div', 'max', '최대 레벨'));
-      el.append(icon, info);
-      el.addEventListener('click', () => choose(c));
-      list.append(el);
-    }
-    if (cards.length === 0) list.append(this.button('체력 30% 회복', 'primary', () => choose(null)));
-    this.openModal(h('div', 'modal-title', '레벨 업!'), h('div', 'modal-sub', '하나를 골라 주세요'), list);
-  }
-
   showPause(resume: () => void, giveUp: () => void) {
     this.openModal(
       h('div', 'modal-title', '일시정지'),
@@ -414,7 +532,7 @@ export class UI {
     };
     line('생존 시간', fmtTime(r.time));
     line('처치', String(r.kills));
-    line('레벨', String(r.level));
+    line('경험치', `+${r.xp}` + (r.levelUps > 0 ? ` (레벨 업 ${r.levelUps}번!)` : ''));
     line('보상', coin(fmt(r.gold)));
     const title = r.win ? `스테이지 ${r.stage} 클리어!` : '쓰러졌어요…';
     const sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
@@ -447,7 +565,7 @@ export class UI {
     const g = this.game;
     this.openModal(
       h('div', 'modal-title', '설정'),
-      h('div', 'modal-sub', '프로토타입 v0.2'),
+      h('div', 'modal-sub', '프로토타입 v0.3'),
       this.button('테스트: 골드 지급', '', () => {
         g.save.gold += g.goldPerSec * 500;
         this.refresh();

@@ -1,20 +1,27 @@
-import { enemyColor, type Effect, type Engine, type Enemy } from './engine';
+import { enemyColor, type Effect, type Engine, type Enemy, type Projectile, type Zone } from './engine';
 import type { Joystick } from './controllers';
 import { frameAt } from './anim';
 import { HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites';
 
 // 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
 
-/** 실제 이동 속도(px/초)가 이 이상이면 달리기 그림. 기본 속도(액션 110, 방치 90)는 걷기, 신속 Lv2(약 136)부터 달리기 */
+/** 실제 이동 속도(px/초)가 이 이상이면 달리기 그림. 기본 속도(액션 110, 방치 90)는 걷기, 이동 속도 강화를 올리면 달리기 */
 const RUN_SPEED = 135;
-/** 적 반지름 대비 스프라이트 높이 */
-const ENEMY_SPRITE_SCALE = 2.6;
+/** 적 반지름 대비 스프라이트(정사각형 칸) 높이 */
+const ENEMY_SPRITE_SCALE = 3;
+/** 오른쪽을 보고 있는 몬스터: 플레이어가 왼쪽에 있으면 뒤집는다 */
+const FACES_RIGHT = new Set(['rabbit', 'snail']);
+/** 흙바닥 장식(돌·잎)을 놓는 칸 크기 */
+const DECO_CELL = 150;
+/** 보스 체력 막대 위치 (상단 HUD 아래) */
+const BOSS_BAR_Y = 112;
 
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private dpr = 1;
   /** 지금 보여주는 8방향 인덱스. 경계에서 그림이 깜빡이지 않게 여유를 두고 바꾼다. */
   private heroDir = 2;
+  private ground: CanvasPattern | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -36,20 +43,22 @@ export class Renderer {
     ctx.save();
     ctx.translate(-eng.camX, -eng.camY);
 
+    this.drawDecorations(eng);
+
     for (const g of eng.gems.items) {
       if (!g.active) continue;
-      const s = g.value >= 3 ? 5 : 3.5;
-      ctx.fillStyle = g.value >= 3 ? '#7cf2a0' : '#4fd1c5';
-      ctx.beginPath();
-      ctx.moveTo(g.x, g.y - s);
-      ctx.lineTo(g.x + s, g.y);
-      ctx.lineTo(g.x, g.y + s);
-      ctx.lineTo(g.x - s, g.y);
-      ctx.fill();
+      const img = SPRITES.ui[g.value >= 3 ? 'gem-green' : 'gem-blue'];
+      const s = g.value >= 3 ? 13 : 10;
+      if (isReady(img)) {
+        ctx.drawImage(img, g.x - s / 2, g.y - s / 2, s, (s * img.naturalHeight) / img.naturalWidth);
+      } else {
+        ctx.fillStyle = '#4fd1c5';
+        ctx.fillRect(g.x - 3, g.y - 3, 6, 6);
+      }
     }
 
     for (const fx of eng.effects.items) {
-      if (fx.active && fx.kind === 'telegraph') this.drawEffect(fx);
+      if (fx.active && (fx.kind === 'telegraph' || fx.kind === 'corpse')) this.drawEffect(fx);
     }
 
     // 그림자
@@ -61,39 +70,56 @@ export class Renderer {
       ctx.fill();
     }
 
+    for (const z of eng.zones.items) if (z.active) this.drawZone(eng, z);
     for (const e of eng.enemies.items) if (e.active) this.drawEnemy(eng, e);
 
-    ctx.fillStyle = '#ff7aa8';
+    const flame = SPRITES.fx['purple-flame'];
     for (const b of eng.bullets.items) {
       if (!b.active) continue;
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-      ctx.fill();
+      if (isReady(flame)) {
+        ctx.drawImage(flame, b.x - 8, b.y - 11, 16, 19);
+      } else {
+        ctx.fillStyle = '#ff7aa8';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
-    for (const pr of eng.projectiles.items) if (pr.active) this.drawCarrot(pr.x, pr.y, Math.atan2(pr.vy, pr.vx));
+    for (const pr of eng.projectiles.items) if (pr.active) this.drawProjectile(pr);
 
-    ctx.fillStyle = '#6fdc8c';
+    const orb = SPRITES.fx['dark-orb'];
     for (const o of eng.orbs) {
-      ctx.beginPath();
-      ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
-      ctx.fill();
+      if (isReady(orb)) {
+        const s = o.r * 2.8;
+        ctx.save();
+        ctx.translate(o.x, o.y);
+        ctx.rotate(eng.time * 4);
+        ctx.drawImage(orb, -s / 2, -s / 2, s, s);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#9a6ad8';
+        ctx.beginPath();
+        ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     this.drawPlayer(eng);
 
     for (const fx of eng.effects.items) {
-      if (fx.active && fx.kind !== 'telegraph') this.drawEffect(fx);
+      if (fx.active && fx.kind !== 'telegraph' && fx.kind !== 'corpse') this.drawEffect(fx);
     }
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
     for (const t of eng.texts.items) {
       if (!t.active) continue;
       ctx.globalAlpha = Math.min(1, t.life / t.maxLife * 2);
-      ctx.font = `bold ${t.size}px system-ui, sans-serif`;
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.font = `900 ${t.size}px system-ui, sans-serif`;
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = '#3a1d0b';
       ctx.strokeText(t.text, t.x, t.y);
       ctx.fillStyle = t.color;
       ctx.fillText(t.text, t.x, t.y);
@@ -110,32 +136,72 @@ export class Renderer {
     const ctx = this.ctx;
     const w = eng.viewW;
     const h = eng.viewH;
-    ctx.fillStyle = '#07080c';
-    ctx.fillRect(0, 0, w, h);
-    if (!eng.followCamera) return;
+    this.ground ??= this.makeGround();
+    ctx.save();
+    ctx.translate(-eng.camX, -eng.camY);
+    ctx.fillStyle = this.ground ?? '#7a5536';
+    ctx.fillRect(eng.camX, eng.camY, w, h);
+    ctx.restore();
+  }
 
-    // 액션 모드: 움직이는 게 보이게 아주 옅은 격자
-    const size = 48;
-    ctx.strokeStyle = 'rgba(255,255,255,0.035)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const ox = -((eng.camX % size) + size) % size;
-    const oy = -((eng.camY % size) + size) % size;
-    for (let x = ox; x < w; x += size) {
-      ctx.moveTo(x + 0.5, 0);
-      ctx.lineTo(x + 0.5, h);
+  /** 흙바닥 무늬 한 칸(이음새 없이 반복). 밝고 어두운 얼룩과 작은 자갈을 흩뿌린다 */
+  private makeGround(): CanvasPattern | null {
+    const size = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#7f5a3a';
+    g.fillRect(0, 0, size, size);
+    let seed = 7;
+    const rnd = () => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    // 가장자리를 넘는 얼룩은 반대쪽에도 그려서 이어지게 한다
+    const blob = (x: number, y: number, r: number, color: string) => {
+      g.fillStyle = color;
+      for (const ox of [-size, 0, size]) {
+        for (const oy of [-size, 0, size]) {
+          g.beginPath();
+          g.ellipse(x + ox, y + oy, r, r * 0.7, 0, 0, Math.PI * 2);
+          g.fill();
+        }
+      }
+    };
+    for (let i = 0; i < 26; i++) blob(rnd() * size, rnd() * size, 18 + rnd() * 34, rnd() < 0.5 ? 'rgba(98,68,42,0.2)' : 'rgba(150,112,74,0.15)');
+    for (let i = 0; i < 140; i++) blob(rnd() * size, rnd() * size, 1 + rnd() * 2.2, rnd() < 0.5 ? 'rgba(60,40,24,0.45)' : 'rgba(186,150,108,0.45)');
+    return this.ctx.createPattern(c, 'repeat');
+  }
+
+  /** 칸마다 정해진 자리에 돌·잎을 놓는다 (같은 칸은 항상 같은 장식) */
+  private drawDecorations(eng: Engine) {
+    const imgs = SPRITES.ground;
+    if (imgs.length === 0) return;
+    const ctx = this.ctx;
+    const x0 = Math.floor(eng.camX / DECO_CELL) - 1;
+    const y0 = Math.floor(eng.camY / DECO_CELL) - 1;
+    const x1 = Math.floor((eng.camX + eng.viewW) / DECO_CELL) + 1;
+    const y1 = Math.floor((eng.camY + eng.viewH) / DECO_CELL) + 1;
+    ctx.globalAlpha = 0.9;
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cy = y0; cy <= y1; cy++) {
+        const hsh = hash(cx, cy);
+        if (hsh % 100 >= 45) continue;
+        const img = imgs[(hsh >>> 8) % imgs.length];
+        if (!isReady(img)) continue;
+        const x = cx * DECO_CELL + ((hsh >>> 12) % DECO_CELL);
+        const y = cy * DECO_CELL + ((hsh >>> 20) % DECO_CELL);
+        const s = 14 + ((hsh >>> 4) % 10);
+        ctx.drawImage(img, x - s / 2, y - s / 2, s, (s * img.naturalHeight) / img.naturalWidth);
+      }
     }
-    for (let y = oy; y < h; y += size) {
-      ctx.moveTo(0, y + 0.5);
-      ctx.lineTo(w, y + 0.5);
-    }
-    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   /** 발이 (x, footY)에 닿게 스프라이트를 그린다. flash > 0이면 하얗게 번쩍인다. */
-  private drawSprite(img: HTMLImageElement, x: number, footY: number, height: number, flip: boolean, flash: number) {
+  /** 발이 (x, footY)에 닿게 스프라이트를 그린다. flash > 0이면 하얗게 번쩍인다. */
+  private drawSprite(img: CanvasImageSource, x: number, footY: number, width: number, height: number, flip: boolean, flash: number) {
     const ctx = this.ctx;
-    const width = (height * img.naturalWidth) / img.naturalHeight;
     ctx.save();
     ctx.translate(x, footY);
     if (flip) ctx.scale(-1, 1);
@@ -149,13 +215,17 @@ export class Renderer {
   }
 
   private drawEnemy(eng: Engine, e: Enemy) {
-    const img = SPRITES[e.skin];
-    if (isReady(img)) {
-      this.drawSprite(img, e.x, e.y + e.r, e.r * ENEMY_SPRITE_SCALE, false, e.flash);
+    const anim = SPRITES.monsters[e.skin];
+    const size = e.r * ENEMY_SPRITE_SCALE;
+    if (anim) {
+      const img = frameAt(anim, eng.time * 1000 + e.id * 97);
+      const flip = FACES_RIGHT.has(e.skin) && eng.player.x < e.x;
+      // 칸 아래쪽에 1px 여백이 있다
+      this.drawSprite(img, e.x, e.y + e.r + 1, size, size, flip, e.flash);
     } else {
       this.drawEnemyShape(eng, e);
     }
-    const top = isReady(img) ? e.y + e.r - e.r * ENEMY_SPRITE_SCALE : e.y - e.r;
+    const top = anim ? e.y + e.r - size * 0.85 : e.y - e.r;
     const showBar = !eng.followCamera || (e.kind === 'tank' && e.hp < e.maxHp);
     if (showBar && e.kind !== 'boss') {
       const bw = Math.max(18, e.r * 2);
@@ -293,28 +363,74 @@ export class Renderer {
     this.bar(p.x - 15, p.y + p.r + 5, 30, 4, p.hp / p.maxHp, '#6fdc8c');
   }
 
-  /** 당근 다트: 진행 방향을 향한 주황 삼각형 + 초록 잎 */
-  private drawCarrot(x: number, y: number, angle: number) {
+  /** 깃털·화염구는 날아가는 방향으로 돌리고, 알은 포물선 높이만큼 띄워 그린다 */
+  private drawProjectile(pr: Projectile) {
     const ctx = this.ctx;
+    const angle = Math.atan2(pr.vy, pr.vx);
+    if (pr.kind === 'egg') {
+      const t = 1 - pr.life / pr.flight;
+      const lift = Math.sin(Math.PI * t) * 46;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(pr.x, pr.y + 4, 5, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(pr.x, pr.y - lift);
+      ctx.rotate(t * 6);
+      ctx.fillStyle = '#fff6e4';
+      ctx.strokeStyle = '#5a3a20';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 5, 6.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    const img = SPRITES.fx[pr.kind];
+    if (!isReady(img)) {
+      ctx.fillStyle = pr.kind === 'fireball' ? '#ff7a2a' : '#ffe08a';
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, pr.r, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
     ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    ctx.fillStyle = '#ff9a3c';
-    ctx.beginPath();
-    ctx.moveTo(7, 0);
-    ctx.lineTo(-5, -3.2);
-    ctx.lineTo(-5, 3.2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#6fdc8c';
-    ctx.beginPath();
-    ctx.moveTo(-5, 0);
-    ctx.lineTo(-9, -3);
-    ctx.lineTo(-8, 0);
-    ctx.lineTo(-9, 3);
-    ctx.closePath();
-    ctx.fill();
+    ctx.translate(pr.x, pr.y);
+    if (pr.kind === 'feather') {
+      // 깃털 그림은 끝이 위를 향한다
+      ctx.rotate(angle + Math.PI / 2);
+      const h = 22;
+      const w = (h * img.naturalWidth) / img.naturalHeight;
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    } else {
+      // 화염구 그림은 왼쪽으로 날아가는 모양
+      ctx.rotate(angle + Math.PI);
+      const w = 30;
+      const h = (w * img.naturalHeight) / img.naturalWidth;
+      ctx.drawImage(img, -w * 0.3, -h / 2, w, h);
+    }
     ctx.restore();
+  }
+
+  private drawZone(eng: Engine, z: Zone) {
+    const img = SPRITES.fx[z.sprite];
+    const ctx = this.ctx;
+    const fade = Math.min(1, z.life / 0.3, (z.maxLife - z.life) / 0.15);
+    ctx.globalAlpha = Math.max(0, fade);
+    if (isReady(img)) {
+      const h = z.r * 2.6;
+      const w = (h * img.naturalWidth) / img.naturalHeight;
+      const wob = Math.sin(eng.time * 18 + z.x) * 2;
+      ctx.drawImage(img, z.x - w / 2 + wob, z.y + z.r * 0.6 - h, w, h);
+    } else {
+      ctx.strokeStyle = '#ffe08a';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   private drawEffect(fx: Effect) {
@@ -349,6 +465,26 @@ export class Renderer {
         ctx.stroke();
         break;
       }
+      case 'sprite': {
+        const img = SPRITES.fx[fx.sprite];
+        if (!isReady(img)) break;
+        // 처음엔 살짝 작게 시작해서 커지며 사라진다
+        const k = 0.8 + 0.3 * (1 - t);
+        const w = fx.r * 2 * k;
+        const h = (w * img.naturalHeight) / img.naturalWidth;
+        ctx.globalAlpha = Math.min(1, t * 2.5);
+        ctx.drawImage(img, fx.x - w / 2, fx.y - h / 2, w, h);
+        break;
+      }
+      case 'corpse': {
+        const img = SPRITES.dead[fx.sprite];
+        if (!isReady(img)) break;
+        const w = fx.r * ENEMY_SPRITE_SCALE * 0.9;
+        const h = (w * img.naturalHeight) / img.naturalWidth;
+        ctx.globalAlpha = Math.min(1, t * 2);
+        ctx.drawImage(img, fx.x - w / 2, fx.y - h, w, h);
+        break;
+      }
       case 'telegraph':
         ctx.globalAlpha = 0.35 + 0.35 * Math.sin(fx.life * 30);
         ctx.lineWidth = fx.r * 2;
@@ -364,24 +500,37 @@ export class Renderer {
   }
 
   private drawBossBar(eng: Engine, boss: Enemy) {
-    // 상단 HUD(경험치·타이머) 바로 아래
-    this.bar(24, 92, eng.viewW - 48, 8, boss.hp / boss.maxHp, '#d04070');
+    // 상단 HUD 바로 아래
+    this.bar(24, BOSS_BAR_Y, eng.viewW - 48, 8, boss.hp / boss.maxHp, '#d04070');
   }
 
   private drawJoystick(j: Joystick) {
     const ctx = this.ctx;
+    const base = SPRITES.ui['joy-base'];
+    const knob = SPRITES.ui['joy-knob'];
+    const dx = j.x - j.ox;
+    const dy = j.y - j.oy;
+    const d = Math.hypot(dx, dy);
+    const k = d > j.radius ? j.radius / d : 1;
+    const kx = j.ox + dx * k;
+    const ky = j.oy + dy * k;
+    if (isReady(base) && isReady(knob)) {
+      const bs = j.radius * 2.3;
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(base, j.ox - bs / 2, j.oy - bs / 2, bs, bs);
+      ctx.globalAlpha = 1;
+      const ks = j.radius * 1.05;
+      ctx.drawImage(knob, kx - ks / 2, ky - ks / 2, ks, ks);
+      return;
+    }
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.arc(j.ox, j.oy, j.radius, 0, Math.PI * 2);
     ctx.fill();
-    const dx = j.x - j.ox;
-    const dy = j.y - j.oy;
-    const d = Math.hypot(dx, dy);
-    const k = d > j.radius ? j.radius / d : 1;
     ctx.globalAlpha = 0.8;
     ctx.beginPath();
-    ctx.arc(j.ox + dx * k, j.oy + dy * k, 22, 0, Math.PI * 2);
+    ctx.arc(kx, ky, 22, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
   }
@@ -393,4 +542,11 @@ export class Renderer {
     ctx.fillStyle = color;
     ctx.fillRect(x, y, w * Math.max(0, Math.min(1, ratio)), h);
   }
+}
+
+/** 칸 좌표 → 정수 해시 (바닥 장식 배치용) */
+function hash(x: number, y: number) {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return (h ^ (h >>> 16)) >>> 0;
 }

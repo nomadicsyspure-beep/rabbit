@@ -1,7 +1,9 @@
 import type { Enemy, EnemyKind, Weapon } from '../battle/engine';
 import type { WeaponStats } from '../battle/weapons';
-import { actionRatio, enemyGold, isBossStage, playerStats, stageClearGold, type ActionRatio } from '../data/balance';
-import { SKILLS, SKILL_BY_ID, SKILL_MAX_LEVEL, type SkillDef } from '../data/skills';
+import {
+  actionRatio, enemyGold, isBossStage, playerStats, stageClearGold, stageSkins, type ActionRatio,
+} from '../data/balance';
+import { SKILL_BY_ID, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
@@ -16,22 +18,25 @@ const MAX_ALIVE = 170;
 const ELITE_HP = 900;
 const BOSS_HP = 2600;
 
-export interface LevelUpCard {
-  skill: SkillDef;
-  /** 고른 뒤의 레벨 (1이면 새로 얻음) */
-  nextLevel: number;
-}
-
 export interface RunResult {
   win: boolean;
   time: number;
   kills: number;
-  level: number;
+  /** 이번 판에 모은 경험치와 오른 캐릭터 레벨 수 */
+  xp: number;
+  levelUps: number;
   gold: number;
   stage: number;
 }
 
-export type RunState = 'playing' | 'levelup' | 'paused' | 'ended';
+export type RunState = 'playing' | 'paused' | 'ended';
+
+/** HUD에 보여 줄 장착 스킬 */
+export interface EquippedSkill {
+  def: SkillDef;
+  level: number;
+  weapon: Weapon;
+}
 
 export class ActionMode {
   state: RunState = 'ended';
@@ -40,25 +45,20 @@ export class ActionMode {
   duration = NORMAL_SECONDS;
   ratio: ActionRatio = { atk: 1, hp: 1 };
   time = 0;
-  level = 1;
-  xp = 0;
   kills = 0;
   bossSpawned = false;
+  /** 이번 판에 모은 경험치 / 오른 레벨 수 (결과 화면용) */
+  xpGained = 0;
+  levelUps = 0;
+  equipped: EquippedSkill[] = [];
 
   private readonly stats: WeaponStats = { power: BASE_POWER, aps: 1 };
-  private readonly owned = new Map<string, number>();
-  private readonly weapons = new Map<string, Weapon>();
-  private pendingLevelUps = 0;
   private spawnAcc = 0;
   private swarms: number[] = [];
   private baseHp = BASE_HP;
   private endT = -1;
 
   constructor(private readonly game: Game) {}
-
-  get xpNext() {
-    return 5 + (this.level - 1) * 4;
-  }
 
   get running() {
     return this.state === 'playing';
@@ -84,7 +84,9 @@ export class ActionMode {
 
     this.stage = stage;
     this.duration = isBossStage(stage) ? BOSS_STAGE_SECONDS : NORMAL_SECONDS;
-    this.ratio = actionRatio(playerStats(this.game.save.levels), stage);
+    const save = this.game.save;
+    const st = playerStats(save.levels, save.level);
+    this.ratio = actionRatio(st, stage);
     this.stats.power = BASE_POWER * this.ratio.atk;
     this.baseHp = BASE_HP * this.ratio.hp;
 
@@ -93,22 +95,29 @@ export class ActionMode {
     p.y = 0;
     p.regen = 0;
     p.maxHp = p.hp = this.baseHp;
-    p.speed = BASE_SPEED;
+    p.speed = BASE_SPEED * st.spd;
     p.magnet = BASE_MAGNET;
 
     this.time = 0;
-    this.level = 1;
-    this.xp = 0;
     this.kills = 0;
+    this.xpGained = 0;
+    this.levelUps = 0;
     this.bossSpawned = false;
-    this.pendingLevelUps = 0;
     this.spawnAcc = 0;
     // 몰려오기 이벤트: 일반 스테이지는 후반 한 번, 보스 스테이지는 두 번
     this.swarms = this.isBossStage ? [60, 120] : [(this.duration * 2) / 3];
     this.endT = -1;
-    this.owned.clear();
-    this.weapons.clear();
-    this.applySkill('dart');
+
+    // 장착한 스킬만 발동한다 (레벨은 성장 탭에서 올린 그대로)
+    this.equipped = [];
+    for (const id of save.equipped) {
+      const def = SKILL_BY_ID[id];
+      const level = save.skills[id] ?? 0;
+      if (!def || level <= 0) continue;
+      const weapon = def.createWeapon(this.stats, level);
+      eng.weapons.push(weapon);
+      this.equipped.push({ def, level, weapon });
+    }
     this.state = 'playing';
   }
 
@@ -169,15 +178,16 @@ export class ActionMode {
     const eng = this.game.engine;
     const { x, y } = this.spawnPos(angle);
     const s = 1 + (this.time / 60) * 0.6;
+    const skins = stageSkins(this.stage);
     switch (kind) {
       case 'normal':
-        eng.spawnEnemy({ kind, x, y, hp: 10 * s, r: 11, speed: 42, dmg: 5 * s, xp: 1 });
+        eng.spawnEnemy({ kind, skin: skins.normal, x, y, hp: 10 * s, r: 11, speed: 42, dmg: 5 * s, xp: 1 });
         break;
       case 'fast':
-        eng.spawnEnemy({ kind, x, y, hp: 6 * s, r: 10, speed: 78, dmg: 4 * s, xp: 1 });
+        eng.spawnEnemy({ kind, skin: skins.fast, x, y, hp: 6 * s, r: 10, speed: 78, dmg: 4 * s, xp: 1 });
         break;
       case 'tank':
-        eng.spawnEnemy({ kind, x, y, hp: 45 * s, r: 14, speed: 26, dmg: 10 * s, xp: 3 });
+        eng.spawnEnemy({ kind, skin: skins.tank, x, y, hp: 45 * s, r: 14, speed: 26, dmg: 10 * s, xp: 3 });
         break;
       case 'boss':
         break;
@@ -194,10 +204,10 @@ export class ActionMode {
     const { x, y } = this.spawnPos();
     const eng = this.game.engine;
     if (this.isBossStage) {
-      eng.spawnEnemy({ kind: 'boss', skin: 'demon', x, y, hp: BOSS_HP, r: 30, speed: 34, dmg: 22, xp: 0 });
+      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP, r: 30, speed: 34, dmg: 22, xp: 0 });
       this.game.ui.toast('마왕 등장!');
     } else {
-      eng.spawnEnemy({ kind: 'boss', skin: 'slime', x, y, hp: ELITE_HP, r: 22, speed: 38, dmg: 16, xp: 0 });
+      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP, r: 22, speed: 38, dmg: 16, xp: 0 });
       this.game.ui.toast('정예 몬스터 등장!');
     }
   }
@@ -222,77 +232,16 @@ export class ActionMode {
     if (e.kind === 'boss') this.finish(true);
   }
 
+  /** 경험치 보석: 캐릭터 영구 경험치로 바로 쌓는다 */
   private onGem(v: number) {
-    this.xp += v;
-    while (this.xp >= this.xpNext) {
-      this.xp -= this.xpNext;
-      this.level++;
-      this.pendingLevelUps++;
+    this.xpGained += v;
+    const ups = this.game.addXp(v);
+    if (ups > 0) {
+      this.levelUps += ups;
+      const p = this.game.engine.player;
+      this.game.engine.addSprite('pillar', p.x, p.y - 20, 34, 0.8, true);
+      this.game.ui.toast(`레벨 업! Lv ${this.game.save.level}`);
     }
-    if (this.pendingLevelUps > 0 && this.state === 'playing') this.openLevelUp();
-  }
-
-  private openLevelUp() {
-    this.pendingLevelUps--;
-    this.state = 'levelup';
-    this.game.joystick.release();
-    this.game.ui.showLevelUp(this.rollCards(), (card) => {
-      if (card) this.applySkill(card.skill.id);
-      else this.healPercent(0.3);
-      if (this.pendingLevelUps > 0) this.openLevelUp();
-      else this.state = 'playing';
-    });
-  }
-
-  rollCards(): LevelUpCard[] {
-    const pool = SKILLS.filter((s) => (this.owned.get(s.id) ?? 0) < SKILL_MAX_LEVEL);
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    return pool.slice(0, 3).map((skill) => ({ skill, nextLevel: (this.owned.get(skill.id) ?? 0) + 1 }));
-  }
-
-  private applySkill(id: string) {
-    const def = SKILL_BY_ID[id];
-    const level = (this.owned.get(id) ?? 0) + 1;
-    this.owned.set(id, level);
-    const p = this.game.engine.player;
-
-    if (def.createWeapon) {
-      let w = this.weapons.get(id);
-      if (!w) {
-        w = def.createWeapon(this.stats);
-        this.weapons.set(id, w);
-        this.game.engine.weapons.push(w);
-      }
-      w.level = level;
-      return;
-    }
-    switch (id) {
-      case 'swift':
-        p.speed = BASE_SPEED * (1 + 0.12 * level);
-        break;
-      case 'magnet':
-        p.magnet = BASE_MAGNET * (1 + 0.35 * level);
-        break;
-      case 'tough': {
-        const ratio = p.hp / p.maxHp;
-        p.maxHp = this.baseHp * (1 + 0.2 * level);
-        p.hp = ratio * p.maxHp;
-        this.healPercent(0.3);
-        break;
-      }
-    }
-  }
-
-  private healPercent(k: number) {
-    const p = this.game.engine.player;
-    p.hp = Math.min(p.maxHp, p.hp + p.maxHp * k);
-  }
-
-  ownedSkills(): [SkillDef, number][] {
-    return [...this.owned].map(([id, lv]) => [SKILL_BY_ID[id], lv]);
   }
 
   pause() {
@@ -323,7 +272,7 @@ export class ActionMode {
     }
     save.gold += gold;
     const result: RunResult = {
-      win, time: this.time, kills: this.kills, level: this.level, gold, stage: this.stage,
+      win, time: this.time, kills: this.kills, xp: this.xpGained, levelUps: this.levelUps, gold, stage: this.stage,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }
