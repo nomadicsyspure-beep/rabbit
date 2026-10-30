@@ -1289,7 +1289,8 @@ export class Engine {
         const d = Math.hypot(dx, dy) || 1;
         pr.vx += (dx / d) * 900 * dt;
         pr.vy += (dy / d) * 900 * dt;
-        if (!pr.turned && pr.vx * dx + pr.vy * dy > 0) {
+        // 막 던졌을 땐(발밑) 돌아섰다고 보지 않는다: 아래로 던지면 바로 사라지던 문제
+        if (!pr.turned && d > 30 && pr.vx * dx + pr.vy * dy > 0) {
           pr.turned = true;
           pr.hit.length = 0;
         }

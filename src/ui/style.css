@@ -1706,17 +1706,6 @@ button:disabled {
   color: var(--muted);
 }
 
-.skill-tile.can-learn::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 4px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #7cf2a0;
-}
-
 .skill-tile.equipped .tile-icon {
   outline: 2px solid var(--gold);
   outline-offset: -2px;
@@ -1805,10 +1794,98 @@ button:disabled {
 .g-C { background: #7cf2a0; }
 .g-D { background: #8a7a6a; color: #fff; }
 
-/* 배울 수 있음 초록 점은 등급 배지와 안 겹치게 아이콘 오른쪽 아래로 */
-.skill-tile.can-learn::after {
-  top: auto;
-  left: auto;
-  right: 6px;
-  bottom: 18px;
+
+/* 스킬 상자 */
+.box-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 6px 0 2px;
+}
+
+.skill-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  margin: 0;
+}
+
+.skill-box.box-gold { box-shadow: inset 0 0 0 2px #ffd23f; }
+.skill-box.box-legend { box-shadow: inset 0 0 0 2px #c78bff, 0 0 10px rgba(199, 139, 255, 0.5); }
+
+.box-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.box-head .box-icon {
+  font-size: 22px;
+}
+
+.box-odds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.box-odds .tile-grade {
+  position: static;
+  font-size: 9px;
+  line-height: 14px;
+  padding: 0 3px;
+}
+
+.box-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.box-btns .buy {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+}
+
+.box-card .tile-grade {
+  position: static;
+  align-self: flex-start;
+}
+
+.box-card .tile-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.box-card.gr-S { --rar: #ff5c6c; }
+.box-card.gr-A { --rar: #ffa04a; }
+.box-card.gr-B { --rar: #ffd23f; }
+.box-card.gr-C { --rar: #7cf2a0; }
+.box-card.gr-D { --rar: #8a7a6a; }
+.box-card.gr-S.new { animation: flipIn 0.35s ease-out both, sGlow 0.8s ease-in-out 0.4s infinite alternate; }
+
+@keyframes sGlow {
+  from { box-shadow: 0 0 6px #ff5c6c; }
+  to { box-shadow: 0 0 18px #ff5c6c, 0 0 4px #fff; }
+}
+
+.box-where {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.box-where-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.box-btns .buy span {
+  white-space: nowrap;
+  font-size: 13px;
 }
