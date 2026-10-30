@@ -2543,3 +2543,15 @@ button:disabled {
   background: #ff4d5e;
   border: 2px solid #fff;
 }
+
+/* 찍을 수 있는 스킬 포인트가 있는 스킬 */
+.skill-tile.has-pts .tile-icon::before {
+  content: '⭐';
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  z-index: 3;
+  font-size: 13px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 0 #2a1606);
+}

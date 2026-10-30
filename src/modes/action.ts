@@ -42,10 +42,6 @@ type Wave = 'ring' | 'stampede' | 'wall';
 const WAVES: Wave[] = ['ring', 'stampede', 'wall'];
 /** 움직이는 중 새 몹이 가는 방향 앞쪽에서 나올 확률 */
 const AHEAD_RATE = 0.8;
-/** 이 각도 안에서 이 시간 넘게 한 방향으로 달리면 앞에 벽 (재사용 대기 WALL_CD초) */
-const STRAIGHT_TOLERANCE = 0.5;
-const STRAIGHT_SEC = 1.5;
-const WALL_CD = 2.5;
 
 /** 이 시간 안에 다음 처치가 없으면 콤보가 끊긴다 */
 export const COMBO_SEC = 2;
@@ -136,12 +132,6 @@ export class ActionMode {
   /** 다음 패턴 웨이브까지 남은 시간 / 몇 번째 패턴인지 */
   private waveT = 0;
   private waveIdx = 0;
-  /** 한 방향으로 계속 가고 있는 시간 / 그 방향 / 벽 재사용 대기 */
-  private straightT = 0;
-  private straightDir = 0;
-  private wallCd = 0;
-  /** 방향을 안 바꾸고 맞은 벽 수: 계속 버티면 벽이 점점 두꺼워진다 */
-  private wallStreak = 0;
   private baseHp = BASE_HP;
   private endT = -1;
   private chestT = 0;
@@ -244,9 +234,6 @@ export class ActionMode {
     this.bossSpawned = false;
     this.spawnAcc = 0;
     this.waveT = WAVE_FIRST;
-    this.straightT = 0;
-    this.wallCd = 0;
-    this.wallStreak = 0;
     this.waveIdx = Math.floor(Math.random() * WAVES.length);
     this.endT = -1;
     this.chestT = kind === 'material' ? 1 : kind === 'raid' ? Infinity : CHEST_SEC * 0.6;
@@ -347,32 +334,7 @@ export class ActionMode {
       if (eng.enemies.countActive() < MAX_ALIVE) this.spawnOne(this.pickKind());
     }
 
-    // 한 방향으로만 계속 달리면 앞에 벽이 생긴다 (AUTO가 조종하는 동안은 빼 준다)
-    const h = this.heading;
-    this.wallCd -= dt;
-    if (h === null || this.game.pilot.driving) {
-      this.straightT = 0;
-      this.wallStreak = 0;
-    } else {
-      let diff = Math.abs(h - this.straightDir) % (Math.PI * 2);
-      if (diff > Math.PI) diff = Math.PI * 2 - diff;
-      if (diff > STRAIGHT_TOLERANCE) {
-        this.straightDir = h;
-        this.straightT = 0;
-        this.wallStreak = 0;
-      }
-      this.straightT += dt;
-      if (this.straightT > STRAIGHT_SEC && this.wallCd <= 0 && !this.bossSpawned) {
-        this.wallCd = WALL_CD;
-        this.straightT = 0;
-        this.wallStreak++;
-        this.spawnWave('wall', this.wallStreak);
-        // 두 번째 벽부터는 정면에서 돌진 떼까지
-        if (this.wallStreak >= 2) this.spawnHeadOn(this.wallStreak);
-      }
-    }
-
-    // 패턴 웨이브: 포위 / 돌진 / 앞을 막는 벽을 돌아가며
+    // 패턴 웨이브: 포위 / 돌진 / 벽을 돌아가며 (한 방향으로 달린다고 벽이 생기진 않는다)
     this.waveT -= dt;
     if (this.waveT <= 0 && !this.bossSpawned) {
       this.waveT = this.isBossStage ? WAVE_GAP * 0.75 : WAVE_GAP;
@@ -504,28 +466,7 @@ export class ActionMode {
     }
   }
 
-  /** 정면에서 플레이어 쪽으로 곧장 달려오는 돌진 떼 (한 방향으로만 버틸 때) */
-  private spawnHeadOn(streak: number) {
-    const eng = this.game.engine;
-    const p = eng.player;
-    const h = this.heading ?? 0;
-    const s = 1 + (this.time / 60) * 0.6;
-    const skins = stageSkins(this.skinStage);
-    const d = this.diag / 2 + 20;
-    const n = 8 + streak * 4;
-    for (let i = 0; i < n; i++) {
-      const off = (i - (n - 1) / 2) * 18;
-      this.spawnMob({
-        kind: 'fast', skin: skins.fast,
-        x: p.x + Math.cos(h) * (d + (i % 3) * 20) - Math.sin(h) * off,
-        y: p.y + Math.sin(h) * (d + (i % 3) * 20) + Math.cos(h) * off,
-        hp: 4 * s, r: 11, speed: 240, dmg: (5 + streak * 4) * s * CHARGE_DMG, xp: 1, tint: 'charge',
-        move: 'charge', dashX: -Math.cos(h), dashY: -Math.sin(h), t1: (d * 2) / 240,
-      });
-    }
-  }
-
-  private spawnWave(wave: Wave, streak = 0) {
+  private spawnWave(wave: Wave) {
     const eng = this.game.engine;
     const p = eng.player;
     const s = 1 + (this.time / 60) * 0.6;
@@ -569,14 +510,13 @@ export class ActionMode {
         break;
       }
       case 'wall': {
-        // 가는 방향 앞에 벽: 앞줄은 단단한 몹이 섞이고, 뒷줄은 빠른 몹.
-        // 방향을 안 바꾸고 계속 버티면(streak) 줄이 늘고 더 아프다
+        // 가끔 오는 벽 웨이브: 아무 쪽에서나 두 줄로 몰려온다. 앞줄은 단단한 몹이 섞이고, 뒷줄은 빠른 몹
+        const wallDir = Math.random() * Math.PI * 2;
         const d = this.diag / 2 - 40;
         const n = Math.round(14 * crowd);
-        const fx = Math.cos(h);
-        const fy = Math.sin(h);
-        const rows = 2 + Math.min(3, streak);
-        const hurt = 1 + 1.2 * streak;
+        const fx = Math.cos(wallDir);
+        const fy = Math.sin(wallDir);
+        const rows = 2;
         for (let row = 0; row < rows; row++) {
           for (let i = 0; i < n; i++) {
             const off = (i - (n - 1) / 2 + row * 0.5) * 28;
@@ -588,11 +528,11 @@ export class ActionMode {
               skin: tank ? skins.tank : fast ? skins.fast : skins.normal,
               x: p.x + fx * dd - fy * off, y: p.y + fy * dd + fx * off,
               hp: (tank ? 24 : fast ? 4 : 5) * s, r: tank ? 14 : fast ? 10 : 11,
-              speed: tank ? 40 : fast ? 115 : 62, dmg: (tank ? 8 : 4) * s * hurt * WALL_DMG, xp: tank ? 3 : 1, tint: 'wall',
+              speed: tank ? 40 : fast ? 115 : 62, dmg: (tank ? 8 : 4) * s * WALL_DMG, xp: tank ? 3 : 1, tint: 'wall',
             });
           }
         }
-        this.game.ui.toast('앞을 막는다!');
+        this.game.ui.toast('몹 벽이 몰려온다!');
         break;
       }
     }

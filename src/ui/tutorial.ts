@@ -61,7 +61,7 @@ export class Tutorial {
         enter: () => $('.panel')?.scrollTo({ top: 0 }),
       },
       { when: () => modalOpen(), target: () => $('.modal .skill-art'), text: '스킬 아이콘을 누르면 어떻게 나가는지 미리 볼 수 있어' },
-      { when: () => modalOpen(), target: () => $('.modal .btn.primary'), text: '피해·발동 속도·개수를 골드로 강화해. 등급이 높을수록 비싸! 이제 닫아 보자' },
+      { when: () => modalOpen(), target: () => $('.modal .btn.primary'), text: '같은 스킬이 상자에서 또 나오면 스킬 포인트! 피해·발동 속도·개수 중 골라서 찍어. 이제 닫아 보자' },
       { when: idle, target: tab('성장'), text: '성장 탭에서는 병아리 능력치를 올려' },
       {
         when: idle, target: () => $('.panel .card.row .buy'), text: '공격력을 한 번 올려 보자! (누르고 있으면 연속 강화)',
