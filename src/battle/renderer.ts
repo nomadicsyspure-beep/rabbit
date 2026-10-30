@@ -1,4 +1,4 @@
-import { enemyColor, type Effect, type Engine, type Enemy, type Projectile, type Zone } from './engine';
+import { type Effect, type Engine, type Enemy, type Projectile, type Zone } from './engine';
 import type { Joystick } from './controllers';
 import { frameAt } from './anim';
 import { CHEST_COLORS } from '../data/items';
@@ -364,7 +364,8 @@ export class Renderer {
   }
 
   private drawEnemy(eng: Engine, e: Enemy) {
-    const anim = SPRITES.monsters[e.skin];
+    // 그 몹 그림이 아직 없으면 슬라임(또는 불러진 아무 몹) 그림으로 대신한다
+    const anim = SPRITES.monsters[e.skin] ?? SPRITES.monsters.slime ?? Object.values(SPRITES.monsters)[0];
     const size = e.r * ENEMY_SPRITE_SCALE;
     if (e.golden || e.bomb) {
       // 황금 몹은 금빛, 폭탄 몹은 붉은 기운
@@ -401,8 +402,6 @@ export class Renderer {
       const sy = 1 - 0.15 * hit;
       // 칸 아래쪽에 1px 여백이 있다
       this.drawSprite(img, e.x, e.y + e.r + 1, size * sx, size * sy, flip, e.flash);
-    } else {
-      this.drawEnemyShape(eng, e);
     }
     const top = anim && e.skin !== 'firstaid' ? e.y + e.r - size * 0.85 : e.y - e.r * 1.3;
     this.drawStatus(eng, e, top);
@@ -440,45 +439,6 @@ export class Renderer {
     ctx.fillRect(e.x - c / 2, y + h / 2 - c * 1.5, c, c * 3);
     ctx.fillRect(e.x - c * 1.5, y + h / 2 - c / 2, c * 3, c);
     ctx.restore();
-  }
-
-  private drawEnemyShape(eng: Engine, e: Enemy) {
-    const ctx = this.ctx;
-    ctx.fillStyle = e.flash > 0 ? '#ffffff' : enemyColor(e.kind);
-    const r = e.r;
-    if (e.kind === 'fast') {
-      const a = Math.atan2(eng.player.y - e.y, eng.player.x - e.x);
-      ctx.beginPath();
-      for (let i = 0; i < 3; i++) {
-        const t = a + (i * Math.PI * 2) / 3;
-        const rr = i === 0 ? r * 1.25 : r;
-        ctx.lineTo(e.x + Math.cos(t) * rr, e.y + Math.sin(t) * rr);
-      }
-      ctx.closePath();
-      ctx.fill();
-    } else if (e.kind === 'tank') {
-      ctx.fillRect(e.x - r, e.y - r, r * 2, r * 2);
-    } else {
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
-      ctx.fill();
-      if (e.kind === 'boss') {
-        ctx.strokeStyle = '#ffd0e0';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-      }
-    }
-
-    // 눈 (적이 플레이어를 바라본다)
-    const a = Math.atan2(eng.player.y - e.y, eng.player.x - e.x);
-    const ex = Math.cos(a) * r * 0.3;
-    const ey = Math.sin(a) * r * 0.3;
-    ctx.fillStyle = '#1b2233';
-    const er = Math.max(1.5, r * 0.14);
-    ctx.beginPath();
-    ctx.arc(e.x + ex - r * 0.28, e.y + ey - r * 0.1, er, 0, Math.PI * 2);
-    ctx.arc(e.x + ex + r * 0.28, e.y + ey - r * 0.1, er, 0, Math.PI * 2);
-    ctx.fill();
   }
 
   private drawPlayer(eng: Engine) {
@@ -522,8 +482,9 @@ export class Renderer {
     // 이동 중: 기본은 걷기, 속도가 붙으면 달리기 / 멈춤: 걷기 첫 프레임
     // 피버 중엔 AUTO로 천천히 움직여도 달리기 그림
     const motion = p.moving && (eng.fever > 0 || p.curSpeed >= p.speed * RUN_RATIO) ? 'run' : 'walk';
-    const anim = SPRITES.hero[motion][dir] ?? SPRITES.hero.walk[dir];
-    if (!anim) return this.drawPlayerShape(eng);
+    // 그림이 아직 안 불러졌으면 불러진 다른 방향이라도 (하나도 없으면 안 그린다)
+    const anim = SPRITES.hero[motion][dir] ?? SPRITES.hero.walk[dir] ?? SPRITES.hero.walk[2] ?? SPRITES.hero.walk.find((a) => a);
+    if (!anim) return;
     const frame = p.moving ? frameAt(anim, eng.time * 1000) : anim.frames[0];
     const img = this.chick(frame);
 
@@ -674,42 +635,6 @@ export class Renderer {
     // 칸 경계(22.5°)를 10° 넘게 지나야 다음 방향으로 바꾼다
     if (diff > Math.PI / 8 + 0.17) this.heroDir = heroDirIndex(fx, fy);
     return this.heroDir;
-  }
-
-  private drawPlayerShape(eng: Engine) {
-    const ctx = this.ctx;
-    const p = eng.player;
-    const blink = p.invuln > 0 && Math.floor(eng.time * 20) % 2 === 0;
-    ctx.globalAlpha = blink ? 0.5 : 1;
-
-    const body = p.flash > 0 ? '#ff9a9a' : '#fbe9dc';
-    // 귀 두 개
-    ctx.fillStyle = body;
-    const earTilt = p.faceX * 0.25;
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.ellipse(p.x + side * p.r * 0.45, p.y - p.r * 1.05, p.r * 0.3, p.r * 0.75, side * 0.25 + earTilt, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = '#f4a6b8';
-    for (const side of [-1, 1]) {
-      ctx.beginPath();
-      ctx.ellipse(p.x + side * p.r * 0.45, p.y - p.r * 1.02, p.r * 0.13, p.r * 0.5, side * 0.25 + earTilt, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = body;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 바라보는 방향 표시 (코)
-    ctx.fillStyle = '#4a7bd6';
-    ctx.beginPath();
-    ctx.arc(p.x + p.faceX * p.r * 0.55, p.y + p.faceY * p.r * 0.55 - 1, 2.6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    this.bar(p.x - 15, p.y + p.r + 5, 30, 4, p.hp / p.maxHp, '#6fdc8c');
   }
 
   /** 깃털·화염구는 날아가는 방향으로 돌리고, 알은 포물선 높이만큼 띄워 그린다 */

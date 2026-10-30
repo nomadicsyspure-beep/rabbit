@@ -7,11 +7,25 @@ export interface Anim {
   frameMs: number;
 }
 
+/**
+ * 그림 불러오기. img.decode()는 아이폰 사파리 등에서 가끔 실패해서 onload로 기다리고,
+ * 실패하면 잠깐 쉬었다 몇 번 더 시도한다.
+ */
+export function loadImage(url: string, tries = 4): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const attempt = (left: number) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => (left > 1 ? setTimeout(() => attempt(left - 1), 400) : reject(new Error(`load failed: ${url}`)));
+      img.src = url;
+    };
+    attempt(tries);
+  });
+}
+
 /** 프레임 띠 PNG를 불러와 프레임으로 자른다. 프레임 크기는 이미지 높이와 같은 정사각형. */
 export async function loadStrip(url: string, frameMs: number): Promise<Anim> {
-  const img = new Image();
-  img.src = url;
-  await img.decode();
+  const img = await loadImage(url);
   const size = img.naturalHeight;
   const count = Math.max(1, Math.round(img.naturalWidth / size));
 

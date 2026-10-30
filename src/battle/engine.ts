@@ -1472,16 +1472,3 @@ export class Engine {
     }
   }
 }
-
-export function enemyColor(kind: EnemyKind): string {
-  switch (kind) {
-    case 'normal':
-      return '#e05a5a';
-    case 'fast':
-      return '#f0a040';
-    case 'tank':
-      return '#9a6ad8';
-    case 'boss':
-      return '#d04070';
-  }
-}
