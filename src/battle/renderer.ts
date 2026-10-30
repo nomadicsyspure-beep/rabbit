@@ -308,6 +308,20 @@ export class Renderer {
     ctx.ellipse(p.x, p.y + p.r, p.r, p.r * 0.35, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // 피버: 병아리 둘레에 금빛 기운이 일렁인다
+    if (eng.fever > 0) {
+      const pulse = 1 + 0.15 * Math.sin(eng.time * 16);
+      const r = 46 * pulse;
+      const g = ctx.createRadialGradient(p.x, p.y - 8, 4, p.x, p.y - 8, r);
+      g.addColorStop(0, 'rgba(255,230,120,0.75)');
+      g.addColorStop(0.5, 'rgba(255,170,40,0.35)');
+      g.addColorStop(1, 'rgba(255,140,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - 8, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     const footY = p.y + p.r + 2;
     const dir = this.updateHeroDir(p.faceX, p.faceY);
     if (p.dead) {

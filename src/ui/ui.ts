@@ -8,7 +8,7 @@ import {
   BRANCHES, EQUIP_SLOTS, SKILLS, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, type SkillDef, type SkillId,
 } from '../data/skills';
 import type { Game, Mode } from '../game';
-import { COMBO_SEC, type RunResult } from '../modes/action';
+import { COMBO_SEC, FEVER_NEED, FEVER_SEC, type RunResult } from '../modes/action';
 import { ICONS } from './icons';
 
 type TabId = 'growth' | 'skill' | 'gear' | 'pets' | 'dungeon' | 'shop';
@@ -147,6 +147,8 @@ export class UI {
   private readonly rotateBtn: HTMLButtonElement;
   private readonly skillModeBtn: HTMLButtonElement;
   private readonly comboEl: HTMLElement;
+  private readonly feverFill: HTMLElement;
+  private readonly feverBanner: HTMLElement;
   private slots: SlotEl[] = [];
   private slotKey = '';
 
@@ -206,7 +208,15 @@ export class UI {
     const center = h('div', 'stage-box');
     this.plateEl = h('div', 'plate');
     this.timerEl = h('div', 'timer');
-    center.append(this.plateEl, this.timerEl);
+    // 피버 게이지: 처치로 차고, 다 차면 FEVER TIME (남은 시간이 줄어든다)
+    const fever = h('div', 'fever');
+    const feverTrack = h('div', 'cd-track fever-track');
+    const feverZone = h('div', 'cd-zone');
+    this.feverFill = h('div', 'cd-fill');
+    feverZone.append(this.feverFill);
+    feverTrack.append(feverZone);
+    fever.append(h('span', 'fever-label', 'FEVER'), feverTrack);
+    center.append(this.plateEl, this.timerEl, fever);
     const kills = h('div', 'pill-art pill-skull');
     this.killsEl = h('span', 'pill-text');
     kills.append(this.killsEl);
@@ -243,8 +253,9 @@ export class UI {
     });
     bottom.append(this.slotsEl, this.skillModeBtn);
     this.comboEl = h('div', 'combo');
+    this.feverBanner = h('div', 'fever-banner', 'FEVER TIME!');
 
-    this.battle.append(this.hudIdle, this.challengeBtn, this.hudAction, bottom, this.comboEl);
+    this.battle.append(this.hudIdle, this.challengeBtn, this.hudAction, bottom, this.comboEl, this.feverBanner);
 
     // ---- 하단 패널 / 탭 ----
     this.panel = h('section', 'panel');
@@ -275,6 +286,13 @@ export class UI {
     this.app.classList.toggle('mode-action', mode === 'action');
     this.closeModal();
     this.refreshToggles();
+  }
+
+  /** 피버 시작: 큰 글자가 튀어나왔다 사라진다 */
+  feverStart() {
+    this.feverBanner.classList.remove('show');
+    void this.feverBanner.offsetWidth; // 애니메이션 다시 시작
+    this.feverBanner.classList.add('show');
   }
 
   /** 자동 이동 / 스킬 자동 / 가로 버튼 표시 */
@@ -511,6 +529,9 @@ export class UI {
   /** 쿨다운 막대는 부드럽게 보이도록 매 프레임 */
   private refreshSlots() {
     const a = this.game.action;
+    const feverOn = a.fever > 0;
+    this.app.classList.toggle('fever-on', feverOn);
+    this.feverFill.style.width = `${Math.min(1, feverOn ? a.fever / FEVER_SEC : a.feverGauge / FEVER_NEED) * 100}%`;
     // 콤보: 처치할 때마다 크게 튀었다가 줄어들고, 끊기기 직전엔 흐려진다
     const since = this.game.engine.time - a.lastKillAt;
     if (a.combo >= 5 && since <= COMBO_SEC) {

@@ -1,5 +1,5 @@
 import type { Enemy, EnemyKind, Weapon } from '../battle/engine';
-import type { WeaponStats } from '../battle/weapons';
+import type { SkillTree, WeaponStats } from '../battle/weapons';
 import { fmt } from '../core/format';
 import {
   actionRatio, enemyGold, isBossStage, playerStats, stageClearGold, stageSkins, type ActionRatio,
@@ -18,6 +18,12 @@ const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
 const ELITE_HP = 900;
 const BOSS_HP = 2600;
+/** 피버: 게이지(처치 수)가 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN */
+export const FEVER_NEED = 220;
+export const FEVER_SEC = 8;
+const FEVER_BONUS = 5;
+const FEVER_SPAWN = 1.7;
+
 /** 패턴 웨이브: 첫 웨이브까지 / 웨이브 간격(초) */
 const WAVE_FIRST = 8;
 const WAVE_GAP = 11;
@@ -56,6 +62,8 @@ export type RunState = 'playing' | 'paused' | 'ended';
 export interface EquippedSkill {
   def: SkillDef;
   weapon: Weapon;
+  /** 이번 판에 쓰는 트리 사본 (피버 때 잠깐 올렸다 내린다. 저장값은 안 건드린다) */
+  tree: SkillTree;
 }
 
 export class ActionMode {
@@ -90,6 +98,10 @@ export class ActionMode {
   private chestT = 0;
   /** 보물 상자로 번 골드 (결과에 더한다) */
   private bonusGold = 0;
+  /** 피버 남은 시간 / 피버 게이지(처치 수) / 피버 중 처치 수 (골드 2배) */
+  fever = 0;
+  feverGauge = 0;
+  private feverKills = 0;
 
   constructor(private readonly game: Game) {}
 
@@ -135,6 +147,9 @@ export class ActionMode {
 
     this.time = 0;
     this.kills = 0;
+    this.feverKills = 0;
+    this.fever = 0;
+    this.feverGauge = 0;
     this.combo = 0;
     this.bestCombo = 0;
     this.lastKillAt = -1;
@@ -156,9 +171,10 @@ export class ActionMode {
       const def = SKILL_BY_ID[id];
       const tree = save.skills[id];
       if (!def || !tree) continue;
-      const weapon = createSkill(def, this.stats, tree);
+      const runTree = { ...tree };
+      const weapon = createSkill(def, this.stats, runTree);
       eng.weapons.push(weapon);
-      this.equipped.push({ def, weapon });
+      this.equipped.push({ def, weapon, tree: runTree });
     }
     this.state = 'playing';
   }
@@ -181,7 +197,13 @@ export class ActionMode {
     const peak = this.isBossStage ? 18 : 14;
     // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
-    const rate = (this.bossSpawned ? 6 : 8 + (this.time / this.duration) * peak) * crowd;
+    const rate = (this.bossSpawned ? 6 : 8 + (this.time / this.duration) * peak) * crowd * (this.fever > 0 ? FEVER_SPAWN : 1);
+
+    if (this.fever > 0) {
+      this.fever -= dt;
+      eng.fever = Math.max(0, this.fever);
+      if (this.fever <= 0) this.endFever();
+    }
     this.spawnAcc += rate * dt;
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
@@ -381,11 +403,45 @@ export class ActionMode {
 
   private onKill(e: Enemy) {
     this.kills++;
+    if (this.fever > 0) {
+      this.feverKills++;
+    } else if (++this.feverGauge >= FEVER_NEED) {
+      this.startFever();
+    }
     const now = this.game.engine.time;
     this.combo = now - this.lastKillAt <= COMBO_SEC ? this.combo + 1 : 1;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.lastKillAt = now;
     if (e.kind === 'boss') this.finish(true);
+  }
+
+  /** 피버: 장착 스킬의 모든 가지 +FEVER_BONUS, 쿨다운 즉시 충전, 몹 더 많이 */
+  private startFever() {
+    const eng = this.game.engine;
+    this.fever = FEVER_SEC;
+    eng.fever = FEVER_SEC;
+    for (const s of this.equipped) {
+      s.tree.dmg += FEVER_BONUS;
+      s.tree.spd += FEVER_BONUS;
+      s.tree.cnt += FEVER_BONUS;
+      s.weapon.resetCooldown?.();
+    }
+    const p = eng.player;
+    eng.addSprite('pillar', p.x, p.y - 30, 60, 0.9, true);
+    eng.addEffect('ring', p.x, p.y, 260, 0.7, '#ffb347');
+    eng.addShake(7);
+    this.game.ui.feverStart();
+  }
+
+  private endFever() {
+    this.fever = 0;
+    this.feverGauge = 0;
+    this.game.engine.fever = 0;
+    for (const s of this.equipped) {
+      s.tree.dmg -= FEVER_BONUS;
+      s.tree.spd -= FEVER_BONUS;
+      s.tree.cnt -= FEVER_BONUS;
+    }
   }
 
   /** 보물 상자: 보석은 엔진이 다 끌어오고, 여기선 골드 보너스 */
@@ -426,7 +482,8 @@ export class ActionMode {
     this.game.joystick.release();
     const save = this.game.save;
     // 잡은 만큼 골드 + 이기면 클리어 보상
-    let gold = this.kills * enemyGold(this.stage) * KILL_GOLD + this.bonusGold;
+    // 피버 중 처치는 골드 2배
+    let gold = (this.kills + this.feverKills) * enemyGold(this.stage) * KILL_GOLD + this.bonusGold;
     if (win) {
       gold += stageClearGold(this.stage);
       save.maxStage = Math.max(save.maxStage, this.stage);
