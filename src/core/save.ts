@@ -66,6 +66,8 @@ export interface SaveData {
   newSkills: SkillId[];
   /** 스킬별 안 쓴 스킬 포인트 (상자에서 겹치면 +1) */
   skillPoints: Partial<Record<SkillId, number>>;
+  /** 스킬 탭을 마지막으로 둘러봤을 때의 새 스킬·포인트 합 (그 뒤로 늘어야 탭에 빨간 점) */
+  skillTabSeen: { skills: SkillId[]; points: number };
 }
 
 export function newSave(): SaveData {
@@ -105,6 +107,7 @@ export function newSave(): SaveData {
     chestBag: {},
     newSkills: [],
     skillPoints: {},
+    skillTabSeen: { skills: [], points: 0 },
   };
 }
 
@@ -176,6 +179,7 @@ export function loadSave(): SaveData {
       chestBag: { ...data.chestBag },
       newSkills: (data.newSkills ?? []).filter((id) => SKILL_BY_ID[id]),
       skillPoints: { ...data.skillPoints },
+      skillTabSeen: { skills: [...(data.skillTabSeen?.skills ?? [])], points: data.skillTabSeen?.points ?? 0 },
     };
   } catch {
     return newSave();

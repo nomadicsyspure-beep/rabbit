@@ -2,7 +2,7 @@ import { idleGoldPerSec } from './balance';
 import { DIAMOND_OVERRIDE } from './shop';
 import { SKILLS, SKILL_GRADE, type Grade, type SkillDef, type SkillType } from './skills';
 
-// 스킬은 상자를 까서 얻는다. 상자마다 등급 확률이 다르고, 비싼 상자에서만 S급이 나온다.
+// 스킬은 상자를 까서 얻는다. 상자마다 등급 확률이 다르고, S급은 비싼 상자일수록 잘 나온다 (나무 0.1% · 은 1% · 금 7% · 전설 25%).
 // 이미 가진 스킬이 나오면 그 스킬 피해 +1 (피해가 최대면 골드로 돌려준다).
 
 export type BoxId = 'wood' | 'silver' | 'gold' | 'legend';
@@ -24,8 +24,8 @@ export interface BoxDef {
 export const GRADES: Grade[] = ['S', 'A', 'B', 'C', 'D'];
 
 export const SKILL_BOXES: BoxDef[] = [
-  { id: 'wood', name: '나무 상자', icon: '📦', goldSec: 600, odds: { B: 10, C: 35, D: 55 } },
-  { id: 'silver', name: '은 상자', icon: '🎁', diamonds: 40, book: true, odds: { A: 10, B: 30, C: 40, D: 20 } },
+  { id: 'wood', name: '나무 상자', icon: '📦', goldSec: 600, odds: { S: 0.1, B: 10, C: 35, D: 54.9 } },
+  { id: 'silver', name: '은 상자', icon: '🎁', diamonds: 40, book: true, odds: { S: 1, A: 10, B: 30, C: 40, D: 19 } },
   { id: 'gold', name: '금 상자', icon: '💛', diamonds: 150, odds: { S: 7, A: 28, B: 45, C: 20 } },
   { id: 'legend', name: '전설 상자', icon: '💜', diamonds: 450, odds: { S: 25, A: 50, B: 25 } },
 ];

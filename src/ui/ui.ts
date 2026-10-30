@@ -15,19 +15,19 @@ import { COLLECTION_BONUS, DUNGEON_DAILY, REBIRTH_MIN_STAGE, type Game, type Mod
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
 import { art, chickPic, coin, h, holdRepeat, ibox, monsterPic, skillIcon, svgIcon } from './dom';
-import { buildGearTab, showCollection, showRebirth, type UIHost } from './meta';
-import { buildPetsTab, buildShopTab, showMissions } from './shop';
+import { buildCraftTab, buildGearTab, showCollection, showRebirth, type UIHost } from './meta';
+import { buildShopTab, showMissions } from './shop';
 import { ICONS } from './icons';
 import { skillPreview } from './preview';
 import { Tutorial } from './tutorial';
 
-type TabId = 'growth' | 'skill' | 'gear' | 'pets' | 'dungeon' | 'shop';
+type TabId = 'growth' | 'skill' | 'gear' | 'craft' | 'dungeon' | 'shop';
 
 const TABS: { id: TabId; name: string; locked: boolean }[] = [
   { id: 'growth', name: '성장', locked: false },
   { id: 'skill', name: '스킬', locked: false },
   { id: 'gear', name: '가방', locked: false },
-  { id: 'pets', name: '동료', locked: false },
+  { id: 'craft', name: '제작', locked: false },
   { id: 'dungeon', name: '던전', locked: false },
   { id: 'shop', name: '상점', locked: false },
 ];
@@ -113,6 +113,7 @@ export class UI implements UIHost {
   private equipBar: HTMLElement | null = null;
   private equipKey = '';
   private boxRefresh: (() => void) | null = null;
+  private currentTab: TabId = 'growth';
   private powerEl: HTMLElement | null = null;
   private dungeonRefresh: (() => void) | null = null;
   /** 장비 탭 같은 추가 화면 갱신 */
@@ -327,6 +328,8 @@ export class UI implements UIHost {
     for (const [tid, b] of this.tabButtons) b.classList.toggle('active', tid === id);
     // 방치 화면은 메인(성장 탭)에서만, 나머지 탭은 아래 내용이 화면을 꽉 채운다
     this.app.classList.toggle('compact', id !== 'growth');
+    this.currentTab = id;
+    if (id === 'skill') this.game.seeSkillTab();
     this.panel.replaceChildren();
     this.panel.scrollTop = 0;
     this.statRows.clear();
@@ -343,7 +346,7 @@ export class UI implements UIHost {
     else if (id === 'skill') this.buildSkills();
     else if (id === 'dungeon') this.buildDungeon();
     else if (id === 'gear') this.metaRefresh = buildGearTab(this.panel, this.game, this);
-    else if (id === 'pets') this.metaRefresh = buildPetsTab(this.panel, this.game, this);
+    else if (id === 'craft') this.metaRefresh = buildCraftTab(this.panel, this.game, this);
     else if (id === 'shop') this.metaRefresh = buildShopTab(this.panel, this.game, this);
     this.refresh();
   }
@@ -729,7 +732,9 @@ export class UI implements UIHost {
       this.challengeBtn.classList.toggle('boss', isBossStage(next));
       this.missionBtn.classList.toggle('dot', g.hasClaimable);
       // 새 스킬이 있으면 스킬 탭에 빨간 점, 안 연 상자가 있으면 가방 탭에
-      this.tabButtons.get('skill')?.classList.toggle('dot', save.newSkills.length > 0 || g.hasSkillPoints);
+      // 스킬 탭을 한 번 둘러보면 꺼진다 (NEW 배지는 스킬 창을 열 때까지 그대로). 보고 있는 동안 생긴 것도 본 것으로
+      if (this.currentTab === 'skill') g.seeSkillTab();
+      this.tabButtons.get('skill')?.classList.toggle('dot', g.skillTabUnseen);
       this.tabButtons.get('gear')?.classList.toggle('dot', g.chestCounts.some((n) => n > 0));
 
       const st = g.stats;

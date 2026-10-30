@@ -725,7 +725,21 @@ export class Game {
     return out.sort((a, b) => b.grade - a.grade);
   }
 
-  /** 찍을 수 있는 스킬 포인트가 있는 스킬이 하나라도 있나 (스킬 탭 빨간 점) */
+  /** 스킬 탭 빨간 점: 마지막으로 둘러본 뒤 새 스킬이 생겼거나 포인트가 늘었나 */
+  get skillTabUnseen() {
+    const s = this.save;
+    const seen = s.skillTabSeen;
+    const points = Object.values(s.skillPoints).reduce((a, b) => a + (b ?? 0), 0);
+    return s.newSkills.some((id) => !seen.skills.includes(id)) || (points > seen.points && this.hasSkillPoints);
+  }
+
+  /** 스킬 탭을 둘러봤다: 빨간 점 끄기 (NEW 배지는 그대로) */
+  seeSkillTab() {
+    const s = this.save;
+    s.skillTabSeen = { skills: [...s.newSkills], points: Object.values(s.skillPoints).reduce((a, b) => a + (b ?? 0), 0) };
+  }
+
+  /** 찍을 수 있는 스킬 포인트가 있는 스킬이 하나라도 있나 */
   get hasSkillPoints() {
     return Object.keys(this.save.skillPoints).some((id) => BRANCHES.some((b) => this.canUpgradeBranch(id as SkillId, b.id)));
   }

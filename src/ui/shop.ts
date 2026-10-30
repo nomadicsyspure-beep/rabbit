@@ -79,7 +79,7 @@ function summonCard(game: Game, host: UIHost, kind: 'pet' | 'gear') {
   return { el: card, refresh };
 }
 
-/** 동료 탭: 위에 함께하는 동료 칸 고정, 아래는 소환 + 동료 격자 (등급별) */
+/** 동료 보기 (상점 탭 안): 위에 함께하는 동료 칸 고정, 아래는 소환 + 동료 격자 (등급별) */
 export function buildPetsTab(panel: HTMLElement, game: Game, host: UIHost) {
   const top = h('div', 'skill-top');
   const title = h('div', 'skill-top-title');
@@ -88,7 +88,8 @@ export function buildPetsTab(panel: HTMLElement, game: Game, host: UIHost) {
   const wallet = diamondBar(game);
   const summon = summonCard(game, host, 'pet');
   panel.append(top, wallet.el, summon.el);
-  let key = '';
+  // null = 아직 안 그림 (동료가 하나도 없을 때도 빈 칸 3개는 그려야 한다)
+  let key: string | null = null;
   const refreshTop = () => {
     const on = game.save.petsOn;
     title.textContent = `함께하는 동료 ${on.length}/${PET_SLOTS} · 방치·스테이지 둘 다 따라다녀요`;
@@ -233,7 +234,37 @@ function skinSection(panel: HTMLElement, game: Game, host: UIHost, kind: 'chick'
 }
 
 /** 상점 탭: 소환, 꾸미기, 다이아 충전(출시 때) */
+/** 상점 탭 안의 보기: 상점 / 동료 (탭을 옮겨 다녀도 마지막 보기를 기억) */
+let shopView: 'shop' | 'pets' = 'shop';
+
+/** 상점 탭: 위에 '상점 · 동료' 고르기, 아래 그 내용 */
 export function buildShopTab(panel: HTMLElement, game: Game, host: UIHost) {
+  const seg = h('div', 'seg shop-seg');
+  const body = h('div', 'shop-body');
+  panel.append(seg, body);
+  let inner: () => void = () => {};
+  const btns = ([['shop', '🛒 상점'], ['pets', '🐾 동료']] as const).map(([id, name]) => {
+    const b = h('button', 'seg-btn', name);
+    b.addEventListener('click', () => {
+      shopView = id;
+      render();
+    });
+    seg.append(b);
+    return { id, b };
+  });
+  const render = () => {
+    for (const x of btns) x.b.classList.toggle('on', x.id === shopView);
+    body.replaceChildren();
+    panel.scrollTop = 0;
+    inner = shopView === 'shop' ? buildShopBody(body, game, host) : buildPetsTab(body, game, host);
+    host.refresh();
+  };
+  render();
+  return () => inner();
+}
+
+/** 상점 보기: 소환, 스킬 이펙트 색, 다이아 충전 */
+function buildShopBody(panel: HTMLElement, game: Game, host: UIHost) {
   const wallet = diamondBar(game);
   panel.append(wallet.el);
 
