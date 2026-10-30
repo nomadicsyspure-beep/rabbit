@@ -7,7 +7,7 @@ import {
   OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, enemyGold, idleGoldPerSec, playerStats, xpToNext, type StatId,
 } from './data/balance';
 import {
-  BRANCHES, SKILL_BY_ID, SKILL_TYPES, branchCost, emptyTree, type Branch, type SkillId, type SkillType,
+  BRANCHES, BRANCH_POINTS, SKILL_BY_ID, SKILL_TYPES, emptyTree, type Branch, type SkillId, type SkillType,
 } from './data/skills';
 import { GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
 import { addReward, emptyReward, openChest, type ChestGrade, type Reward } from './data/items';
@@ -659,7 +659,6 @@ export class Game {
       if (c.gold !== undefined) s.gold -= c.gold;
       else s.diamonds -= c.diamonds!;
     }
-    const dmgMax = BRANCHES.find((b) => b.id === 'dmg')!.max;
     const out: { def: (typeof SKILL_BY_ID)[SkillId]; text: string; isNew: boolean }[] = [];
     // 튜토리얼 상자는 무조건 공격형 (처음부터 주변을 쓸어 보게)
     const tutorial = s.tutorial >= 0;
@@ -671,11 +670,13 @@ export class Game {
         if (!this.equippedOfType(def.type)) this.toggleEquip(def.id);
         if (!s.newSkills.includes(def.id)) s.newSkills.push(def.id);
         out.push({ def, text: 'NEW!', isNew: true });
-      } else if (tree.dmg < dmgMax) {
-        tree.dmg++;
-        out.push({ def, text: '피해 +1', isNew: false });
+      } else if (this.pointsToMax(def.id) > (s.skillPoints[def.id] ?? 0)) {
+        // 겹치면 그 스킬의 스킬 포인트 (스킬 창에서 가지를 골라 찍는다)
+        s.skillPoints[def.id] = (s.skillPoints[def.id] ?? 0) + 1;
+        out.push({ def, text: '포인트 +1', isNew: false });
       } else {
-        const gold = branchCost(def, 'dmg', dmgMax) * 3;
+        // 다 찍을 만큼 이미 모았으면 골드로
+        const gold = Math.round(this.goldPerSec * 120);
         s.gold += gold;
         out.push({ def, text: '골드 환급', isNew: false });
       }
@@ -721,22 +722,35 @@ export class Game {
     return out.sort((a, b) => b.grade - a.grade);
   }
 
-  /** 가지 다음 단계 비용 (최대면 null) */
+  /** 찍을 수 있는 스킬 포인트가 있는 스킬이 하나라도 있나 (스킬 탭 빨간 점) */
+  get hasSkillPoints() {
+    return Object.keys(this.save.skillPoints).some((id) => BRANCHES.some((b) => this.canUpgradeBranch(id as SkillId, b.id)));
+  }
+
+  /** 이 스킬 가지를 다 찍는 데 남은 포인트 */
+  pointsToMax(id: SkillId) {
+    const tree = this.save.skills[id];
+    if (!tree) return 0;
+    return BRANCHES.reduce((sum, b) => sum + (b.max - tree[b.id]) * BRANCH_POINTS[b.id], 0);
+  }
+
+  /** 가지 다음 단계에 드는 포인트 (최대면 null) */
   branchUpgradeCost(id: SkillId, branch: Branch) {
     const tree = this.save.skills[id];
     const max = BRANCHES.find((b) => b.id === branch)!.max;
     if (!tree || tree[branch] >= max) return null;
-    return branchCost(SKILL_BY_ID[id], branch, tree[branch]);
+    return BRANCH_POINTS[branch];
   }
 
   canUpgradeBranch(id: SkillId, branch: Branch) {
     const cost = this.branchUpgradeCost(id, branch);
-    return cost !== null && this.save.gold >= cost;
+    return cost !== null && (this.save.skillPoints[id] ?? 0) >= cost;
   }
 
+  /** 스킬 포인트로 가지 한 단계 찍기 */
   upgradeBranch(id: SkillId, branch: Branch): boolean {
     if (!this.canUpgradeBranch(id, branch)) return false;
-    this.save.gold -= this.branchUpgradeCost(id, branch)!;
+    this.save.skillPoints[id] = (this.save.skillPoints[id] ?? 0) - this.branchUpgradeCost(id, branch)!;
     this.save.skills[id]![branch]++;
     // 스테이지 중에 올리면 지금 판에도 바로
     if (this.mode === 'action') this.action.applyUpgrade(id, branch);

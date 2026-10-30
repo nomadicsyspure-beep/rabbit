@@ -10,8 +10,8 @@ import {
   BuffSkill, DebuffSkill, PulseSkill, ShotSkill, StrikeSkill, ZoneSkill,
 } from '../battle/weapons-more';
 
-// 스킬은 스킬 상자(data/skillbox.ts)에서 얻고, 가지(피해 / 발동 속도 / 개수)마다 골드로 따로 강화한다 (영구).
-// 등급이 높을수록 강화 비용이 훨씬 비싸다.
+// 스킬은 스킬 상자(data/skillbox.ts)에서 얻는다. 같은 스킬이 또 나오면 그 스킬의 스킬 포인트 +1,
+// 포인트를 가지(피해 / 발동 속도 / 개수) 중 골라서 찍는다 (영구, 골드로는 못 올린다).
 // 스테이지에서는 장착한 스킬(최대 EQUIP_SLOTS개)만 발동한다.
 
 export const EQUIP_SLOTS = 4;
@@ -612,22 +612,13 @@ export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s])) as R
 
 export const emptyTree = (): SkillTree => ({ dmg: 0, spd: 0, cnt: 0 });
 
-/** 테스트용: 가지 강화 값을 등급별 이 값으로 (null이면 원래 값). 테스트 중에도 등급 차이는 보이게 */
-const COST_OVERRIDE: Record<Grade, number> | null = null;
-
-/** 등급별 강화 기본값: 높은 등급일수록 훨씬 비싸다 */
-const GRADE_BASE: Record<Grade, number> = { D: 40, C: 100, B: 250, A: 700, S: 2000 };
-
 export const createSkill = (def: SkillDef, stats: WeaponStats, tree: SkillTree) => def.create(stats, def, tree);
 
-/** 가지 한 단계 강화 비용. 개수는 효과가 커서 비싸다 */
-export function branchCost(def: SkillDef, branch: Branch, level: number) {
-  const grade = SKILL_GRADE[def.id];
-  if (COST_OVERRIDE !== null) return COST_OVERRIDE[grade];
-  const base = GRADE_BASE[grade];
-  if (branch === 'cnt') return base * 1.5 * Math.pow(1.7, level);
-  return base * 0.4 * Math.pow(1.28, level);
-}
+/**
+ * 가지 한 단계에 드는 스킬 포인트. 포인트는 상자에서 그 스킬이 겹쳐 나올 때 1점 (골드로는 못 올린다).
+ * 개수는 효과가 커서 2점. 높은 등급은 원래 잘 안 나오니 저절로 올리기 어렵다
+ */
+export const BRANCH_POINTS: Record<Branch, number> = { dmg: 1, spd: 1, cnt: 2 };
 
 /** 가지 값 보여 주기: 지금 레벨 기준 */
 export function branchValue(def: SkillDef, branch: Branch, tree: SkillTree): string {

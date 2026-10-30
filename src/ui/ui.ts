@@ -396,7 +396,7 @@ export class UI implements UIHost {
       }
       this.panel.append(head, grid);
     }
-    this.panel.append(h('div', 'hint', '스킬은 상자에서 얻어요 · 겹치면 피해 +1 · 등급이 높을수록 강화가 비싸요'));
+    this.panel.append(h('div', 'hint', '스킬은 상자에서 얻어요 · 겹쳐 나오면 그 스킬 포인트 +1 · 스킬 창에서 피해·속도·개수 중 골라 찍어요'));
   }
 
   /** 보스 레이드: 보스 고르기 */
@@ -541,7 +541,7 @@ export class UI implements UIHost {
       info.append(name, val);
       const btn = h('button', 'buy');
       const cost = h('span');
-      btn.append(cost, h('small', '', '강화'));
+      btn.append(cost, h('small', '', '찍기'));
       holdRepeat(btn, () => {
         const ok = g.upgradeBranch(def.id, br.id);
         if (ok) this.refresh();
@@ -578,10 +578,10 @@ export class UI implements UIHost {
         const next = { ...tree, [r.br.id]: lv + 1 };
         r.val.textContent = maxed ? `${branchValue(def, r.br.id, tree)} (최대)` : `${branchValue(def, r.br.id, tree)} → ${branchValue(def, r.br.id, next)}`;
         const c = g.branchUpgradeCost(def.id, r.br.id);
-        r.cost.replaceChildren(c === null ? document.createTextNode('MAX') : coin(fmt(c)));
+        r.cost.textContent = c === null ? 'MAX' : `⭐ ${c}`;
         r.btn.disabled = !g.canUpgradeBranch(def.id, r.br.id);
       }
-      gold.replaceChildren(coin(fmt(g.save.gold)));
+      gold.textContent = `⭐ 스킬 포인트 ${g.save.skillPoints[def.id] ?? 0} (상자에서 겹치면 +1)`;
     };
     this.openModal(head, pvHint, pvBox, gold, ...rows.map((r) => r.row), equipBox, this.button('닫기', 'primary', () => this.closeModal()));
     this.treeRefresh();
@@ -698,7 +698,7 @@ export class UI implements UIHost {
       this.challengeBtn.classList.toggle('boss', isBossStage(next));
       this.missionBtn.classList.toggle('dot', g.hasClaimable);
       // 새 스킬이 있으면 스킬 탭에 빨간 점, 안 연 상자가 있으면 가방 탭에
-      this.tabButtons.get('skill')?.classList.toggle('dot', save.newSkills.length > 0);
+      this.tabButtons.get('skill')?.classList.toggle('dot', save.newSkills.length > 0 || g.hasSkillPoints);
       this.tabButtons.get('gear')?.classList.toggle('dot', g.chestCounts.some((n) => n > 0));
 
       const st = g.stats;
@@ -770,6 +770,9 @@ export class UI implements UIHost {
       t.root.classList.toggle('unlearned', !tree);
       t.root.classList.toggle('equipped', eq.includes(t.def.id));
       t.root.classList.toggle('new', g.save.newSkills.includes(t.def.id));
+      // 찍을 수 있는 포인트가 있으면 별 표시
+      const pts = g.save.skillPoints[t.def.id] ?? 0;
+      t.root.classList.toggle('has-pts', pts > 0 && !!tree && BRANCHES.some((b) => g.canUpgradeBranch(t.def.id, b.id)));
       t.lv.textContent = tree ? `Lv${treeLevel(tree)}` : '';
     }
   }

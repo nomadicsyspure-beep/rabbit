@@ -64,6 +64,8 @@ export interface SaveData {
   chestBag: Record<string, number>;
   /** 새로 얻고 아직 안 본 스킬 (NEW 표시) */
   newSkills: SkillId[];
+  /** 스킬별 안 쓴 스킬 포인트 (상자에서 겹치면 +1) */
+  skillPoints: Partial<Record<SkillId, number>>;
 }
 
 export function newSave(): SaveData {
@@ -102,6 +104,7 @@ export function newSave(): SaveData {
     tutorial: 0,
     chestBag: {},
     newSkills: [],
+    skillPoints: {},
   };
 }
 
@@ -172,6 +175,7 @@ export function loadSave(): SaveData {
       tutorial: data.tutorial ?? ((data.maxStage ?? 0) > 0 ? -1 : 0),
       chestBag: { ...data.chestBag },
       newSkills: (data.newSkills ?? []).filter((id) => SKILL_BY_ID[id]),
+      skillPoints: { ...data.skillPoints },
     };
   } catch {
     return newSave();
