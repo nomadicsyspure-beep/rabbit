@@ -91,6 +91,17 @@ export interface Gem {
   y: number;
   value: number;
   pulled: boolean;
+  /** 보물 상자로 빨려 오는 중 (아주 빠르게) */
+  vacuum: boolean;
+}
+
+/** 보물 상자: 주우면 맵 전체 보석을 한 번에 끌어온다 */
+export interface Chest {
+  active: boolean;
+  x: number;
+  y: number;
+  /** 나타난 뒤 지난 시간 (통통 튀는 연출) */
+  t: number;
 }
 
 export interface FloatText {
@@ -286,7 +297,8 @@ export class Engine {
   readonly bullets = new Pool<EnemyBullet>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
   }), 300);
-  readonly gems = new Pool<Gem>(() => ({ active: false, x: 0, y: 0, value: 1, pulled: false }), 900);
+  readonly gems = new Pool<Gem>(() => ({ active: false, x: 0, y: 0, value: 1, pulled: false, vacuum: false }), 900);
+  readonly chests = new Pool<Chest>(() => ({ active: false, x: 0, y: 0, t: 0 }), 8);
   readonly texts = new Pool<FloatText>(() => ({
     active: false, x: 0, y: 0, text: '', life: 0, maxLife: 1, color: '#fff', size: 12,
   }), 160);
@@ -300,6 +312,7 @@ export class Engine {
 
   onKill: ((e: Enemy) => void) | null = null;
   onGem: ((value: number) => void) | null = null;
+  onChest: ((x: number, y: number) => void) | null = null;
   onPlayerDead: (() => void) | null = null;
 
   private readonly grid = new Grid(48);
@@ -312,6 +325,7 @@ export class Engine {
     this.zones.clear();
     this.bullets.clear();
     this.gems.clear();
+    this.chests.clear();
     this.texts.clear();
     this.effects.clear();
     this.orbs.length = 0;
@@ -400,6 +414,7 @@ export class Engine {
         g.y = e.y;
         g.value = e.xp;
         g.pulled = false;
+        g.vacuum = false;
       }
     }
     this.onKill?.(e);
@@ -482,6 +497,28 @@ export class Engine {
       this.damageEnemy(e, dmg, (dx / d) * knock, (dy / d) * knock);
     }
     return hit;
+  }
+
+  spawnChest(x: number, y: number) {
+    const c = this.chests.get();
+    if (!c) return;
+    c.active = true;
+    c.x = x;
+    c.y = y;
+    c.t = 0;
+  }
+
+  /** 맵에 떨어진 보석을 전부 끌어온다 */
+  vacuumGems() {
+    const p = this.player;
+    for (const g of this.gems.items) {
+      if (!g.active) continue;
+      g.pulled = true;
+      g.vacuum = true;
+    }
+    this.addEffect('ring', p.x, p.y, 220, 0.6, '#ffe066');
+    this.addSprite('gold-sparkle', p.x, p.y - 10, 70, 0.6, true);
+    this.addShake(6);
   }
 
   addShake(v: number) {
@@ -613,6 +650,7 @@ export class Engine {
     this.updateZones(dt);
     this.updateBullets(dt);
     this.updateGems(dt);
+    this.updateChests(dt);
 
     for (const t of this.texts.items) {
       if (!t.active) continue;
@@ -801,7 +839,7 @@ export class Engine {
       const d = Math.hypot(dx, dy) || 1;
       if (!p.dead && d < p.magnet) g.pulled = true;
       if (g.pulled) {
-        const sp = 260 + (p.magnet - Math.min(d, p.magnet)) * 4;
+        const sp = g.vacuum ? 900 + d * 1.5 : 260 + (p.magnet - Math.min(d, p.magnet)) * 4;
         g.x += (dx / d) * sp * dt;
         g.y += (dy / d) * sp * dt;
         if (d < p.r + 4) {
@@ -809,6 +847,19 @@ export class Engine {
           this.onGem?.(g.value);
         }
       }
+    }
+  }
+
+  private updateChests(dt: number) {
+    const p = this.player;
+    for (const c of this.chests.items) {
+      if (!c.active) continue;
+      c.t += dt;
+      if (p.dead || (c.x - p.x) ** 2 + (c.y - p.y) ** 2 > (p.r + 18) ** 2) continue;
+      c.active = false;
+      this.addSprite('star-burst', c.x, c.y - 10, 40, 0.4);
+      this.vacuumGems();
+      this.onChest?.(c.x, c.y);
     }
   }
 }

@@ -64,6 +64,27 @@ export class Renderer {
       if (fx.active && (fx.kind === 'telegraph' || fx.kind === 'corpse')) this.drawEffect(fx);
     }
 
+    // 보물 상자: 빛나는 고리 위에서 통통 튄다
+    const chest = SPRITES.ui.chest;
+    for (const c of eng.chests.items) {
+      if (!c.active) continue;
+      const glow = 0.5 + 0.5 * Math.sin(c.t * 6);
+      ctx.strokeStyle = `rgba(255,224,102,${0.4 + 0.4 * glow})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y + 8, 24 + glow * 4, 9 + glow * 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      const hop = Math.abs(Math.sin(c.t * 4)) * 6;
+      if (isReady(chest)) {
+        const w = 34;
+        const h = (w * chest.naturalHeight) / chest.naturalWidth;
+        ctx.drawImage(chest, c.x - w / 2, c.y + 6 - h - hop, w, h);
+      } else {
+        ctx.fillStyle = '#c8823a';
+        ctx.fillRect(c.x - 12, c.y - 14 - hop, 24, 18);
+      }
+    }
+
     // 그림자
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     for (const e of eng.enemies.items) {
