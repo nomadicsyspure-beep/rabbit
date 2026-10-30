@@ -3,6 +3,14 @@ import type { Joystick } from './controllers';
 import { frameAt } from './anim';
 import { CHEST_COLORS } from '../data/items';
 import { HERO_FOOT, HERO_SIZE, SPRITES, heroDirIndex, isReady } from './sprites';
+import { recolored, type Recolor } from './tint';
+import { CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, skinRecolor } from '../data/shop';
+
+type Pic = HTMLImageElement | HTMLCanvasElement;
+/** 그림의 세로/가로 비율 */
+const aspect = (img: Pic) => (img instanceof HTMLImageElement ? img.naturalHeight / img.naturalWidth : img.height / img.width);
+/** 동료 그림 크기 */
+const PET_SIZE = 26;
 
 // 렌더러. 캐릭터는 스프라이트로 그리고, 이미지가 아직 안 불러와졌으면 도형으로 대신 그린다.
 
@@ -24,6 +32,9 @@ export class Renderer {
   private heroDir = 2;
   /** 바닥 무늬 (색 조합마다 한 번 만들어 둔다) */
   private grounds = new Map<string, CanvasPattern | null>();
+  /** 이번 프레임의 병아리 색 / 스킬 이펙트 색 (꾸미기) */
+  private chickColor: Recolor | null = null;
+  private fxColor: Recolor | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -40,6 +51,8 @@ export class Renderer {
   draw(eng: Engine, joystick: Joystick | null) {
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.chickColor = skinRecolor(CHICK_SKIN_BY_ID[eng.chickSkin], eng.time, true);
+    this.fxColor = skinRecolor(FX_SKIN_BY_ID[eng.fxSkin], eng.time, false);
     this.drawBackground(eng);
 
     // 화면 흔들림: 카메라를 조금씩 무작위로 비튼다
@@ -117,9 +130,9 @@ export class Renderer {
 
     for (const pr of eng.projectiles.items) if (pr.active) this.drawProjectile(pr);
 
-    const orb = SPRITES.fx['dark-orb'];
+    const orb = this.fx('dark-orb');
     for (const o of eng.orbs) {
-      if (isReady(orb)) {
+      if (orb) {
         const s = o.r * 2.8;
         ctx.save();
         ctx.translate(o.x, o.y);
@@ -134,6 +147,7 @@ export class Renderer {
       }
     }
 
+    if (eng.pet) this.drawPet(eng);
     this.drawPlayer(eng);
 
     for (const fx of eng.effects.items) {
@@ -366,7 +380,7 @@ export class Renderer {
       ctx.translate(p.x, footY - HERO_SIZE * 0.36);
       ctx.rotate(p.faceX < 0 ? -Math.PI / 2 : Math.PI / 2);
       ctx.globalAlpha = 0.85;
-      ctx.drawImage(down.frames[0], -HERO_SIZE / 2, -HERO_SIZE / 2, HERO_SIZE, HERO_SIZE);
+      ctx.drawImage(this.chick(down.frames[0]), -HERO_SIZE / 2, -HERO_SIZE / 2, HERO_SIZE, HERO_SIZE);
       ctx.restore();
       return;
     }
@@ -376,7 +390,7 @@ export class Renderer {
     const motion = p.moving && (eng.fever > 0 || p.curSpeed >= p.speed * RUN_RATIO) ? 'run' : 'walk';
     const anim = SPRITES.hero[motion][dir] ?? SPRITES.hero.walk[dir];
     if (!anim) return this.drawPlayerShape(eng);
-    const img = p.moving ? frameAt(anim, eng.time * 1000) : anim.frames[0];
+    const img = this.chick(p.moving ? frameAt(anim, eng.time * 1000) : anim.frames[0]);
 
     const blink = p.invuln > 0 && Math.floor(eng.time * 20) % 2 === 0;
     const left = p.x - HERO_SIZE / 2;
@@ -391,6 +405,34 @@ export class Renderer {
     }
     ctx.restore();
     this.bar(p.x - 15, p.y + p.r + 5, 30, 4, p.hp / p.maxHp, '#6fdc8c');
+  }
+
+  /** 꾸미기 색을 입힌 병아리 프레임 */
+  private chick(frame: HTMLCanvasElement): Pic {
+    return this.chickColor ? recolored(frame, this.chickColor) : frame;
+  }
+
+  /** 스킬 이펙트 그림 (꾸미기 색 적용). 아직 못 불러왔으면 null */
+  private fx(name: string): Pic | null {
+    const img = SPRITES.fx[name];
+    if (!isReady(img)) return null;
+    return this.fxColor ? recolored(img, this.fxColor) : img;
+  }
+
+  /** 동료: 작은 몬스터가 둥실둥실 떠서 따라온다 */
+  private drawPet(eng: Engine) {
+    const pet = eng.pet!;
+    const ctx = this.ctx;
+    const bob = Math.sin(eng.time * 5) * 3;
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(pet.x, pet.y + 14, 8, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const anim = SPRITES.monsters[pet.skin];
+    if (!anim) return;
+    const img = frameAt(anim, eng.time * 1000);
+    const flip = FACES_RIGHT.has(pet.skin) ? eng.player.faceX < 0 : eng.player.faceX > 0;
+    this.drawSprite(img, pet.x, pet.y + 12 + bob, PET_SIZE, PET_SIZE, flip, 0);
   }
 
   private updateHeroDir(fx: number, fy: number) {
@@ -451,15 +493,15 @@ export class Renderer {
       ctx.beginPath();
       ctx.ellipse(pr.x, pr.y, 8 + 10 * t, 3 + 4 * t, 0, 0, Math.PI * 2);
       ctx.fill();
-      const img = SPRITES.fx.fireball;
-      if (!isReady(img)) return;
+      const img = this.fx('fireball');
+      if (!img) return;
       const fx = pr.x + 90 * k;
       const fy = pr.y - 260 * k;
       ctx.save();
       ctx.translate(fx, fy);
       ctx.rotate(Math.atan2(260, -90) + Math.PI);
       const w = 40;
-      const h = (w * img.naturalHeight) / img.naturalWidth;
+      const h = w * aspect(img);
       ctx.drawImage(img, -w * 0.3, -h / 2, w, h);
       ctx.restore();
       return;
@@ -484,8 +526,8 @@ export class Renderer {
       ctx.restore();
       return;
     }
-    const img = SPRITES.fx[pr.kind];
-    if (!isReady(img)) {
+    const img = this.fx(pr.kind);
+    if (!img) {
       ctx.fillStyle = pr.kind === 'fireball' ? '#ff7a2a' : '#ffe08a';
       ctx.beginPath();
       ctx.arc(pr.x, pr.y, pr.r, 0, Math.PI * 2);
@@ -498,31 +540,31 @@ export class Renderer {
       // 깃털 그림은 끝이 위를 향한다
       ctx.rotate(angle + Math.PI / 2);
       const h = 22;
-      const w = (h * img.naturalWidth) / img.naturalHeight;
+      const w = h / aspect(img);
       ctx.drawImage(img, -w / 2, -h / 2, w, h);
     } else {
       // 화염구 그림은 왼쪽으로 날아가는 모양
       ctx.rotate(angle + Math.PI);
       const w = 30;
-      const h = (w * img.naturalHeight) / img.naturalWidth;
+      const h = w * aspect(img);
       ctx.drawImage(img, -w * 0.3, -h / 2, w, h);
     }
     ctx.restore();
   }
 
   private drawZone(eng: Engine, z: Zone) {
-    const img = SPRITES.fx[z.sprite];
+    const img = this.fx(z.sprite);
     const ctx = this.ctx;
     const fade = Math.min(1, z.life / 0.3, (z.maxLife - z.life) / 0.15);
     ctx.globalAlpha = Math.max(0, fade);
-    if (isReady(img) && z.pull > 0) {
+    if (img && z.pull > 0) {
       // 블랙홀: 바닥에 깔린 구멍이 맥박치듯 커졌다 작아진다
       const w = z.r * 3.2 * (1 + 0.08 * Math.sin(eng.time * 14));
-      const h = (w * img.naturalHeight) / img.naturalWidth;
+      const h = w * aspect(img);
       ctx.drawImage(img, z.x - w / 2, z.y - h * 0.62, w, h);
-    } else if (isReady(img)) {
+    } else if (img) {
       const h = z.r * 2.6;
-      const w = (h * img.naturalWidth) / img.naturalHeight;
+      const w = h / aspect(img);
       const wob = Math.sin(eng.time * 18 + z.x) * 2;
       ctx.drawImage(img, z.x - w / 2 + wob, z.y + z.r * 0.6 - h, w, h);
     } else {
@@ -576,12 +618,12 @@ export class Renderer {
         break;
       }
       case 'sprite': {
-        const img = SPRITES.fx[fx.sprite];
-        if (!isReady(img)) break;
+        const img = this.fx(fx.sprite);
+        if (!img) break;
         // 처음엔 살짝 작게 시작해서 커지며 사라진다
         const k = 0.8 + 0.3 * (1 - t);
         const w = fx.r * 2 * k;
-        const h = (w * img.naturalHeight) / img.naturalWidth;
+        const h = w * aspect(img);
         ctx.globalAlpha = Math.min(1, t * 2.5);
         ctx.drawImage(img, fx.x - w / 2, fx.y - h / 2, w, h);
         break;

@@ -14,6 +14,7 @@ import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
 import { art, coin, h, holdRepeat, skillIcon, svgIcon } from './dom';
 import { buildGearTab, showCollection, showRebirth, type UIHost } from './meta';
+import { buildPetsTab, buildShopTab, playAd, showMissions } from './shop';
 import { ICONS } from './icons';
 
 type TabId = 'growth' | 'skill' | 'gear' | 'pets' | 'dungeon' | 'shop';
@@ -22,9 +23,9 @@ const TABS: { id: TabId; name: string; locked: boolean }[] = [
   { id: 'growth', name: '성장', locked: false },
   { id: 'skill', name: '스킬', locked: false },
   { id: 'gear', name: '장비', locked: false },
-  { id: 'pets', name: '동료', locked: true },
+  { id: 'pets', name: '동료', locked: false },
   { id: 'dungeon', name: '던전', locked: false },
-  { id: 'shop', name: '상점', locked: true },
+  { id: 'shop', name: '상점', locked: false },
 ];
 
 /** 탭 아이콘: UI 시트에 있는 건 그 그림, 없는 건 선 아이콘 */
@@ -75,6 +76,7 @@ export class UI implements UIHost {
   private readonly incomeEl: HTMLElement;
   private readonly challengeBtn: HTMLButtonElement;
   private readonly challengeLabel: HTMLElement;
+  private readonly missionBtn: HTMLButtonElement;
 
   // 액션 HUD
   private readonly hudAction: HTMLElement;
@@ -136,6 +138,9 @@ export class UI implements UIHost {
     this.challengeLabel = h('span');
     this.challengeBtn.append(this.challengeLabel);
     this.challengeBtn.addEventListener('click', () => this.game.enterAction());
+    // 미션·출석·업적·패스 (받을 게 있으면 빨간 점)
+    this.missionBtn = h('button', 'mission-btn', '📋 미션');
+    this.missionBtn.addEventListener('click', () => showMissions(this.game, this));
 
     // 액션 HUD: 왼쪽 위 초상화+체력+레벨, 가운데 스테이지·시간, 오른쪽 처치 수·일시정지
     this.hudAction = h('div', 'hud hud-action');
@@ -200,7 +205,7 @@ export class UI implements UIHost {
     this.comboEl = h('div', 'combo');
     this.feverBanner = h('div', 'fever-banner', 'FEVER TIME!');
 
-    this.battle.append(this.hudIdle, this.challengeBtn, this.hudAction, bottom, this.comboEl, this.feverBanner);
+    this.battle.append(this.hudIdle, this.challengeBtn, this.missionBtn, this.hudAction, bottom, this.comboEl, this.feverBanner);
 
     // ---- 하단 패널 / 탭 ----
     this.panel = h('section', 'panel');
@@ -293,6 +298,8 @@ export class UI implements UIHost {
     else if (id === 'skill') this.buildSkills();
     else if (id === 'dungeon') this.buildDungeon();
     else if (id === 'gear') this.metaRefresh = buildGearTab(this.panel, this.game, this);
+    else if (id === 'pets') this.metaRefresh = buildPetsTab(this.panel, this.game, this);
+    else if (id === 'shop') this.metaRefresh = buildShopTab(this.panel, this.game, this);
     this.refresh();
   }
 
@@ -519,6 +526,7 @@ export class UI implements UIHost {
       const next = g.nextStage;
       this.challengeLabel.textContent = isBossStage(next) ? `스테이지 ${next} 마왕 도전` : `스테이지 ${next} 도전`;
       this.challengeBtn.classList.toggle('boss', isBossStage(next));
+      this.missionBtn.classList.toggle('dot', g.hasClaimable);
 
       const st = g.stats;
       if (this.powerEl) {
@@ -648,6 +656,16 @@ export class UI implements UIHost {
     const sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
     if (r.chests.length > 0) parts.push(this.chestOpener(r.chests));
+    // 광고 보고 보상 2배 (골드 + 상자 재료 한 번 더)
+    const double = this.button('📺 광고 보고 보상 2배', 'ad', () =>
+      playAd(this.game, this, () => {
+        this.game.save.gold += r.gold;
+        for (const c of r.chests) this.game.grantReward(c.reward);
+        this.toast('보상 2배 받았어요!');
+        done();
+      }),
+    );
+    if (this.game.adsLeft > 0) parts.push(double);
     parts.push(
       this.button('돌아가기', 'primary', () => {
         this.closeModal();
@@ -696,6 +714,13 @@ export class UI implements UIHost {
       h('div', 'modal-title', '돌아오셨군요!'),
       h('div', 'modal-sub', `자리를 비운 ${fmtDuration(sec)} 동안 병아리가 사냥했어요`),
       reward,
+      this.button('📺 광고 보고 2배', 'ad', () =>
+        playAd(this.game, this, () => {
+          claim();
+          claim();
+          this.toast('2배로 받았어요!');
+        }),
+      ),
       this.button('받기', 'primary', () => {
         this.closeModal();
         claim();

@@ -11,6 +11,14 @@ import {
 } from './data/skills';
 import { GEAR, GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
 import { type Reward } from './data/items';
+import { PET_BY_ID, PET_MAX, petValue } from './data/pets';
+import { AD_DAILY, AD_DIAMONDS, CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, SUMMON_COST, rollGear, rollPet } from './data/shop';
+import {
+  ACHIEVEMENTS, ATTEND_REWARDS, DAILY_ALL_BONUS, DAILY_MISSIONS, MISSION_PASS_XP, PASS_LEVELS, achieveReady, addDaily,
+  canAttend, freshDaily, passLevel, passReward, today, type DailyKey,
+} from './data/missions';
+import type { PetDef } from './data/pets';
+import type { GearDef } from './data/gear';
 import type { MatId } from './data/world';
 import { ActionMode } from './modes/action';
 import { IdleMode } from './modes/idle';
@@ -57,6 +65,7 @@ export class Game {
     this.renderer = new Renderer(this.canvas);
     this.bindInput();
     sfx.setEnabled(this.save.sound);
+    this.applySkins();
     // 브라우저는 첫 터치 뒤에야 소리를 낼 수 있다
     window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
     this.bindLifecycle();
@@ -162,6 +171,7 @@ export class Game {
     if (!this.canUpgrade(id)) return false;
     this.save.gold -= this.statCost(id);
     this.save.levels[id]++;
+    addDaily(this.save, 'upgrades');
     this.idle.refreshStats();
     return true;
   }
@@ -207,6 +217,7 @@ export class Game {
     s.gold -= c.gold;
     s.essence -= c.essence;
     s.gear[id]++;
+    addDaily(s, 'upgrades');
     this.idle.refreshStats();
     return true;
   }
@@ -252,6 +263,17 @@ export class Game {
       else if (acc.def.effect === 'fever') b.fever += v;
       else if (acc.def.effect === 'gold') b.gold *= 1 + v;
       else if (acc.def.effect === 'crit') b.crit += v;
+    }
+    const pet = this.petInfo;
+    if (pet) {
+      const v = petValue(pet.def, pet.level);
+      const a = pet.def.ability;
+      if (a === 'magnet') b.magnet += v;
+      else if (a === 'gold') b.gold *= 1 + v;
+      else if (a === 'chest') b.chest += v;
+      else if (a === 'hp') b.hp *= 1 + v;
+      else if (a === 'crit') b.crit += v;
+      else if (a === 'fever') b.fever += v;
     }
     return b;
   }
@@ -311,6 +333,190 @@ export class Game {
     this.save.rebirth.ups[kind]++;
     this.idle.refreshStats();
     return true;
+  }
+
+  // ---- 동료 ----
+
+  /** 데리고 다니는 동료와 레벨 */
+  get petInfo() {
+    const id = this.save.pet;
+    return id && PET_BY_ID[id] && this.save.pets[id] ? { def: PET_BY_ID[id], level: this.save.pets[id] } : null;
+  }
+
+  /** 데리고 다니기 / 같은 걸 다시 누르면 집에 두기 */
+  togglePet(id: string) {
+    if (!this.save.pets[id]) return;
+    this.save.pet = this.save.pet === id ? null : id;
+    if (this.mode === 'idle') this.idle.enter();
+  }
+
+  /** 동료 하나 얻기: 새로 얻으면 Lv 1, 겹치면 레벨 업 (최대면 다이아로) */
+  private gainPet(def: PetDef) {
+    const s = this.save;
+    const lv = s.pets[def.id];
+    if (!lv) {
+      s.pets[def.id] = 1;
+      if (!s.pet) s.pet = def.id;
+      return { def, text: 'NEW!', isNew: true };
+    }
+    if (lv < PET_MAX) {
+      s.pets[def.id] = lv + 1;
+      return { def, text: `Lv ${lv + 1}`, isNew: false };
+    }
+    s.diamonds += 10;
+    return { def, text: '💎 +10', isNew: false };
+  }
+
+  /** 장비 하나 얻기: 새로 얻으면 +0, 가지고 있으면 +1 (최대면 재료로) */
+  private gainGear(def: GearDef) {
+    const s = this.save;
+    const plus = s.gear[def.id];
+    if (plus === undefined) {
+      s.gear[def.id] = 0;
+      if (!s.wear[def.slot]) s.wear[def.slot] = def.id;
+      if (!s.seen.gear.includes(def.id)) s.seen.gear.push(def.id);
+      return { def, text: 'NEW!', isNew: true };
+    }
+    if (plus < GEAR_MAX) {
+      s.gear[def.id] = plus + 1;
+      return { def, text: `+${plus + 1}`, isNew: false };
+    }
+    s.mats[def.mat] = (s.mats[def.mat] ?? 0) + def.matCost;
+    return { def, text: `재료 +${def.matCost}`, isNew: false };
+  }
+
+  /** 소환 n번. 소환권이 있으면 먼저 쓰고, 없으면 다이아. 모자라면 null */
+  summon(kind: 'pet' | 'gear', n: 1 | 10) {
+    const s = this.save;
+    const useTicket = n === 1 && s.tickets[kind] > 0;
+    const cost = n === 1 ? SUMMON_COST.one : SUMMON_COST.ten;
+    if (!useTicket && s.diamonds < cost) return null;
+    if (useTicket) s.tickets[kind]--;
+    else s.diamonds -= cost;
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(kind === 'pet' ? this.gainPet(rollPet()) : this.gainGear(rollGear()));
+    addDaily(s, 'summons', n);
+    if (this.mode === 'idle') this.idle.enter();
+    this.persist();
+    return out;
+  }
+
+  // ---- 꾸미기 ----
+
+  buySkin(kind: 'chick' | 'fx', id: string) {
+    const def = (kind === 'chick' ? CHICK_SKIN_BY_ID : FX_SKIN_BY_ID)[id];
+    const s = this.save;
+    if (!def || s.skins[kind].includes(id) || s.diamonds < def.price) return false;
+    s.diamonds -= def.price;
+    s.skins[kind].push(id);
+    this.wearSkin(kind, id);
+    return true;
+  }
+
+  wearSkin(kind: 'chick' | 'fx', id: string) {
+    if (!this.save.skins[kind].includes(id)) return;
+    if (kind === 'chick') this.save.skins.chickOn = id;
+    else this.save.skins.fxOn = id;
+    this.applySkins();
+  }
+
+  /** 엔진에 지금 색을 알려 준다 (그리는 쪽이 읽는다) */
+  applySkins() {
+    this.engine.chickSkin = this.save.skins.chickOn;
+    this.engine.fxSkin = this.save.skins.fxOn;
+  }
+
+  /** 엔진에 동료를 태운다. power = 이 화면의 공격력 */
+  applyPet(power: number) {
+    const pet = this.petInfo;
+    const p = this.engine.player;
+    this.engine.pet = pet
+      ? { skin: pet.def.skin, ability: pet.def.ability, value: petValue(pet.def, pet.level), power, x: p.x - 20, y: p.y, t: 1 }
+      : null;
+  }
+
+  // ---- 광고 (지금은 광고 없이 바로 보상) ----
+
+  get adsLeft() {
+    return AD_DAILY - freshDaily(this.save).ads;
+  }
+
+  /** 광고 한 번 쓰기 (남은 횟수가 없으면 false) */
+  useAd() {
+    if (this.adsLeft <= 0) return false;
+    this.save.daily.ads++;
+    return true;
+  }
+
+  adDiamonds() {
+    if (!this.useAd()) return false;
+    this.save.diamonds += AD_DIAMONDS;
+    return true;
+  }
+
+  // ---- 미션 · 출석 · 업적 · 패스 ----
+
+  missionReady(id: DailyKey | 'all') {
+    const d = freshDaily(this.save);
+    if (d.claimed.includes(id)) return false;
+    if (id === 'all') return DAILY_MISSIONS.every((m) => d.claimed.includes(m.id));
+    const m = DAILY_MISSIONS.find((x) => x.id === id)!;
+    return d.counts[id] >= m.goal;
+  }
+
+  claimMission(id: DailyKey | 'all') {
+    if (!this.missionReady(id)) return false;
+    const d = this.save.daily;
+    d.claimed.push(id);
+    this.save.diamonds += id === 'all' ? DAILY_ALL_BONUS : DAILY_MISSIONS.find((x) => x.id === id)!.diamonds;
+    this.addPassXp(MISSION_PASS_XP);
+    return true;
+  }
+
+  claimAttend() {
+    const s = this.save;
+    if (!canAttend(s)) return null;
+    const day = s.attend.days % ATTEND_REWARDS.length;
+    const r = ATTEND_REWARDS[day];
+    this.grantReward(r.reward());
+    if (r.petTicket) s.tickets.pet += r.petTicket;
+    s.attend.last = today();
+    s.attend.days++;
+    return r.label;
+  }
+
+  claimAchieve(id: string) {
+    const a = ACHIEVEMENTS.find((x) => x.id === id);
+    if (!a || !achieveReady(this.save, a)) return false;
+    this.save.achieve[id] = (this.save.achieve[id] ?? 0) + 1;
+    this.save.diamonds += a.diamonds;
+    this.addPassXp(MISSION_PASS_XP);
+    return true;
+  }
+
+  addPassXp(v: number) {
+    this.save.pass.xp += v;
+  }
+
+  passReady(lv: number) {
+    return lv <= passLevel(this.save) && !this.save.pass.claimed.includes(lv);
+  }
+
+  claimPass(lv: number) {
+    if (lv < 1 || lv > PASS_LEVELS || !this.passReady(lv)) return false;
+    this.save.pass.claimed.push(lv);
+    this.grantReward(passReward(lv).reward);
+    return true;
+  }
+
+  /** 받을 게 있으면 미션 버튼에 빨간 점 */
+  get hasClaimable() {
+    const s = this.save;
+    if (canAttend(s)) return true;
+    if ([...DAILY_MISSIONS.map((m) => m.id), 'all' as const].some((id) => this.missionReady(id))) return true;
+    if (ACHIEVEMENTS.some((a) => achieveReady(s, a))) return true;
+    for (let lv = 1; lv <= passLevel(s); lv++) if (!s.pass.claimed.includes(lv)) return true;
+    return false;
   }
 
   // ---- 보상 ----
@@ -462,6 +668,7 @@ export class Game {
     if (!this.canUpgradeBranch(id, branch)) return false;
     this.save.gold -= this.branchUpgradeCost(id, branch)!;
     this.save.skills[id]![branch]++;
+    addDaily(this.save, 'upgrades');
     return true;
   }
 

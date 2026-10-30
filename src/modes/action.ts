@@ -1,3 +1,4 @@
+import { PLAY_PASS_XP, addDaily } from '../data/missions';
 import { CRIT_CHANCE, type Enemy, type EnemyKind, type Engine, type Weapon } from '../battle/engine';
 import type { SkillTree, WeaponStats } from '../battle/weapons';
 import { sfx } from '../audio/sfx';
@@ -187,6 +188,7 @@ export class ActionMode {
     this.feverMul = bonus.fever;
     this.chestBonus = bonus.chest;
     eng.critChance = CRIT_CHANCE + bonus.crit;
+    this.game.applyPet(this.stats.power);
 
     this.time = 0;
     this.kills = 0;
@@ -636,6 +638,7 @@ export class ActionMode {
     if (win) {
       gold += stageClearGold(this.stage);
       save.maxStage = Math.max(save.maxStage, this.stage);
+      save.bestStageEver = Math.max(save.bestStageEver, save.maxStage);
       if (this.isBossStage) save.bossKills++;
       save.stats.stages++;
     }
@@ -654,6 +657,11 @@ export class ActionMode {
     save.stats.fevers += this.fevers;
     save.stats.chests += chests.length;
     save.stats.golden += this.goldenKills;
+    addDaily(save, 'kills', this.kills);
+    addDaily(save, 'plays');
+    addDaily(save, 'chests', chests.length);
+    addDaily(save, 'fevers', this.fevers);
+    this.game.addPassXp(PLAY_PASS_XP + (win ? PLAY_PASS_XP : 0));
     const result: RunResult = {
       win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps,
       gold, stage: this.stage, chests,
