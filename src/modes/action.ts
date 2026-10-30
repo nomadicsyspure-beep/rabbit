@@ -18,6 +18,18 @@ const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
 const ELITE_HP = 900;
 const BOSS_HP = 2600;
+/** 패턴 웨이브: 첫 웨이브까지 / 웨이브 간격(초) */
+const WAVE_FIRST = 8;
+const WAVE_GAP = 11;
+type Wave = 'ring' | 'stampede' | 'wall';
+const WAVES: Wave[] = ['ring', 'stampede', 'wall'];
+/** 움직이는 중 새 몹이 가는 방향 앞쪽에서 나올 확률 */
+const AHEAD_RATE = 0.7;
+/** 이 각도 안에서 이 시간 넘게 한 방향으로 달리면 앞에 벽 (재사용 대기 WALL_CD초) */
+const STRAIGHT_TOLERANCE = 0.5;
+const STRAIGHT_SEC = 4;
+const WALL_CD = 6;
+
 /** 이 시간 안에 다음 처치가 없으면 콤보가 끊긴다 */
 export const COMBO_SEC = 2;
 /** 처치 1마리당 골드 = 그 스테이지 몹 골드 × 이 값 (이기든 지든) */
@@ -66,7 +78,13 @@ export class ActionMode {
 
   private readonly stats: WeaponStats = { power: BASE_POWER, aps: 1 };
   private spawnAcc = 0;
-  private swarms: number[] = [];
+  /** 다음 패턴 웨이브까지 남은 시간 / 몇 번째 패턴인지 */
+  private waveT = 0;
+  private waveIdx = 0;
+  /** 한 방향으로 계속 가고 있는 시간 / 그 방향 / 벽 재사용 대기 */
+  private straightT = 0;
+  private straightDir = 0;
+  private wallCd = 0;
   private baseHp = BASE_HP;
   private endT = -1;
   private chestT = 0;
@@ -124,8 +142,10 @@ export class ActionMode {
     this.levelUps = 0;
     this.bossSpawned = false;
     this.spawnAcc = 0;
-    // 몰려오기 이벤트: 일반 스테이지는 후반 한 번, 보스 스테이지는 두 번
-    this.swarms = this.isBossStage ? [60, 120] : [(this.duration * 2) / 3];
+    this.waveT = WAVE_FIRST;
+    this.straightT = 0;
+    this.wallCd = 0;
+    this.waveIdx = Math.floor(Math.random() * WAVES.length);
     this.endT = -1;
     this.chestT = CHEST_SEC * 0.6;
     this.bonusGold = 0;
@@ -168,10 +188,32 @@ export class ActionMode {
       if (eng.enemies.countActive() < MAX_ALIVE) this.spawnOne(this.pickKind());
     }
 
-    if (this.swarms.length > 0 && this.time >= this.swarms[0]) {
-      this.swarms.shift();
-      this.spawnSwarm(45);
-      this.game.ui.toast('몰려온다!');
+    // 한 방향으로만 계속 달리면 앞에 벽이 생긴다
+    const h = this.heading;
+    this.wallCd -= dt;
+    if (h === null) {
+      this.straightT = 0;
+    } else {
+      let diff = Math.abs(h - this.straightDir) % (Math.PI * 2);
+      if (diff > Math.PI) diff = Math.PI * 2 - diff;
+      if (diff > STRAIGHT_TOLERANCE) {
+        this.straightDir = h;
+        this.straightT = 0;
+      }
+      this.straightT += dt;
+      if (this.straightT > STRAIGHT_SEC && this.wallCd <= 0 && !this.bossSpawned) {
+        this.wallCd = WALL_CD;
+        this.straightT = 0;
+        this.spawnWave('wall');
+      }
+    }
+
+    // 패턴 웨이브: 포위 / 돌진 / 앞을 막는 벽을 돌아가며
+    this.waveT -= dt;
+    if (this.waveT <= 0 && !this.bossSpawned) {
+      this.waveT = this.isBossStage ? WAVE_GAP * 0.75 : WAVE_GAP;
+      const wave = WAVES[this.waveIdx++ % WAVES.length];
+      this.spawnWave(wave);
     }
 
     // 일정 시간마다 화면 안 가까운 곳에 보물 상자
@@ -203,10 +245,25 @@ export class ActionMode {
     return 'normal';
   }
 
-  private spawnPos(angle = Math.random() * Math.PI * 2) {
+  /** 플레이어가 가는 방향 (멈춰 있으면 null) */
+  private get heading() {
     const p = this.game.engine.player;
+    return p.moving && p.curSpeed > 40 ? Math.atan2(p.faceY, p.faceX) : null;
+  }
+
+  /**
+   * 화면 밖 생성 위치. 각도를 안 주면 움직이는 중엔 절반 넘게 가는 방향 앞쪽(±70°)에서 나온다:
+   * 한 방향으로만 달리면 계속 몹 떼에 부딪히게.
+   */
+  private spawnPos(angle?: number) {
+    const p = this.game.engine.player;
+    const h = this.heading;
+    let a = angle;
+    if (a === undefined) {
+      a = h !== null && Math.random() < AHEAD_RATE ? h + (Math.random() - 0.5) * 2.4 : Math.random() * Math.PI * 2;
+    }
     const d = this.diag / 2 + 30;
-    return { x: p.x + Math.cos(angle) * d, y: p.y + Math.sin(angle) * d };
+    return { x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d };
   }
 
   private spawnOne(kind: EnemyKind, angle?: number) {
@@ -219,7 +276,8 @@ export class ActionMode {
         eng.spawnEnemy({ kind, skin: skins.normal, x, y, hp: 5 * s, r: 11, speed: 62, dmg: 3 * s, xp: 1 });
         break;
       case 'fast':
-        eng.spawnEnemy({ kind, skin: skins.fast, x, y, hp: 4 * s, r: 10, speed: 115, dmg: 3 * s, xp: 1 });
+        // 빠른 몹은 가는 길목을 앞질러 막는다
+        eng.spawnEnemy({ kind, skin: skins.fast, x, y, hp: 4 * s, r: 10, speed: 115, dmg: 3 * s, xp: 1, move: 'lead' });
         break;
       case 'tank':
         eng.spawnEnemy({ kind, skin: skins.tank, x, y, hp: 24 * s, r: 14, speed: 40, dmg: 7 * s, xp: 3 });
@@ -229,9 +287,68 @@ export class ActionMode {
     }
   }
 
-  private spawnSwarm(n: number) {
-    const off = Math.random();
-    for (let i = 0; i < n; i++) this.spawnOne('normal', ((i + off) / n) * Math.PI * 2);
+  private spawnWave(wave: Wave) {
+    const eng = this.game.engine;
+    const p = eng.player;
+    const s = 1 + (this.time / 60) * 0.6;
+    const skins = stageSkins(this.stage);
+    const crowd = 1 + Math.min(1, this.time / this.duration);
+    const h = this.heading ?? Math.random() * Math.PI * 2;
+    switch (wave) {
+      case 'ring': {
+        // 사방을 둘러싸고 조여 온다: 빈틈 한 군데로 빠져나가야 한다
+        const n = Math.round(28 * crowd);
+        const r = this.diag / 2 + 10;
+        const gap = Math.random() * Math.PI * 2;
+        for (let i = 0; i < n; i++) {
+          const a = gap + 0.5 + (i / n) * (Math.PI * 2 - 1);
+          eng.spawnEnemy({
+            kind: 'normal', skin: skins.normal, x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r,
+            hp: 5 * s, r: 11, speed: 70, dmg: 3 * s, xp: 1,
+          });
+        }
+        this.game.ui.toast('포위당했다!');
+        break;
+      }
+      case 'stampede': {
+        // 옆에서 한 줄로 우르르 가로질러 돌진 (따라오지 않고 지나간다)
+        const side = h + (Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2);
+        const dirX = -Math.cos(side);
+        const dirY = -Math.sin(side);
+        const startD = this.diag / 2 + 20;
+        const n = Math.round(14 * crowd);
+        for (let i = 0; i < n; i++) {
+          const along = (i - (n - 1) / 2) * 26;
+          // 줄을 가는 방향 쪽으로 조금 밀어서 앞길을 쓸고 지나가게
+          const cx = p.x + Math.cos(side) * startD + Math.cos(h) * (along + 60);
+          const cy = p.y + Math.sin(side) * startD + Math.sin(h) * (along + 60);
+          eng.spawnEnemy({
+            kind: 'fast', skin: skins.fast, x: cx, y: cy, hp: 4 * s, r: 10, speed: 230, dmg: 5 * s, xp: 1,
+            move: 'charge', dashX: dirX, dashY: dirY, t1: (startD * 2 + 80) / 230,
+          });
+        }
+        this.game.ui.toast('돌진!');
+        break;
+      }
+      case 'wall': {
+        // 가는 방향 앞에 단단한 몹으로 벽을 세운다
+        const d = this.diag / 2 - 20;
+        const n = Math.round(12 * crowd);
+        const fx = Math.cos(h);
+        const fy = Math.sin(h);
+        for (let i = 0; i < n; i++) {
+          const off = (i - (n - 1) / 2) * 30;
+          const tank = i % 3 === 1;
+          eng.spawnEnemy({
+            kind: tank ? 'tank' : 'normal', skin: tank ? skins.tank : skins.normal,
+            x: p.x + fx * d - fy * off, y: p.y + fy * d + fx * off,
+            hp: (tank ? 24 : 5) * s, r: tank ? 14 : 11, speed: tank ? 40 : 62, dmg: (tank ? 7 : 3) * s, xp: tank ? 3 : 1,
+          });
+        }
+        this.game.ui.toast('앞을 막는다!');
+        break;
+      }
+    }
   }
 
   private spawnBoss() {
@@ -247,13 +364,13 @@ export class ActionMode {
     }
   }
 
-  /** 너무 멀어진 적은 플레이어 주변으로 다시 데려온다 (뱀서 방식) */
+  /** 너무 멀어진 적은 플레이어 앞쪽으로 다시 데려온다 (도망쳐도 앞에서 다시 만난다) */
   private recycleFarEnemies() {
     const eng = this.game.engine;
     const p = eng.player;
     const limit = this.diag * 0.9;
     for (const e of eng.enemies.items) {
-      if (!e.active || e.kind === 'boss') continue;
+      if (!e.active || e.kind === 'boss' || e.move === 'charge') continue;
       if (Math.hypot(e.x - p.x, e.y - p.y) > limit) {
         const pos = this.spawnPos();
         e.x = pos.x;

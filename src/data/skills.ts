@@ -37,7 +37,7 @@ export interface SkillDef extends SkillSpec {
   dmgLabel?: string;
   /** 쿨다운이 없는 스킬 (도는 구체): 발동 속도 = 회전 속도 */
   continuous?: boolean;
-  /** 배우는 값. 가지 강화 비용도 여기서 늘어난다 */
+  /** 배우는 값 (테스트 중엔 LEARN_COST_OVERRIDE). 가지 강화 비용은 이 값에서 늘어난다 */
   learnCost: number;
   create: (stats: WeaponStats, spec: SkillSpec, tree: SkillTree) => Weapon;
 }
@@ -113,6 +113,10 @@ export const SKILLS: SkillDef[] = [
 export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s])) as Record<SkillId, SkillDef>;
 
 export const emptyTree = (): SkillTree => ({ dmg: 0, spd: 0, cnt: 0 });
+
+/** 테스트용: 스킬 배우는 값을 전부 이걸로 (null이면 스킬마다 정한 learnCost) */
+const LEARN_COST_OVERRIDE: number | null = 1;
+export const learnPrice = (def: SkillDef) => LEARN_COST_OVERRIDE ?? def.learnCost;
 
 export const createSkill = (def: SkillDef, stats: WeaponStats, tree: SkillTree) => def.create(stats, def, tree);
 

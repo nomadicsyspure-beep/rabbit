@@ -5,7 +5,7 @@ import {
   type StatId,
 } from '../data/balance';
 import {
-  BRANCHES, EQUIP_SLOTS, SKILLS, branchValue, emptyTree, skillSummary, treeLevel, type SkillDef, type SkillId,
+  BRANCHES, EQUIP_SLOTS, SKILLS, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, type SkillDef, type SkillId,
 } from '../data/skills';
 import type { Game, Mode } from '../game';
 import { COMBO_SEC, type RunResult } from '../modes/action';
@@ -594,7 +594,7 @@ export class UI {
         row.buy.replaceChildren(h('span', '', '스킬 트리'), h('small', '', '강화'));
         row.buy.disabled = false;
       } else {
-        row.buy.replaceChildren(coin(fmt(row.def.learnCost)), h('small', '', '배우기'));
+        row.buy.replaceChildren(coin(fmt(learnPrice(row.def))), h('small', '', '배우기'));
         row.buy.disabled = !g.canLearn(id);
       }
       row.equip.textContent = eq.includes(id) ? '해제' : '장착';
