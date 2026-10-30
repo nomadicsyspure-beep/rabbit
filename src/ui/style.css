@@ -1937,3 +1937,171 @@ button:disabled {
     right: 0;
   }
 }
+
+/* ---- 깔끔한 아이콘 틀 (CSS로 그림: 시트 찌꺼기 없음) ---- */
+.ibox {
+  --rar: #b07a40;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 58px;
+  aspect-ratio: 1;
+  border-radius: 11px;
+  background: linear-gradient(180deg, #5e3c22 0%, #3a2312 100%);
+  border: 2px solid #22110500;
+  box-shadow:
+    0 0 0 2px #2a1606,
+    inset 0 0 0 2px var(--rar),
+    inset 0 3px 0 2px rgba(255, 230, 190, 0.12),
+    inset 0 -4px 0 rgba(0, 0, 0, 0.3),
+    0 3px 0 #1a0d04;
+  font-size: 28px;
+  line-height: 1;
+  overflow: hidden;
+}
+
+.ibox.big {
+  width: 52px;
+  height: 52px;
+}
+
+.ibox.huge {
+  width: 76px;
+  height: 76px;
+  max-width: none;
+  flex: none;
+  font-size: 44px;
+}
+
+.ibox.empty {
+  color: var(--muted);
+  font-size: 22px;
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+
+.ibox.legend {
+  --rar: #c78bff;
+  background: radial-gradient(circle at 50% 40%, #6a3f8a 0%, #3a2312 75%);
+}
+
+.ibox .pet-pic {
+  max-width: 82%;
+  height: auto !important;
+}
+
+.ibox-lv {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 0 #2a1606, 1px 0 0 #2a1606, -1px 0 0 #2a1606, 0 -1px 0 #2a1606;
+}
+
+.skill-tile .ibox {
+  margin: 0 auto;
+}
+
+.skill-tile.unlearned .ibox {
+  filter: grayscale(0.9) brightness(0.55);
+}
+
+.skill-tile.equipped .ibox {
+  box-shadow:
+    0 0 0 2px #2a1606,
+    inset 0 0 0 3px var(--gold),
+    0 0 10px rgba(255, 209, 102, 0.6),
+    0 3px 0 #1a0d04;
+}
+
+.skill-tile.can-make::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #7cf2a0;
+  box-shadow: 0 0 0 2px #2a1606;
+}
+
+/* 동료 탭: 함께하는 동료 3칸 */
+.pet-slots {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* 장비 탭: 왼쪽 3칸 · 병아리 · 오른쪽 3칸 */
+.gear-top {
+  display: grid;
+  grid-template-columns: 66px 1fr 66px;
+  gap: 6px;
+  align-items: center;
+}
+
+.gear-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gear-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 0;
+  min-width: 0;
+}
+
+.gear-slot .tile-name {
+  font-size: 10px;
+}
+
+.gear-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  align-self: stretch;
+  border-radius: 12px;
+  background: radial-gradient(circle at 50% 38%, rgba(255, 220, 150, 0.35) 0%, rgba(255, 220, 150, 0.05) 60%, transparent 75%);
+}
+
+.chick-pic {
+  display: block;
+}
+
+.gear-stats {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--text);
+}
+
+/* 보스 레이드 고르기 */
+.raid-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.raid-card {
+  margin: 0;
+  gap: 8px;
+}
+
+.raid-card .info {
+  min-width: 0;
+}
+
+.raid-card .ibox {
+  flex: none;
+}

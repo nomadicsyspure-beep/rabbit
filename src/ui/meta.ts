@@ -1,9 +1,9 @@
 import { fmt } from '../core/format';
-import { GEAR, GEAR_MAX, SLOT_NAMES, enhanceCost, gearEffectText, type GearSlot } from '../data/gear';
+import { GEAR, GEAR_BY_ID, GEAR_MAX, GEAR_SLOTS, SLOT_ICONS, SLOT_NAMES, enhanceCost, gearEffectText, type GearDef, type GearSlot } from '../data/gear';
 import { MATS, MAT_BY_ID } from '../data/items';
 import type { Game } from '../game';
 import { COLLECTION_BONUS, REBIRTH_MIN_STAGE, REBIRTH_UPS, type RebirthUp } from '../game';
-import { coin, h, holdRepeat } from './dom';
+import { chickPic, coin, h, holdRepeat, ibox } from './dom';
 
 // 장비 탭, 도감, 환생 화면.
 
@@ -14,6 +14,8 @@ export interface UIHost {
   openModal(...children: HTMLElement[]): HTMLElement;
   closeModal(): void;
   button(text: string, cls: string, fn: () => void): HTMLButtonElement;
+  /** 열린 창을 화면 새로고침 때마다 다시 그린다 (창이 닫히면 풀린다) */
+  setModalRefresh(fn: (() => void) | null): void;
   confirmButton(text: string, confirmText: string, fn: () => void): HTMLButtonElement;
 }
 
@@ -30,75 +32,142 @@ export function walletBar(game: Game) {
   return { el: bar, refresh };
 }
 
-/** 장비 탭: 부위별로 만들기 / 강화 / 착용 */
+/** 장비 탭: 위에 병아리 + 장비 6칸 고정 (왼쪽 무기·장갑·신발 / 오른쪽 모자·가방·장신구), 아래는 부위별 격자 */
 export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
+  const top = h('div', 'skill-top gear-top');
+  const left = h('div', 'gear-col');
+  const right = h('div', 'gear-col');
+  const mid = h('div', 'gear-mid');
+  const statLine = h('div', 'gear-stats');
+  mid.append(chickPic(92), statLine);
+  top.append(left, mid, right);
   const wallet = walletBar(game);
-  panel.append(wallet.el);
-  const rows: (() => void)[] = [wallet.refresh];
-  for (const slot of ['weapon', 'hat', 'back', 'acc'] as GearSlot[]) {
-    panel.append(h('div', 'section-title', SLOT_NAMES[slot]));
+  panel.append(top, wallet.el);
+  const sections = new Map<GearSlot, HTMLElement>();
+  const slotEls = GEAR_SLOTS.map((slot, i) => {
+    const b = h('button', 'gear-slot');
+    b.addEventListener('click', () => {
+      const w = game.worn(slot);
+      if (w) showGear(game, host, w.def);
+      else sections.get(slot)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    (i < 3 ? left : right).append(b);
+    return { slot, b };
+  });
+  let key = '';
+  const refreshTop = () => {
+    const s = game.save;
+    const k = GEAR_SLOTS.map((sl) => `${s.wear[sl] ?? ''}+${s.gear[s.wear[sl] ?? ''] ?? ''}`).join();
+    if (k !== key) {
+      key = k;
+      for (const { slot, b } of slotEls) {
+        const w = game.worn(slot);
+        b.classList.toggle('empty', !w);
+        const box = ibox(w ? w.def.icon : SLOT_ICONS[slot], 'big' + (w ? '' : ' empty'));
+        if (w?.def.essence) box.classList.add('legend');
+        if (w) box.append(h('span', 'ibox-lv', `+${w.plus}`));
+        b.replaceChildren(box, h('span', 'tile-name', w ? w.def.name : SLOT_NAMES[slot]));
+      }
+    }
+    const bo = game.bonus;
+    const st = game.stats;
+    statLine.replaceChildren(
+      h('div', '', `❤️ 체력 ${fmt(st.hp)}`),
+      h('div', '', `⚔️ 공격력 ${fmt(st.atk)}`),
+      h('div', '', `🎯 치명타 +${Math.round(bo.crit * 100)}% · 👟 +${Math.round(bo.speed * 100)}%`),
+    );
+  };
+  const tiles: (() => void)[] = [];
+  for (const slot of GEAR_SLOTS) {
+    const head = h('div', 'skill-type-head');
+    head.style.setProperty('--type', '#ffd166');
+    head.append(h('span', 'type-name', `${SLOT_ICONS[slot]} ${SLOT_NAMES[slot]}`));
+    sections.set(slot, head);
+    const grid = h('div', 'skill-grid');
     for (const def of GEAR.filter((g) => g.slot === slot)) {
-      const card = h('div', 'card row gear-row');
-      const icon = h('div', 'item-icon', def.icon);
-      const info = h('div', 'info');
-      const name = h('div', 'title');
-      const eff = h('div', 'sub');
-      const cost = h('div', 'cost-line');
-      info.append(name, eff, cost);
-      const btns = h('div', 'skill-btns');
-      const main = h('button', 'buy');
-      const mainLabel = h('span');
-      const mainSmall = h('small');
-      main.append(mainLabel, mainSmall);
-      holdRepeat(main, () => {
-        const owned = game.save.gear[def.id] !== undefined;
-        const ok = owned ? game.enhanceGear(def.id) : game.craftGear(def.id);
-        if (ok && !owned) host.toast(`${def.name} 제작!`);
-        if (ok) host.refresh();
-        return ok && owned;
-      });
-      const wear = h('button', 'equip');
-      wear.addEventListener('click', () => {
-        game.toggleWear(def.id);
-        host.refresh();
-      });
-      btns.append(main, wear);
-      card.append(icon, info, btns);
-      panel.append(card);
-      rows.push(() => {
-        const s = game.save;
-        const plus = s.gear[def.id];
+      const t = h('button', 'skill-tile');
+      const box = ibox(def.icon, def.essence ? 'legend' : '');
+      const lv = h('span', 'tile-lv');
+      t.append(box, lv, h('span', 'tile-name', def.name));
+      t.addEventListener('click', () => showGear(game, host, def));
+      grid.append(t);
+      tiles.push(() => {
+        const plus = game.save.gear[def.id];
         const owned = plus !== undefined;
-        const worn = s.wear[def.slot] === def.id;
-        card.classList.toggle('unlearned', !owned);
-        card.classList.toggle('equipped', worn);
-        name.textContent = owned ? `${def.name} +${plus}` : def.name;
-        eff.textContent = gearEffectText(def, plus ?? 0);
-        const mat = MAT_BY_ID[def.mat];
-        if (!owned) {
-          cost.textContent = `${mat.icon} ${def.matCost}${def.essence ? ` · 🔮 ${def.essence}` : ''} (보유 ${fmt(s.mats[def.mat] ?? 0)})`;
-          mainLabel.replaceChildren(coin(fmt(def.goldCost)));
-          mainSmall.textContent = '제작';
-          main.disabled = !game.canCraft(def.id);
-        } else if (plus >= GEAR_MAX) {
-          cost.textContent = '최대 강화';
-          mainLabel.textContent = 'MAX';
-          mainSmall.textContent = '';
-          main.disabled = true;
-        } else {
-          const c = enhanceCost(def, plus);
-          cost.textContent = `강화: ${mat.icon} ${c.mat}${c.essence ? ` · 🔮 ${c.essence}` : ''} (보유 ${fmt(s.mats[def.mat] ?? 0)})`;
-          mainLabel.replaceChildren(coin(fmt(c.gold)));
-          mainSmall.textContent = '강화';
-          main.disabled = !game.canEnhance(def.id);
-        }
-        wear.textContent = worn ? '해제' : '착용';
-        wear.disabled = !owned;
+        t.classList.toggle('unlearned', !owned);
+        t.classList.toggle('equipped', game.save.wear[slot] === def.id);
+        t.classList.toggle('can-make', !owned && game.canCraft(def.id));
+        lv.textContent = owned ? `+${plus}` : '';
       });
     }
+    panel.append(head, grid);
   }
-  panel.append(h('div', 'hint', '재료는 스테이지의 보물 상자에서 나와요 · 무기는 그 스킬을 공짜로 한 줄 더 쏘고, 그 스킬을 스킬북 없이 배우게 해 줘요'));
-  return () => rows.forEach((r) => r());
+  panel.append(h('div', 'hint', '재료는 스테이지 보물 상자·재료 던전에서 · 무기는 그 스킬을 공짜로 한 줄 더 쏴요 · 칸을 눌러 착용 장비 보기'));
+  return () => {
+    refreshTop();
+    wallet.refresh();
+    tiles.forEach((f) => f());
+  };
+}
+
+/** 장비 창: 효과, 제작 / 강화, 착용 / 해제 */
+function showGear(game: Game, host: UIHost, def: GearDef) {
+  const head = h('div', 'tree-head');
+  const info = h('div', 'info');
+  const name = h('div', 'modal-title');
+  const eff = h('div', 'modal-sub');
+  const cost = h('div', 'modal-sub');
+  info.append(name, h('div', 'modal-sub', SLOT_NAMES[def.slot] + (def.essence ? ' · 전설' : '')), eff, cost);
+  head.append(ibox(def.icon, 'huge' + (def.essence ? ' legend' : '')), info);
+  const main = h('button', 'buy wide');
+  const mainLabel = h('span');
+  const mainSmall = h('small');
+  main.append(mainLabel, mainSmall);
+  holdRepeat(main, () => {
+    const owned = game.save.gear[def.id] !== undefined;
+    const ok = owned ? game.enhanceGear(def.id) : game.craftGear(def.id);
+    if (ok && !owned) host.toast(`${def.name} 제작!`);
+    if (ok) host.refresh();
+    return ok && owned;
+  });
+  const wear = host.button('', 'primary', () => {
+    game.toggleWear(def.id);
+    host.refresh();
+  });
+  const render = () => {
+    const s = game.save;
+    const plus = s.gear[def.id];
+    const owned = plus !== undefined;
+    const mat = MAT_BY_ID[def.mat];
+    name.textContent = owned ? `${def.name} +${plus}` : def.name;
+    eff.textContent = owned && plus < GEAR_MAX
+      ? `${gearEffectText(def, plus)}  →  +${plus + 1}: ${gearEffectText(def, plus + 1)}`
+      : gearEffectText(def, plus ?? 0);
+    if (!owned) {
+      cost.textContent = `제작: ${mat.icon} ${def.matCost}${def.essence ? ` · 🔮 ${def.essence}` : ''} (보유 ${fmt(s.mats[def.mat] ?? 0)})`;
+      mainLabel.replaceChildren(coin(fmt(def.goldCost)));
+      mainSmall.textContent = '제작';
+      main.disabled = !game.canCraft(def.id);
+    } else if (plus >= GEAR_MAX) {
+      cost.textContent = '최대 강화';
+      mainLabel.textContent = 'MAX';
+      mainSmall.textContent = '';
+      main.disabled = true;
+    } else {
+      const c = enhanceCost(def, plus);
+      cost.textContent = `강화: ${mat.icon} ${c.mat}${c.essence ? ` · 🔮 ${c.essence}` : ''} (보유 ${fmt(s.mats[def.mat] ?? 0)})`;
+      mainLabel.replaceChildren(coin(fmt(c.gold)));
+      mainSmall.textContent = '강화 (누르고 있으면 연속)';
+      main.disabled = !game.canEnhance(def.id);
+    }
+    const worn = s.wear[def.slot] === def.id;
+    const cur = s.wear[def.slot] ? GEAR_BY_ID[s.wear[def.slot]!] : null;
+    wear.textContent = worn ? '해제' : cur ? `착용 (${cur.name} → ${def.name})` : '착용';
+    wear.disabled = !owned;
+  };
+  render();
+  host.openModal(head, main, wear, host.button('닫기', '', () => host.closeModal()));
+  host.setModalRefresh(render);
 }
 
 const MONSTER_NAMES: Record<string, string> = {

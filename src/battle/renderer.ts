@@ -198,7 +198,7 @@ export class Renderer {
       }
     }
 
-    if (eng.pet) this.drawPet(eng);
+    for (const pet of eng.pets) this.drawPet(eng, pet);
     this.drawPlayer(eng);
 
     for (const fx of eng.effects.items) {
@@ -365,7 +365,9 @@ export class Renderer {
 
   private drawEnemy(eng: Engine, e: Enemy) {
     // 그 몹 그림이 아직 없으면 슬라임(또는 불러진 아무 몹) 그림으로 대신한다
-    const anim = SPRITES.monsters[e.skin] ?? SPRITES.monsters.slime ?? Object.values(SPRITES.monsters)[0];
+    // 그림이름@색상 = 색 바꾼 몹 (레이드 보스·졸개)
+    const [skin, hue] = e.skin.split('@');
+    const anim = SPRITES.monsters[skin] ?? SPRITES.monsters.slime ?? Object.values(SPRITES.monsters)[0];
     const size = e.r * ENEMY_SPRITE_SCALE;
     if (e.golden || e.bomb) {
       // 황금 몹은 금빛, 폭탄 몹은 붉은 기운
@@ -394,8 +396,8 @@ export class Renderer {
       this.drawFirstAid(eng, e);
     } else if (anim) {
       const frame = frameAt(anim, eng.time * 1000 + e.id * 97);
-      const img = recolored(frame, e.golden ? GOLDEN_COLOR : MOB_COLOR);
-      const flip = FACES_RIGHT.has(e.skin) && eng.player.x < e.x;
+      const img = recolored(hue ? recolored(frame, hueRecolor(Number(hue))) : frame, e.golden ? GOLDEN_COLOR : MOB_COLOR);
+      const flip = FACES_RIGHT.has(skin) && eng.player.x < e.x;
       // 맞으면 옆으로 퍼지고 납작해졌다가 돌아온다
       const hit = Math.max(0, e.flash) / 0.1;
       const sx = 1 + 0.18 * hit;
@@ -612,18 +614,20 @@ export class Renderer {
   }
 
   /** 동료: 작은 몬스터가 둥실둥실 떠서 따라온다 */
-  private drawPet(eng: Engine) {
-    const pet = eng.pet!;
+  private drawPet(eng: Engine, pet: Engine['pets'][number]) {
     const ctx = this.ctx;
     const bob = Math.sin(eng.time * 5) * 3;
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.beginPath();
     ctx.ellipse(pet.x, pet.y + 14, 8, 3, 0, 0, Math.PI * 2);
     ctx.fill();
-    const anim = SPRITES.monsters[pet.skin];
+    // 그림이름@색상 = 색 바꾼 동료
+    const [skin, hue] = pet.skin.split('@');
+    const anim = SPRITES.monsters[skin];
     if (!anim) return;
-    const img = frameAt(anim, eng.time * 1000);
-    const flip = FACES_RIGHT.has(pet.skin) ? eng.player.faceX < 0 : eng.player.faceX > 0;
+    const frame = frameAt(anim, eng.time * 1000 + pet.idx * 230);
+    const img = hue ? recolored(frame, hueRecolor(Number(hue))) : frame;
+    const flip = FACES_RIGHT.has(skin) ? eng.player.faceX < 0 : eng.player.faceX > 0;
     this.drawSprite(img, pet.x, pet.y + 12 + bob, PET_SIZE, PET_SIZE, flip, 0);
   }
 

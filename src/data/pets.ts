@@ -1,6 +1,6 @@
-// 동료: 몬스터 그림을 그대로 쓰는 작은 친구. 하나만 데리고 다니고, 소환으로 겹치면 레벨이 오른다.
+// 동료: 몬스터 그림(색을 바꾼 것 포함: 그림이름@색상)을 쓰는 작은 친구. PET_SLOTS마리까지 데리고 다니고, 소환으로 겹치면 레벨이 오른다.
 
-export type PetAbility = 'magnet' | 'gold' | 'chest' | 'attack' | 'spore' | 'heal' | 'hp' | 'crit' | 'fever';
+export type PetAbility = 'magnet' | 'gold' | 'chest' | 'attack' | 'spore' | 'heal' | 'hp' | 'crit' | 'fever' | 'speed' | 'frost' | 'bolt' | 'shield' | 'bomb';
 
 export interface PetDef {
   id: string;
@@ -17,6 +17,8 @@ export interface PetDef {
 }
 
 export const PET_MAX = 10;
+/** 같이 데리고 다니는 동료 수 */
+export const PET_SLOTS = 3;
 export const RARITY_NAMES = ['보통', '희귀', '전설'] as const;
 export const RARITY_COLORS = ['#c9b79c', '#7ad7ff', '#ffd23f'] as const;
 
@@ -30,6 +32,16 @@ export const PETS: PetDef[] = [
   { id: 'golem', name: '든든 골렘', skin: 'golem', ability: 'hp', rarity: 1, base: 0.2, per: 0.06, desc: '체력' },
   { id: 'rabbit', name: '토끼 기사', skin: 'rabbit', ability: 'crit', rarity: 2, base: 0.05, per: 0.01, desc: '치명타 확률' },
   { id: 'devil', name: '꼬마 마왕', skin: 'devil', ability: 'fever', rarity: 2, base: 0.3, per: 0.06, desc: '피버 게이지 차는 속도' },
+  // 색 바꾼 친구들
+  { id: 'slime_blue', name: '물방울 슬라임', skin: 'slime@200', ability: 'speed', rarity: 0, base: 0.05, per: 0.01, desc: '이동 속도' },
+  { id: 'sprout_red', name: '단풍 동동', skin: 'sprout@10', ability: 'hp', rarity: 0, base: 0.1, per: 0.03, desc: '체력' },
+  { id: 'bat_green', name: '풀잎 박쥐', skin: 'bat@110', ability: 'attack', rarity: 0, base: 0.5, per: 0.12, desc: '가까운 적을 콕콕 (공격력 배율)' },
+  { id: 'mushroom_ice', name: '얼음 버섯', skin: 'mushroom@200', ability: 'frost', rarity: 1, base: 1, per: 0.25, desc: '4초마다 냉기: 주변 적 느리게 (공격력 배율)' },
+  { id: 'slime_spark', name: '번개 슬라임', skin: 'slime@55', ability: 'bolt', rarity: 1, base: 0.8, per: 0.2, desc: '2.5초마다 번개가 적 3마리에게 (공격력 배율)' },
+  { id: 'golem_crystal', name: '수정 골렘', skin: 'golem@190', ability: 'shield', rarity: 1, base: 0.08, per: 0.012, desc: '10초마다 보호막 (최대 체력 비율)' },
+  { id: 'angel_gold', name: '황금 천사', skin: 'angel@45', ability: 'gold', rarity: 1, base: 0.25, per: 0.06, desc: '골드' },
+  { id: 'devil_bomb', name: '폭탄 마왕', skin: 'devil@20', ability: 'bomb', rarity: 2, base: 3, per: 0.6, desc: '3초마다 폭탄 투척 (공격력 배율)' },
+  { id: 'rabbit_gold', name: '황금 토끼', skin: 'rabbit@48', ability: 'chest', rarity: 2, base: 0.2, per: 0.03, desc: '좋은 상자 확률' },
 ];
 
 export const PET_BY_ID = Object.fromEntries(PETS.map((p) => [p.id, p])) as Record<string, PetDef>;
@@ -38,6 +50,6 @@ export const petValue = (def: PetDef, level: number) => def.base + def.per * (le
 
 export function petEffectText(def: PetDef, level: number) {
   const v = petValue(def, level);
-  if (def.ability === 'attack' || def.ability === 'spore') return `${def.desc} ×${v.toFixed(1)}`;
+  if (['attack', 'spore', 'frost', 'bolt', 'bomb'].includes(def.ability)) return `${def.desc} ×${v.toFixed(1)}`;
   return `${def.desc} +${(v * 100).toFixed(def.ability === 'heal' ? 1 : 0)}%`;
 }
