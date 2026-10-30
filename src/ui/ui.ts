@@ -1,5 +1,5 @@
 import { sfx } from '../audio/sfx';
-import { CHEST_NAMES, rewardText, type ChestGrade } from '../data/items';
+import { CHEST_NAMES, type ChestGrade } from '../data/items';
 import { regionOf, stageRule } from '../data/world';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
@@ -259,7 +259,7 @@ export class UI implements UIHost {
     this.autoBtn.classList.toggle('on', save.autoMove);
   }
 
-  /** 스테이지에서 스킬 칸을 누르면: 전투를 멈추고 그 스킬 설명·강화 창 (닫으면 이어서) */
+  /** 스테이지에서 스킬 칸을 누르면: 전투를 멈추고 그 스킬 설명만 (강화는 메인 화면에서, 닫으면 이어서) */
   private openStageSkill(def: SkillDef) {
     const a = this.game.action;
     if (a.state !== 'playing') return;
@@ -268,7 +268,22 @@ export class UI implements UIHost {
     this.onModalClose = () => {
       if (a.state === 'paused') a.state = 'playing';
     };
-    this.showSkill(def);
+    const type = SKILL_TYPES.find((t) => t.id === def.type)!;
+    const grade = SKILL_GRADE[def.id];
+    const tree = this.game.skillTree(def.id) ?? emptyTree();
+    const head = h('div', 'tree-head');
+    const info = h('div', 'info');
+    const name = h('div', 'modal-title', def.name + ' ');
+    name.append(h('span', `grade-badge g-${grade}`, `${grade}등급`));
+    const kind = h('div', 'modal-sub', `${type.name} · Lv ${treeLevel(tree)}`);
+    kind.style.color = type.color;
+    info.append(name, kind, h('div', 'modal-sub', def.blurb), h('div', 'modal-sub', skillSummary(def, tree)));
+    head.append(skillIcon(def, 'skill-art'), info);
+    this.openModal(
+      head,
+      h('div', 'modal-sub', '⏸ 전투 일시정지 중 · 스킬 강화는 메인 화면 스킬 탭에서'),
+      this.button('계속 싸우기', 'primary', () => this.closeModal()),
+    );
   }
 
   /** 장착 스킬 칸을 만든다 (스테이지가 시작되어 장착 목록이 바뀌면 다시) */
@@ -565,8 +580,6 @@ export class UI implements UIHost {
       }));
     };
     renderEquip();
-    // 스테이지 중엔 강화만 (장착 바꾸기는 메인 화면에서)
-    if (g.mode === 'action') equipBox.replaceChildren(h('div', 'modal-sub', '⏸ 전투 일시정지 중 · 닫으면 이어서 싸워요'));
     this.treeRefresh = () => {
       const tree = g.skillTree(def.id) ?? emptyTree();
       summary.textContent = skillSummary(def, tree);
@@ -734,7 +747,6 @@ export class UI implements UIHost {
         this.timerEl.textContent = fmtTime(a.kind === 'infinite' ? a.time : Math.max(0, a.duration - a.time));
       }
       this.timerEl.classList.toggle('boss', a.bossSpawned);
-      this.treeRefresh?.();
       this.killsEl.textContent = String(a.kills);
     }
   }
@@ -857,7 +869,7 @@ export class UI implements UIHost {
     let sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
     if (r.kind === 'material') {
       title = r.win ? '재료 던전 완료!' : '재료 던전 끝';
-      sub = '주운 상자를 열어 보세요';
+      sub = '주운 상자는 가방 탭에서 열어요';
     } else if (r.kind === 'raid') {
       title = r.win ? '레이드 성공!' : '레이드 실패…';
       sub = r.win ? '보스의 정수로 전설 장비를 만들어요' : '보스 체력을 절반 넘게 깎으면 정수 1개';
@@ -866,8 +878,8 @@ export class UI implements UIHost {
       sub = `최고 기록 ${fmtTime(this.game.save.infiniteBest)}`;
     }
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
-    // 주운 상자: 예전처럼 상자를 하나씩 보여 주고 눌러서 연다 (안 연 상자는 가방에 남는다)
-    if (r.chests.length > 0) parts.push(this.chestOpener(r.chests, r.stage));
+    // 주운 상자: 하나씩 튀어나오는 연출만 (가방에 들어갔다)
+    if (r.chests.length > 0) parts.push(this.chestShow(r.chests));
     parts.push(
       this.button('돌아가기', 'primary', () => {
         this.closeModal();
@@ -877,39 +889,24 @@ export class UI implements UIHost {
     this.openModal(...parts);
   }
 
-  /** 결과 화면 상자: 누르면 흔들리다 펑 하고 재료가 나온다. 안 연 상자는 가방에 그대로 */
-  private chestOpener(chests: ChestGrade[], stage: number) {
+  /** 결과 화면 상자: 먹은 상자가 하나씩 통통 튀어나와 반짝인다 (여는 건 가방 탭에서) */
+  private chestShow(chests: ChestGrade[]) {
     const box = h('div', 'chests');
-    const title = h('div', 'chests-title', `주운 상자 ${chests.length}개! 눌러서 열기`);
     const row = h('div', 'chest-row');
-    const log = h('div', 'chest-log');
-    const opens: (() => void)[] = [];
     // 좋은 상자부터
     [...chests].sort((a, b) => b - a).forEach((grade, i) => {
-      const el = h('button', `chest-item grade-${grade} pop`);
-      el.style.animationDelay = `${i * 0.08}s`;
+      const el = h('div', `chest-item grade-${grade} pop`);
+      el.style.animationDelay = `${0.15 + i * 0.12}s`;
       el.append(art('chest'), h('span', '', CHEST_NAMES[grade]));
-      let opened = false;
-      const open = () => {
-        if (opened) return;
-        opened = true;
-        el.classList.add('shake');
-        setTimeout(() => {
-          const reward = this.game.openOneChest(grade, stage);
-          el.classList.remove('shake');
-          el.classList.add('opened');
-          sfx.chest();
-          el.querySelector('span')!.textContent = '열림!';
-          if (reward) log.append(h('div', 'chest-line', `${CHEST_NAMES[grade]}: ${rewardText(reward) || '골드'} · 골드 +${fmt(reward.gold)}`));
-          this.refresh();
-        }, 450);
-      };
-      el.addEventListener('click', open);
-      opens.push(open);
       row.append(el);
     });
-    const all = this.button('모두 열기', '', () => opens.forEach((o, i) => setTimeout(o, i * 160)));
-    box.append(title, row, all, log, h('div', 'chest-hint', '안 연 상자는 가방에 들어가요'));
+    const n = [2, 1, 0].map((g) => [g, chests.filter((c) => c === g).length] as const).filter(([, k]) => k > 0);
+    box.append(
+      h('div', 'chests-title', `🎉 상자 ${chests.length}개 획득!`),
+      row,
+      h('div', 'chest-hint', `${n.map(([g, k]) => `${CHEST_NAMES[g]} ×${k}`).join(' · ')}  →  🎒 가방에 쏙! (가방 탭에서 열어요)`),
+    );
+    setTimeout(() => sfx.chest(), 150);
     return box;
   }
 

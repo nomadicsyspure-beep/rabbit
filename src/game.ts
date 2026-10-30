@@ -7,7 +7,7 @@ import {
   OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, enemyGold, idleGoldPerSec, playerStats, xpToNext, type StatId,
 } from './data/balance';
 import {
-  BRANCHES, BRANCH_POINTS, SKILL_BY_ID, SKILL_TYPES, emptyTree, type Branch, type SkillId, type SkillType,
+  BRANCHES, BRANCH_POINTS, SKILLS, SKILL_BY_ID, SKILL_TYPES, emptyTree, type Branch, type SkillId, type SkillType,
 } from './data/skills';
 import { GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
 import { addReward, emptyReward, openChest, type ChestGrade, type Reward } from './data/items';
@@ -660,10 +660,11 @@ export class Game {
       else s.diamonds -= c.diamonds!;
     }
     const out: { def: (typeof SKILL_BY_ID)[SkillId]; text: string; isNew: boolean }[] = [];
-    // 튜토리얼 상자는 무조건 공격형 (처음부터 주변을 쓸어 보게)
+    // 튜토리얼 상자는 무조건 공격형 (처음부터 주변을 쓸어 보게). 공격형이 이미 있으면 그 스킬이 또 나온다 (스킬 포인트 배우기)
     const tutorial = s.tutorial >= 0;
+    const tutorialDup = tutorial ? SKILLS.find((d) => d.type === 'attack' && s.skills[d.id]) : undefined;
     for (let i = 0; i < n; i++) {
-      const def = rollBox(box, tutorial ? 'attack' : undefined);
+      const def = tutorialDup ?? rollBox(box, tutorial ? 'attack' : undefined);
       const tree = s.skills[def.id];
       if (!tree) {
         s.skills[def.id] = emptyTree();
@@ -699,20 +700,6 @@ export class Game {
     const c = [0, 0, 0];
     for (const [k, n] of Object.entries(this.save.chestBag)) c[Number(k.split(':')[0])] += n;
     return c;
-  }
-
-  /** 가방 속 상자 하나 열기 (결과 화면에서): 보상을 저장에 넣고 돌려준다. 없으면 null */
-  openOneChest(grade: ChestGrade, stage: number) {
-    const s = this.save;
-    const key = `${grade}:${stage}`;
-    if (!s.chestBag[key]) return null;
-    if (--s.chestBag[key] <= 0) delete s.chestBag[key];
-    const reward = openChest(grade, stage, enemyGold(stage));
-    this.grantReward(reward);
-    s.stats.chests++;
-    addDaily(s, 'chests');
-    this.persist();
-    return reward;
   }
 
   /** 가방 속 상자를 모두 연다: 상자마다 보상 (이미 저장에 넣은 상태로 돌려준다) */
@@ -766,8 +753,6 @@ export class Game {
     if (!this.canUpgradeBranch(id, branch)) return false;
     this.save.skillPoints[id] = (this.save.skillPoints[id] ?? 0) - this.branchUpgradeCost(id, branch)!;
     this.save.skills[id]![branch]++;
-    // 스테이지 중에 올리면 지금 판에도 바로
-    if (this.mode === 'action') this.action.applyUpgrade(id, branch);
     addDaily(this.save, 'upgrades');
     return true;
   }
