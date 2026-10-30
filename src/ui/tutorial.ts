@@ -43,7 +43,7 @@ export class Tutorial {
     this.steps = [
       { when: idle, text: '삐요! 나는 병아리 용사야. 몬스터를 물리치고 쑥쑥 강해지자!', button: '좋아!' },
       { when: idle, target: () => $('.challenge-btn'), text: '먼저 스테이지에 도전해 보자! 도전 버튼을 눌러 봐' },
-      { when: action, freeze: true, text: '화면을 끌면 병아리가 움직여. 스킬은 저절로 나가! 시간이 끝날 때까지 버티면 클리어야', button: '알겠어!' },
+      { when: action, freeze: true, text: '화면을 끌면 병아리가 움직여. 스킬은 저절로 나가! 1분이 지나면 보스가 나타나는데, 그 보스를 쓰러뜨리면 스테이지 클리어야', button: '알겠어!' },
       { when: action, freeze: true, target: () => $('.auto-btn'), text: '귀찮으면 AUTO! 누르면 알아서 싸워 (조이스틱을 쓰면 그동안은 직접)' },
       { when: idle, target: tab('스킬'), text: '잘했어! 이제 스킬을 얻으러 가자. 스킬 탭을 눌러 봐' },
       {

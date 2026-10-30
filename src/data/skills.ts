@@ -34,11 +34,11 @@ export const BRANCHES: { id: Branch; name: string; max: number }[] = [
   { id: 'cnt', name: '개수', max: 10 },
 ];
 
-/** 스킬 형태: 공격형(주변 광역) / 타겟형(적을 골라 맞힘) / 디버프형(상태 이상) / 버프형(나를 강화). 형태마다 장착 칸 하나 */
+/** 스킬 형태: 공격형(주변 광역) / 보조형(적을 골라 맞힘) / 디버프형(상태 이상) / 버프형(나를 강화). 형태마다 장착 칸 하나 */
 export type SkillType = 'attack' | 'target' | 'debuff' | 'buff';
 export const SKILL_TYPES: { id: SkillType; name: string; color: string; desc: string }[] = [
   { id: 'attack', name: '공격형', color: '#ff7a4a', desc: '주변을 넓게 휩쓴다' },
-  { id: 'target', name: '타겟형', color: '#ffd23f', desc: '적을 골라 맞힌다' },
+  { id: 'target', name: '보조형', color: '#ffd23f', desc: '적을 골라 맞힌다' },
   { id: 'debuff', name: '디버프형', color: '#c78bff', desc: '적을 멈추게·약하게·태우게' },
   { id: 'buff', name: '버프형', color: '#6fdc8c', desc: '병아리를 강하게' },
 ];
@@ -505,7 +505,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'goldspear', type: 'target', name: '황금 창', icon: 'fx:feather@45', blurb: '일직선으로 다 꿰뚫는 황금 창',
-    dmg: 1.4, cd: 1.5, count: 2, countLabel: '창',
+    dmg: 1.12, cd: 1.5, count: 2, countLabel: '창',
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'goldspear', sprite: 'feather@45', speed: 720, range: 460, pierce: 999, pattern: 'fan', gap: 0.15, r: 9, scale: 1.4 }),
   },
   // ---- 상자 추가분 (기존 그림 색만 바꿔서) ----
@@ -516,7 +516,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'spinblades', type: 'attack', name: '칼날 회오리', icon: 'fx:slash@200', blurb: '사방으로 날아갔다 돌아오는 칼날',
-    dmg: 1.9, cd: 2.2, count: 4, countStep: 2, countLabel: '칼날',
+    dmg: 1.6, cd: 2.2, count: 4, countStep: 2, countLabel: '칼날',
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'spinblades', sprite: 'slash@200', speed: 520, range: 640, pierce: 999, pattern: 'ring', back: true, r: 12, scale: 1.2 }),
   },
   {
@@ -531,7 +531,7 @@ export const SKILLS: SkillDef[] = [
   },
   {
     id: 'snipe', type: 'target', name: '저격', icon: 'fx:blue-slash@330', blurb: '멀리까지 꿰뚫는 아주 센 한 방',
-    dmg: 4.0, cd: 1.4, count: 1, countLabel: '탄환',
+    dmg: 3.0, cd: 1.4, count: 1, countLabel: '탄환',
     create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'snipe', sprite: 'blue-slash@330', speed: 950, range: 640, pierce: 999, pattern: 'fan', gap: 0.12, r: 7, scale: 1.6 }),
   },
   {
@@ -592,14 +592,14 @@ export const SKILLS: SkillDef[] = [
 ];
 
 /**
- * 밸런스 테스트 결과 (밸런스 패치 후 다시 잼, 상자 추가분 16개·부메랑 버그 수정분 포함. 스킬 Lv 5 = 피해 2·속도 1·개수 1, 스테이지 13, 같은 난수로 40초씩 4~8번).
- * 공격형·타겟형: 혼자 장착했을 때 준 피해. 디버프형·버프형: 회전 베기+깃털과 같이 썼을 때 처치 수·버틴 정도.
+ * 밸런스 테스트 결과 (밸런스 패치 후 다시 잼, 상자 추가분 16개·부메랑 버그·탄환 방향 버그 수정분 포함. 스킬 Lv 5 = 피해 2·속도 1·개수 1, 스테이지 13, 같은 난수로 40초씩 4~8번).
+ * 공격형·보조형: 혼자 장착했을 때 준 피해. 디버프형·버프형: 회전 베기+깃털과 같이 썼을 때 처치 수·버틴 정도.
  * 형태마다 센 순서 (앞일수록 셈)와 등급: 위 15% S · 20% A · 30% B · 20% C · 15% D
  */
 export type Grade = 'S' | 'A' | 'B' | 'C' | 'D';
 const RANKING: Record<SkillType, [SkillId, Grade][]> = {
-  attack: [['thornring', 'S'], ['cross', 'S'], ['quake', 'S'], ['lavapool', 'S'], ['firetrail', 'A'], ['emberring', 'A'], ['pollen', 'A'], ['boomerang', 'A'], ['shockwave', 'A'], ['wisp', 'B'], ['stormpulse', 'B'], ['phoenix', 'B'], ['darkwave', 'B'], ['tornadoring', 'B'], ['sunflare', 'B'], ['slash', 'B'], ['flame', 'C'], ['spinblades', 'C'], ['tornado', 'C'], ['dark', 'C'], ['featherstorm', 'C'], ['starfall', 'D'], ['windblade', 'D'], ['petal', 'D'], ['nova', 'D']],
-  target: [['firepillar', 'S'], ['bigegg', 'S'], ['firework', 'S'], ['meteor', 'S'], ['icemeteor', 'S'], ['eruption', 'A'], ['arrowrain', 'A'], ['thunder', 'A'], ['laser', 'A'], ['hailstorm', 'A'], ['holymark', 'A'], ['lance', 'B'], ['pillar', 'B'], ['lavaball', 'B'], ['egg', 'B'], ['shadowbolt', 'B'], ['feather', 'B'], ['iceorb', 'B'], ['fire', 'B'], ['chain', 'B'], ['snipe', 'C'], ['acid', 'C'], ['skullfire', 'C'], ['goldspear', 'C'], ['heartbeam', 'C'], ['shuriken', 'C'], ['magicmissile', 'D'], ['candy', 'D'], ['bubble', 'D'], ['note', 'D'], ['firefly', 'D']],
+  attack: [['cross', 'S'], ['phoenix', 'S'], ['thornring', 'S'], ['quake', 'S'], ['boomerang', 'A'], ['lavapool', 'A'], ['firetrail', 'A'], ['emberring', 'A'], ['pollen', 'A'], ['spinblades', 'B'], ['windblade', 'B'], ['shockwave', 'B'], ['stormpulse', 'B'], ['wisp', 'B'], ['darkwave', 'B'], ['sunflare', 'B'], ['tornadoring', 'C'], ['starfall', 'C'], ['featherstorm', 'C'], ['slash', 'C'], ['petal', 'C'], ['nova', 'D'], ['flame', 'D'], ['tornado', 'D'], ['dark', 'D']],
+  target: [['firepillar', 'S'], ['bigegg', 'S'], ['firework', 'S'], ['goldspear', 'S'], ['snipe', 'S'], ['lance', 'A'], ['laser', 'A'], ['eruption', 'A'], ['meteor', 'A'], ['thunder', 'A'], ['arrowrain', 'A'], ['icemeteor', 'B'], ['lavaball', 'B'], ['holymark', 'B'], ['shuriken', 'B'], ['hailstorm', 'B'], ['acid', 'B'], ['shadowbolt', 'B'], ['iceorb', 'B'], ['fire', 'B'], ['pillar', 'C'], ['heartbeam', 'C'], ['feather', 'C'], ['egg', 'C'], ['skullfire', 'C'], ['chain', 'C'], ['magicmissile', 'D'], ['candy', 'D'], ['bubble', 'D'], ['note', 'D'], ['firefly', 'D']],
   debuff: [['swamp', 'S'], ['vortex', 'S'], ['frostwave', 'S'], ['blackhole', 'S'], ['blizzard', 'A'], ['curse', 'A'], ['icetrail', 'A'], ['frostspike', 'A'], ['timestop', 'A'], ['shadowhand', 'A'], ['poisonbolt', 'B'], ['venom', 'B'], ['gravity', 'B'], ['poison', 'B'], ['frostbite', 'B'], ['ice', 'B'], ['flash', 'B'], ['doom', 'B'], ['dizzy', 'B'], ['plague', 'B'], ['bind', 'C'], ['roar', 'C'], ['huntmark', 'C'], ['terror', 'C'], ['hex', 'C'], ['ignite', 'C'], ['sleepdust', 'D'], ['weaken', 'D'], ['panic', 'D'], ['chillaura', 'D']],
   buff: [['overdrive', 'S'], ['regen', 'S'], ['shield', 'S'], ['heal', 'A'], ['fortress', 'A'], ['haste', 'A'], ['vampire', 'B'], ['luck', 'B'], ['berserk', 'B'], ['rage', 'B'], ['invincible', 'B'], ['bless', 'B'], ['spikeshell', 'C'], ['guardian', 'C'], ['magnetstorm', 'C'], ['frenzy', 'D'], ['thorns', 'D'], ['sprint', 'D']],
 };

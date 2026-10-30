@@ -1,5 +1,5 @@
 import { sfx } from '../audio/sfx';
-import { CHEST_NAMES, rewardText } from '../data/items';
+import { CHEST_NAMES } from '../data/items';
 import { regionOf, stageRule } from '../data/world';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
@@ -14,7 +14,7 @@ import { SKILL_BOXES, boxCost, boxesFor, oddsText, type BoxDef } from '../data/s
 import { COLLECTION_BONUS, DUNGEON_DAILY, REBIRTH_MIN_STAGE, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
-import { art, coin, h, holdRepeat, ibox, monsterPic, skillIcon, svgIcon } from './dom';
+import { art, chickPic, coin, h, holdRepeat, ibox, monsterPic, skillIcon, svgIcon } from './dom';
 import { buildGearTab, showCollection, showRebirth, type UIHost } from './meta';
 import { buildPetsTab, buildShopTab, showMissions } from './shop';
 import { ICONS } from './icons';
@@ -26,7 +26,7 @@ type TabId = 'growth' | 'skill' | 'gear' | 'pets' | 'dungeon' | 'shop';
 const TABS: { id: TabId; name: string; locked: boolean }[] = [
   { id: 'growth', name: '성장', locked: false },
   { id: 'skill', name: '스킬', locked: false },
-  { id: 'gear', name: '장비', locked: false },
+  { id: 'gear', name: '가방', locked: false },
   { id: 'pets', name: '동료', locked: false },
   { id: 'dungeon', name: '던전', locked: false },
   { id: 'shop', name: '상점', locked: false },
@@ -93,14 +93,12 @@ export class UI implements UIHost {
   private readonly slotsEl: HTMLElement;
   private readonly autoBtn: HTMLButtonElement;
   private readonly rotateBtn: HTMLButtonElement;
-  private readonly skillModeBtn: HTMLButtonElement;
   private readonly comboEl: HTMLElement;
   private readonly feverFill: HTMLElement;
   private readonly feverBanner: HTMLElement;
   private slots: SlotEl[] = [];
-  /** 스테이지 스킬 칸 설명 말풍선 */
-  private slotTip!: HTMLElement;
-  private slotTipT = 0;
+  /** 창이 닫힐 때 한 번 (스테이지 스킬 창: 전투 다시 시작) */
+  private onModalClose: (() => void) | null = null;
   private slotKey = '';
 
   private readonly tabButtons = new Map<TabId, HTMLButtonElement>();
@@ -164,7 +162,10 @@ export class UI implements UIHost {
     const xpZone = h('div', 'xp-zone');
     this.xpFill = h('div', 'xp-fill');
     xpZone.append(this.xpFill);
-    player.append(hpZone, this.lvEl, xpZone);
+    // 그림 속 얼굴 대신 실제 게임 병아리 그림
+    const face = h('div', 'hud-face');
+    face.append(chickPic(40));
+    player.append(hpZone, this.lvEl, xpZone, face);
     const center = h('div', 'stage-box');
     this.plateEl = h('div', 'plate');
     this.timerEl = h('div', 'timer');
@@ -206,13 +207,7 @@ export class UI implements UIHost {
     // 하단: 스킬 칸 (수동일 땐 눌러서 발동) + 스킬 자동/수동 전환
     const bottom = h('div', 'action-bottom');
     this.slotsEl = h('div', 'skill-slots');
-    this.skillModeBtn = h('button', 'text-btn skill-mode');
-    this.skillModeBtn.addEventListener('click', () => {
-      this.game.toggleAutoSkills();
-      this.refreshToggles();
-    });
-    this.slotTip = h('div', 'slot-tip');
-    bottom.append(this.slotTip, this.slotsEl, this.skillModeBtn);
+    bottom.append(this.slotsEl);
     this.comboEl = h('div', 'combo');
     this.feverBanner = h('div', 'fever-banner', 'FEVER TIME!');
 
@@ -262,49 +257,29 @@ export class UI implements UIHost {
     const save = this.game.save;
     this.rotateBtn.textContent = this.game.landscapeLocked ? '세로' : '가로';
     this.autoBtn.classList.toggle('on', save.autoMove);
-    // AUTO 중엔 스킬도 늘 자동
-    this.skillModeBtn.textContent = save.autoMove ? '스킬 자동 (AUTO)' : save.autoSkills ? '스킬 자동' : '스킬 수동';
-    this.skillModeBtn.disabled = save.autoMove;
-    this.skillModeBtn.classList.toggle('on', this.game.skillsAuto);
-    this.app.classList.toggle('manual-skills', !this.game.skillsAuto);
   }
 
-  /** 스테이지에서 스킬 칸 설명 (게임은 멈추지 않고 3초 뒤 사라진다) */
-  private showSlotTip(def: SkillDef) {
-    const type = SKILL_TYPES.find((t) => t.id === def.type)!;
-    const grade = SKILL_GRADE[def.id];
-    const name = h('div', 'tip-name', def.name + ' ');
-    name.append(h('span', `grade-badge g-${grade}`, grade), h('span', 'tip-type', ` ${type.name}`));
-    name.querySelector<HTMLElement>('.tip-type')!.style.color = type.color;
-    this.slotTip.replaceChildren(
-      name,
-      h('div', 'tip-blurb', def.blurb),
-      h('div', 'tip-sum', skillSummary(def, this.game.skillTree(def.id) ?? emptyTree())),
-    );
-    this.slotTip.classList.add('show');
-    this.slotTipT = 3;
+  /** 스테이지에서 스킬 칸을 누르면: 전투를 멈추고 그 스킬 설명·강화 창 (닫으면 이어서) */
+  private openStageSkill(def: SkillDef) {
+    const a = this.game.action;
+    if (a.state !== 'playing') return;
+    a.state = 'paused';
+    this.game.joystick.release();
+    this.onModalClose = () => {
+      if (a.state === 'paused') a.state = 'playing';
+    };
+    this.showSkill(def);
   }
 
   /** 장착 스킬 칸을 만든다 (스테이지가 시작되어 장착 목록이 바뀌면 다시) */
   private buildSlots() {
     this.slots = this.game.action.equipped.map((s) => {
       const root = h('button', 'slot');
-      // 수동 모드: 누르면 그 스킬을 쓴다 (쿨다운 중이면 준비되는 대로)
-      // 자동이면 누르면 설명, 수동이면 꾹 누르면 설명
-      let hold = 0;
-      root.addEventListener('pointerdown', (e) => {
+      // 스킬은 늘 자동. 칸을 누르면 전투를 멈추고 그 스킬 설명·강화 창
+      root.addEventListener('click', (e) => {
         e.preventDefault();
-        if (this.game.engine.autoSkills || !s.weapon.trigger) {
-          this.showSlotTip(s.def);
-          return;
-        }
-        s.weapon.trigger();
-        root.classList.add('pressed');
-        setTimeout(() => root.classList.remove('pressed'), 120);
-        clearTimeout(hold);
-        hold = window.setTimeout(() => this.showSlotTip(s.def), 450);
+        this.openStageSkill(s.def);
       });
-      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) root.addEventListener(ev, () => clearTimeout(hold));
       const icon = skillIcon(s.def, 'slot-icon');
       const track = h('div', 'cd-track');
       const zone = h('div', 'cd-zone');
@@ -322,6 +297,7 @@ export class UI implements UIHost {
   private selectTab(id: TabId) {
     for (const [tid, b] of this.tabButtons) b.classList.toggle('active', tid === id);
     this.panel.replaceChildren();
+    this.panel.scrollTop = 0;
     this.statRows.clear();
     this.skillTiles = [];
     this.skillHeader = null;
@@ -402,7 +378,7 @@ export class UI implements UIHost {
     top.append(this.skillHeader, this.equipBar);
     this.equipKey = '';
     this.panel.append(top, this.buildBoxes());
-    // 형태별로 나눠서 (공격형 · 타겟형 · 디버프형 · 버프형)
+    // 형태별로 나눠서 (공격형 · 보조형 · 디버프형 · 버프형)
     for (const type of SKILL_TYPES) {
       const head = h('div', 'skill-type-head');
       head.style.setProperty('--type', type.color);
@@ -518,6 +494,7 @@ export class UI implements UIHost {
   /** 스킬 창: 설명, 배우기 또는 가지 강화, 장착·교체 */
   private showSkill(def: SkillDef) {
     const g = this.game;
+    g.seeSkill(def.id);
     const head = h('div', 'tree-head');
     const title = h('div', 'info');
     const summary = h('div', 'modal-sub');
@@ -588,6 +565,8 @@ export class UI implements UIHost {
       }));
     };
     renderEquip();
+    // 스테이지 중엔 강화만 (장착 바꾸기는 메인 화면에서)
+    if (g.mode === 'action') equipBox.replaceChildren(h('div', 'modal-sub', '⏸ 전투 일시정지 중 · 닫으면 이어서 싸워요'));
     this.treeRefresh = () => {
       const tree = g.skillTree(def.id) ?? emptyTree();
       summary.textContent = skillSummary(def, tree);
@@ -666,10 +645,6 @@ export class UI implements UIHost {
 
   tick(dt: number) {
     this.tutorial.tick();
-    if (this.slotTipT > 0) {
-      this.slotTipT -= dt;
-      if (this.slotTipT <= 0) this.slotTip.classList.remove('show');
-    }
     if (this.toastT > 0) {
       this.toastT -= dt;
       if (this.toastT <= 0) this.toastEl.classList.remove('show');
@@ -722,6 +697,9 @@ export class UI implements UIHost {
       this.challengeLabel.textContent = isBossStage(next) ? `스테이지 ${next} 마왕 도전` : `스테이지 ${next} 도전`;
       this.challengeBtn.classList.toggle('boss', isBossStage(next));
       this.missionBtn.classList.toggle('dot', g.hasClaimable);
+      // 새 스킬이 있으면 스킬 탭에 빨간 점, 안 연 상자가 있으면 가방 탭에
+      this.tabButtons.get('skill')?.classList.toggle('dot', save.newSkills.length > 0);
+      this.tabButtons.get('gear')?.classList.toggle('dot', g.chestCounts.some((n) => n > 0));
 
       const st = g.stats;
       if (this.powerEl) {
@@ -756,6 +734,7 @@ export class UI implements UIHost {
         this.timerEl.textContent = fmtTime(a.kind === 'infinite' ? a.time : Math.max(0, a.duration - a.time));
       }
       this.timerEl.classList.toggle('boss', a.bossSpawned);
+      this.treeRefresh?.();
       this.killsEl.textContent = String(a.kills);
     }
   }
@@ -790,6 +769,7 @@ export class UI implements UIHost {
       const tree = g.skillTree(t.def.id);
       t.root.classList.toggle('unlearned', !tree);
       t.root.classList.toggle('equipped', eq.includes(t.def.id));
+      t.root.classList.toggle('new', g.save.newSkills.includes(t.def.id));
       t.lv.textContent = tree ? `Lv${treeLevel(tree)}` : '';
     }
   }
@@ -816,6 +796,9 @@ export class UI implements UIHost {
 
   closeModal() {
     this.treeRefresh = null;
+    const after = this.onModalClose;
+    this.onModalClose = null;
+    after?.();
     this.overlay.classList.remove('show');
     this.overlay.replaceChildren();
   }
@@ -873,7 +856,7 @@ export class UI implements UIHost {
     let sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
     if (r.kind === 'material') {
       title = r.win ? '재료 던전 완료!' : '재료 던전 끝';
-      sub = '주운 상자를 열어 보세요';
+      sub = '주운 상자는 가방 탭에서 열어요';
     } else if (r.kind === 'raid') {
       title = r.win ? '레이드 성공!' : '레이드 실패…';
       sub = r.win ? '보스의 정수로 전설 장비를 만들어요' : '보스 체력을 절반 넘게 깎으면 정수 1개';
@@ -882,7 +865,14 @@ export class UI implements UIHost {
       sub = `최고 기록 ${fmtTime(this.game.save.infiniteBest)}`;
     }
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
-    if (r.chests.length > 0) parts.push(this.chestOpener(r.chests));
+    // 주운 상자는 가방으로 (가방 탭에서 한꺼번에 연다)
+    if (r.chests.length > 0) {
+      const n = [0, 1, 2].map((g) => r.chests.filter((c) => c === g).length);
+      const text = n.map((k, g) => (k ? `${CHEST_NAMES[g]} ×${k}` : '')).filter(Boolean).join(' · ');
+      stats.append(h('div', 'result-row'));
+      stats.lastElementChild!.append(h('span', '', '주운 상자'), h('b', '', text));
+      parts.push(h('div', 'modal-sub', '🎒 상자는 가방 탭에서 한꺼번에 열어요'));
+    }
     parts.push(
       this.button('돌아가기', 'primary', () => {
         this.closeModal();
@@ -890,38 +880,6 @@ export class UI implements UIHost {
       }),
     );
     this.openModal(...parts);
-  }
-
-  /** 결과 화면 상자 열기: 누르면 흔들리다 펑 하고 재료가 나온다 (보상은 이미 받은 상태) */
-  private chestOpener(chests: RunResult['chests']) {
-    const box = h('div', 'chests');
-    box.append(h('div', 'chests-title', `주운 상자 ${chests.length}개 · 눌러서 열기`));
-    const row = h('div', 'chest-row');
-    const log = h('div', 'chest-log');
-    const opens: (() => void)[] = [];
-    for (const c of chests) {
-      const el = h('button', `chest-item grade-${c.grade}`);
-      el.append(art('chest'), h('span', '', CHEST_NAMES[c.grade]));
-      let opened = false;
-      const open = () => {
-        if (opened) return;
-        opened = true;
-        el.classList.add('shake');
-        setTimeout(() => {
-          el.classList.remove('shake');
-          el.classList.add('opened');
-          sfx.chest();
-          el.querySelector('span')!.textContent = '열림!';
-          log.append(h('div', 'chest-line', `${CHEST_NAMES[c.grade]}: ${rewardText(c.reward)}`));
-        }, 450);
-      };
-      el.addEventListener('click', open);
-      opens.push(open);
-      row.append(el);
-    }
-    const all = this.button('모두 열기', '', () => opens.forEach((o, i) => setTimeout(o, i * 160)));
-    box.append(row, all, log);
-    return box;
   }
 
   showOffline(sec: number, gold: number, claim: () => void) {

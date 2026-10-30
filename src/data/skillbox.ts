@@ -1,6 +1,6 @@
 import { idleGoldPerSec } from './balance';
 import { DIAMOND_OVERRIDE } from './shop';
-import { SKILLS, SKILL_GRADE, type Grade, type SkillDef } from './skills';
+import { SKILLS, SKILL_GRADE, type Grade, type SkillDef, type SkillType } from './skills';
 
 // 스킬은 상자를 까서 얻는다. 상자마다 등급 확률이 다르고, 비싼 상자에서만 S급이 나온다.
 // 이미 가진 스킬이 나오면 그 스킬 피해 +1 (피해가 최대면 골드로 돌려준다).
@@ -39,8 +39,8 @@ export function boxCost(box: BoxDef, n: 1 | 10, maxStage: number): { gold?: numb
   return { diamonds: (DIAMOND_OVERRIDE ?? box.diamonds!) * mult };
 }
 
-/** 등급 고르고 → 그 등급 스킬 중 하나 */
-export function rollBox(box: BoxDef): SkillDef {
+/** 등급 고르고 → 그 등급 스킬 중 하나 (type을 주면 그 형태에서만: 튜토리얼 상자는 공격형) */
+export function rollBox(box: BoxDef, type?: SkillType): SkillDef {
   let r = Math.random() * 100;
   let grade: Grade = 'D';
   for (const g of GRADES) {
@@ -50,7 +50,7 @@ export function rollBox(box: BoxDef): SkillDef {
     r -= p;
     if (r <= 0) break;
   }
-  const pool = SKILLS.filter((s) => SKILL_GRADE[s.id] === grade);
+  const pool = SKILLS.filter((s) => SKILL_GRADE[s.id] === grade && (!type || s.type === type));
   return pool[Math.floor(Math.random() * pool.length)];
 }
 

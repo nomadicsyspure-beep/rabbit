@@ -25,7 +25,7 @@ export class BoomerangWeapon extends SkillWeapon {
     const n = this.count;
     for (let i = 0; i < n; i++) {
       const a = base + (i - (n - 1) / 2) * 0.45;
-      engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y + Math.sin(a), 560, this.power, 1500, 999, 'slash', 0, {
+      engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y - 8 + Math.sin(a), 560, this.power, 1500, 999, 'slash', 0, {
         back: true, r: 18 * FX, scale: 1.3,
       });
     }
@@ -48,7 +48,7 @@ export class FireflyWeapon extends SkillWeapon {
     const n = this.count;
     for (let i = 0; i < n; i++) {
       const a = base + (Math.random() - 0.5) * 2.4;
-      engine.fireProjectile(p.x, p.y - 10, p.x + Math.cos(a), p.y + Math.sin(a), 260, this.power, 700, 0, 'sparkle', 0, { home: 6, r: 6 * FX });
+      engine.fireProjectile(p.x, p.y - 10, p.x + Math.cos(a), p.y - 10 + Math.sin(a), 260, this.power, 700, 0, 'sparkle', 0, { home: 6, r: 6 * FX });
     }
     return true;
   }
@@ -136,7 +136,7 @@ export class LanceWeapon extends SkillWeapon {
     const n = this.count;
     for (let i = 0; i < n; i++) {
       const a = base + (i - (n - 1) / 2) * 0.12;
-      engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y + Math.sin(a), 720, this.power, 480, 999, 'ice-crystals', 0, { r: 9 * FX, scale: 1.2 });
+      engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y - 8 + Math.sin(a), 720, this.power, 480, 999, 'ice-crystals', 0, { r: 9 * FX, scale: 1.2 });
     }
     return true;
   }
@@ -157,7 +157,7 @@ export class NovaWeapon extends SkillWeapon {
     const off = Math.random() * Math.PI;
     for (let i = 0; i < n; i++) {
       const a = off + (i / n) * Math.PI * 2;
-      engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y + Math.sin(a), 380, this.power, 280, 1, 'star-burst', 0, { r: 7 * FX });
+      engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y - 8 + Math.sin(a), 380, this.power, 280, 1, 'star-burst', 0, { r: 7 * FX });
     }
     engine.addEffect('ring', p.x, p.y, 50 * FX, 0.25, '#ffe08a');
     return true;
@@ -383,7 +383,7 @@ export class FeatherStormWeapon extends SkillWeapon {
     const off = Math.random() * Math.PI;
     for (let i = 0; i < n; i++) {
       const a = off + (i / n) * Math.PI * 2;
-      engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y + Math.sin(a), 500, this.power, 320, 1, 'feather');
+      engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y - 8 + Math.sin(a), 500, this.power, 320, 1, 'feather');
     }
     return true;
   }
@@ -429,7 +429,7 @@ export class ShotSkill extends SkillWeapon {
       const a = c.pattern === 'ring' ? off + (i / n) * Math.PI * 2
         : c.pattern === 'random' ? base + (Math.random() - 0.5) * 2.6
           : base + (i - (n - 1) / 2) * (c.gap ?? 0.22);
-      engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y + Math.sin(a), c.speed, this.power, c.range, c.pierce, c.sprite, (c.blast ?? 0) * FX, {
+      engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y - 8 + Math.sin(a), c.speed, this.power, c.range, c.pierce, c.sprite, (c.blast ?? 0) * FX, {
         home: c.home, back: c.back, r: c.r * FX, scale: c.scale,
       });
     }

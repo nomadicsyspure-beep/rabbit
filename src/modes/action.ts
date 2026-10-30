@@ -7,9 +7,9 @@ import { fmt } from '../core/format';
 import {
   actionRatio, enemyGold, isBossStage, stageClearGold, type ActionRatio,
 } from '../data/balance';
-import { CHEST_NAMES, addReward, emptyReward, openChest, rollChest, type ChestGrade, type Reward } from '../data/items';
+import { CHEST_NAMES, rollChest, type ChestGrade } from '../data/items';
 import { regionOf, stageRule, stageSkins, type RuleDef } from '../data/world';
-import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
+import { SKILL_BY_ID, createSkill, type Branch, type SkillDef, type SkillId } from '../data/skills';
 import type { Game } from '../game';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
@@ -96,8 +96,8 @@ export interface RunResult {
   essence: number;
   /** 무한 모드 신기록인지 */
   best: boolean;
-  /** 주운 상자들과 열면 나오는 것 (보상은 이미 저장에 들어가 있고, 결과 화면에서 여는 연출만 한다) */
-  chests: { grade: ChestGrade; reward: Reward }[];
+  /** 주운 상자 등급들 (가방에 들어갔다) */
+  chests: ChestGrade[];
 }
 
 export type RunState = 'playing' | 'paused' | 'ended';
@@ -711,7 +711,7 @@ export class ActionMode {
   private onChest(x: number, y: number, grade: ChestGrade) {
     this.chests.push(grade);
     this.game.engine.addText(x, y - 30, `${CHEST_NAMES[grade]}!`, '#ffe066', 16);
-    this.game.ui.toast(`${CHEST_NAMES[grade]} 획득! (끝나고 열어요)`);
+    this.game.ui.toast(`${CHEST_NAMES[grade]} 획득!`);
   }
 
   /** 경험치 보석: 캐릭터 영구 경험치로 바로 쌓는다 */
@@ -725,6 +725,12 @@ export class ActionMode {
       sfx.levelUp();
       this.game.ui.toast(`레벨 업! Lv ${this.game.save.level}`);
     }
+  }
+
+  /** 스테이지 중 스킬 강화: 이번 판 스킬에도 한 단계 더한다 (피버 보너스는 그대로) */
+  applyUpgrade(id: SkillId, branch: Branch) {
+    const s = this.equipped.find((x) => x.def.id === id);
+    if (s) s.tree[branch]++;
   }
 
   pause() {
@@ -766,23 +772,19 @@ export class ActionMode {
     }
     const best = this.kind === 'infinite' && this.time > save.infiniteBest;
     if (best) save.infiniteBest = this.time;
-    // 상자는 지금 열어서 저장에 넣고, 결과 화면에선 여는 연출만
-    const total = emptyReward();
-    const chests = this.chests.map((grade) => {
-      const reward = openChest(grade, this.stage, enemyGold(this.stage));
-      addReward(total, reward);
-      return { grade, reward };
-    });
-    this.game.grantReward(total);
+    // 주운 상자는 가방에 넣는다 (가방 탭에서 한꺼번에 연다)
+    const chests = [...this.chests];
+    for (const grade of chests) {
+      const key = `${grade}:${this.stage}`;
+      save.chestBag[key] = (save.chestBag[key] ?? 0) + 1;
+    }
     save.gold += gold;
     save.stats.kills += this.kills;
     save.stats.bestCombo = Math.max(save.stats.bestCombo, this.bestCombo);
     save.stats.fevers += this.fevers;
-    save.stats.chests += chests.length;
     save.stats.golden += this.goldenKills;
     addDaily(save, 'kills', this.kills);
     addDaily(save, 'plays');
-    addDaily(save, 'chests', chests.length);
     addDaily(save, 'fevers', this.fevers);
     this.game.addPassXp(PLAY_PASS_XP + (win ? PLAY_PASS_XP : 0));
     const result: RunResult = {

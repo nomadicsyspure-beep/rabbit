@@ -4,13 +4,13 @@ import { Engine } from './battle/engine';
 import { Renderer } from './battle/renderer';
 import { clearSave, loadSave, writeSave, type SaveData } from './core/save';
 import {
-  OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, idleGoldPerSec, playerStats, xpToNext, type StatId,
+  OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, enemyGold, idleGoldPerSec, playerStats, xpToNext, type StatId,
 } from './data/balance';
 import {
   BRANCHES, SKILL_BY_ID, SKILL_TYPES, branchCost, emptyTree, type Branch, type SkillId, type SkillType,
 } from './data/skills';
 import { GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
-import { type Reward } from './data/items';
+import { addReward, emptyReward, openChest, type ChestGrade, type Reward } from './data/items';
 import { PET_BY_ID, PET_MAX, PET_SLOTS, petValue } from './data/pets';
 import { BOX_BY_ID, boxCost, rollBox, type BoxId } from './data/skillbox';
 import { CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, rollGear, rollPet, skinPrice, summonCost } from './data/shop';
@@ -272,7 +272,7 @@ export class Game {
     const hat = this.worn('hat');
     if (hat) b.hp *= 1 + hat.def.hp! * gearScale(hat.plus);
     // 장신구·등 장비 효과
-    for (const slot of ['gloves', 'shoes', 'bag', 'acc'] as const) {
+    for (const slot of ['gloves', 'shoes', 'cape', 'acc'] as const) {
       const it = this.worn(slot);
       if (!it) continue;
       const v = it.def.value! * gearScale(it.plus);
@@ -573,19 +573,10 @@ export class Game {
     this.applyControls();
   }
 
-  toggleAutoSkills() {
-    this.save.autoSkills = !this.save.autoSkills;
-    this.applyControls();
-  }
-
-  /** 스킬이 지금 자동으로 나가는지 (AUTO 중이면 늘 자동) */
-  get skillsAuto() {
-    return this.save.autoSkills || this.save.autoMove;
-  }
-
   applyControls() {
     this.pilot.enabled = this.save.autoMove;
-    this.engine.autoSkills = this.skillsAuto;
+    // 스킬은 늘 자동 (수동 모드는 없앴다)
+    this.engine.autoSkills = true;
   }
 
   /** 지금 화면이 가로로 넓은지 (두 손 조작 배치) */
@@ -670,12 +661,15 @@ export class Game {
     }
     const dmgMax = BRANCHES.find((b) => b.id === 'dmg')!.max;
     const out: { def: (typeof SKILL_BY_ID)[SkillId]; text: string; isNew: boolean }[] = [];
+    // 튜토리얼 상자는 무조건 공격형 (처음부터 주변을 쓸어 보게)
+    const tutorial = s.tutorial >= 0;
     for (let i = 0; i < n; i++) {
-      const def = rollBox(box);
+      const def = rollBox(box, tutorial ? 'attack' : undefined);
       const tree = s.skills[def.id];
       if (!tree) {
         s.skills[def.id] = emptyTree();
         if (!this.equippedOfType(def.type)) this.toggleEquip(def.id);
+        if (!s.newSkills.includes(def.id)) s.newSkills.push(def.id);
         out.push({ def, text: 'NEW!', isNew: true });
       } else if (tree.dmg < dmgMax) {
         tree.dmg++;
@@ -689,6 +683,42 @@ export class Game {
     addDaily(s, 'summons', n);
     this.persist();
     return out;
+  }
+
+  /** 스킬 창을 열어 봤다: NEW 표시 끄기 */
+  seeSkill(id: SkillId) {
+    const i = this.save.newSkills.indexOf(id);
+    if (i >= 0) this.save.newSkills.splice(i, 1);
+  }
+
+  // ---- 가방: 안 연 상자 ----
+
+  /** 가방 속 상자 수 (등급별) */
+  get chestCounts() {
+    const c = [0, 0, 0];
+    for (const [k, n] of Object.entries(this.save.chestBag)) c[Number(k.split(':')[0])] += n;
+    return c;
+  }
+
+  /** 가방 속 상자를 모두 연다: 상자마다 보상 (이미 저장에 넣은 상태로 돌려준다) */
+  openAllChests() {
+    const s = this.save;
+    const out: { grade: ChestGrade; reward: Reward }[] = [];
+    const total = emptyReward();
+    for (const [k, n] of Object.entries(s.chestBag)) {
+      const [g, st] = k.split(':').map(Number);
+      for (let i = 0; i < n; i++) {
+        const reward = openChest(g as ChestGrade, st, enemyGold(st));
+        addReward(total, reward);
+        out.push({ grade: g as ChestGrade, reward });
+      }
+    }
+    s.chestBag = {};
+    this.grantReward(total);
+    s.stats.chests += out.length;
+    addDaily(s, 'chests', out.length);
+    this.persist();
+    return out.sort((a, b) => b.grade - a.grade);
   }
 
   /** 가지 다음 단계 비용 (최대면 null) */
@@ -708,6 +738,8 @@ export class Game {
     if (!this.canUpgradeBranch(id, branch)) return false;
     this.save.gold -= this.branchUpgradeCost(id, branch)!;
     this.save.skills[id]![branch]++;
+    // 스테이지 중에 올리면 지금 판에도 바로
+    if (this.mode === 'action') this.action.applyUpgrade(id, branch);
     addDaily(this.save, 'upgrades');
     return true;
   }
@@ -718,7 +750,7 @@ export class Game {
     return this.save.equipped.find((id) => SKILL_BY_ID[id].type === type) ?? null;
   }
 
-  /** 장착/해제. 형태(공격·타겟·디버프·버프)마다 한 칸이라, 같은 형태가 이미 있으면 바꿔 낀다 */
+  /** 장착/해제. 형태(공격·보조·디버프·버프)마다 한 칸이라, 같은 형태가 이미 있으면 바꿔 낀다 */
   toggleEquip(id: SkillId): boolean {
     const eq = this.save.equipped;
     const i = eq.indexOf(id);
@@ -731,7 +763,7 @@ export class Game {
     const old = eq.findIndex((x) => SKILL_BY_ID[x].type === type);
     if (old >= 0) eq.splice(old, 1);
     eq.push(id);
-    // 칸 순서: 공격 · 타겟 · 디버프 · 버프
+    // 칸 순서: 공격 · 보조 · 디버프 · 버프
     const order = SKILL_TYPES.map((t) => t.id);
     eq.sort((a, b) => order.indexOf(SKILL_BY_ID[a].type) - order.indexOf(SKILL_BY_ID[b].type));
     return true;
