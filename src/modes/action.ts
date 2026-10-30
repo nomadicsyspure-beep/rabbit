@@ -469,6 +469,14 @@ export class ActionMode {
     this.combo = now - this.lastKillAt <= COMBO_SEC ? this.combo + 1 : 1;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.lastKillAt = now;
+    // 100콤보마다 축하 연출
+    if (this.combo % 100 === 0) {
+      const eng = this.game.engine;
+      const p = eng.player;
+      eng.addEffect('ring', p.x, p.y, 140, 0.45, '#ffe066');
+      eng.burst(p.x, p.y - 20, 24, ['#ffe066', '#ffb347', '#ffffff'], 260, 0.7, 300, 3.5);
+      eng.addText(p.x, p.y - 64, `${this.combo} COMBO!`, '#ffb347', 22);
+    }
     // 콤보 FEVER_NEED마다 피버 (500, 1000, ...). 콤보가 끊기면 처음부터
     if (this.combo === 1) this.nextFeverAt = FEVER_NEED;
     if (this.combo >= this.nextFeverAt) {

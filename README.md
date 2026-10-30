@@ -54,4 +54,4 @@ python3 tools/cut_sheets.py
 python3 tools/chick_frames.py
 ```
 
-기획과 결정 사항은 [docs/PLAN.md](docs/PLAN.md) 참고.
+기획과 결정 사항은 [docs/PLAN.md](docs/PLAN.md), 다음 성장·BM·콘텐츠 아이디어는 [docs/IDEAS.md](docs/IDEAS.md) 참고.
