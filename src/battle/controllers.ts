@@ -117,6 +117,16 @@ export class AutoPilot implements Controller {
       ax += (tx / d) * pull + (-ty / d) * 0.7 * this.orbit;
       ay += (ty / d) * pull + (tx / d) * 0.7 * this.orbit;
     }
+    // 레이드 장판: 안에 있으면 바깥으로 빠져나간다
+    for (const hz of engine.hazards) {
+      const dx = p.x - hz.x;
+      const dy = p.y - hz.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < hz.r + 24) {
+        ax += (dx / d) * 6;
+        ay += (dy / d) * 6;
+      }
+    }
     // 보물 상자가 최우선
     let chest: { x: number; y: number } | null = null;
     let best = 500 * 500;

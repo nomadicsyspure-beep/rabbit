@@ -56,6 +56,8 @@ export interface SaveData {
   achieve: Record<string, number>;
   /** 패스: 경험치, 무료 보상 받은 레벨 */
   pass: { xp: number; claimed: number[] };
+  /** 무한 모드 최고 기록(초) */
+  infiniteBest: number;
 }
 
 export function newSave(): SaveData {
@@ -90,6 +92,7 @@ export function newSave(): SaveData {
     attend: { last: '', days: 0 },
     achieve: {},
     pass: { xp: 0, claimed: [] },
+    infiniteBest: 0,
   };
 }
 
@@ -146,10 +149,13 @@ export function loadSave(): SaveData {
       pet: data.pet ?? null,
       tickets: { ...base.tickets, ...data.tickets },
       skins: { ...base.skins, ...data.skins },
-      daily: data.daily ? { ...base.daily, ...data.daily, counts: { ...base.daily.counts, ...data.daily.counts } } : base.daily,
+      daily: data.daily
+        ? { ...base.daily, ...data.daily, counts: { ...base.daily.counts, ...data.daily.counts }, entries: { ...base.daily.entries, ...data.daily.entries } }
+        : base.daily,
       attend: { ...base.attend, ...data.attend },
       achieve: { ...data.achieve },
       pass: { ...base.pass, ...data.pass },
+      infiniteBest: data.infiniteBest ?? 0,
     };
   } catch {
     return newSave();

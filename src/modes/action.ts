@@ -60,6 +60,19 @@ const VACUUM_COMBO = 100;
 /** 안개 규칙: 보이는 반경(px) */
 const FOG_RADIUS = 150;
 
+/** 판 종류: 스테이지 / 재료 던전 / 보스 레이드 / 무한 모드 */
+export type RunKind = 'stage' | 'material' | 'raid' | 'infinite';
+/** 재료 던전: 길이(초), 상자 간격(초) */
+const MATERIAL_SECONDS = 45;
+const MATERIAL_CHEST_SEC = 3;
+/** 보스 레이드: 제한 시간(초), 보스 체력, 졸개 생성 배율(대폭 줄임) */
+const RAID_SECONDS = 90;
+const RAID_HP = 7000;
+const RAID_SPAWN = 0.12;
+/** 무한 모드: 이 시간마다 다음 지역으로, 정예 습격 간격 */
+const INFINITE_REGION_SEC = 60;
+const INFINITE_ELITE_SEC = 45;
+
 export interface RunResult {
   win: boolean;
   time: number;
@@ -70,6 +83,11 @@ export interface RunResult {
   levelUps: number;
   gold: number;
   stage: number;
+  kind: RunKind;
+  /** 레이드로 얻은 보스의 정수 */
+  essence: number;
+  /** 무한 모드 신기록인지 */
+  best: boolean;
   /** 주운 상자들과 열면 나오는 것 (보상은 이미 저장에 들어가 있고, 결과 화면에서 여는 연출만 한다) */
   chests: { grade: ChestGrade; reward: Reward }[];
 }
@@ -86,6 +104,7 @@ export interface EquippedSkill {
 
 export class ActionMode {
   state: RunState = 'ended';
+  kind: RunKind = 'stage';
   stage = 1;
   /** 이번 판에서 보스가 나오기까지 버텨야 하는 시간 */
   duration = NORMAL_SECONDS;
@@ -140,6 +159,10 @@ export class ActionMode {
   private feverKills = 0;
   private fevers = 0;
   private goldenKills = 0;
+  /** 몹 외형·바닥을 정하는 스테이지 (무한 모드는 시간이 지나면 다음 지역으로) */
+  private skinStage = 1;
+  private phase2 = false;
+  private nextElite = 0;
 
   constructor(private readonly game: Game) {}
 
@@ -148,10 +171,10 @@ export class ActionMode {
   }
 
   get isBossStage() {
-    return isBossStage(this.stage);
+    return this.kind === 'stage' && isBossStage(this.stage);
   }
 
-  enter(stage: number) {
+  enter(stage: number, kind: RunKind = 'stage') {
     const eng = this.game.engine;
     eng.reset();
     eng.bounds = null;
@@ -168,7 +191,12 @@ export class ActionMode {
     };
 
     this.stage = stage;
-    this.duration = isBossStage(stage) ? BOSS_STAGE_SECONDS : NORMAL_SECONDS;
+    this.kind = kind;
+    this.skinStage = stage;
+    this.phase2 = false;
+    this.nextElite = INFINITE_ELITE_SEC;
+    this.duration = kind === 'material' ? MATERIAL_SECONDS : kind === 'raid' ? RAID_SECONDS : kind === 'infinite' ? Infinity
+      : isBossStage(stage) ? BOSS_STAGE_SECONDS : NORMAL_SECONDS;
     const save = this.game.save;
     const st = this.game.stats;
     const bonus = this.game.bonus;
@@ -210,17 +238,23 @@ export class ActionMode {
     this.wallStreak = 0;
     this.waveIdx = Math.floor(Math.random() * WAVES.length);
     this.endT = -1;
-    this.chestT = CHEST_SEC * 0.6;
+    this.chestT = kind === 'material' ? 1 : kind === 'raid' ? Infinity : CHEST_SEC * 0.6;
     this.bonusGold = 0;
     this.chests = [];
 
     // 지역 바닥과 스테이지 규칙
     const region = regionOf(stage);
     eng.ground = region.ground;
-    this.rule = stageRule(stage);
+    this.rule = kind === 'stage' ? stageRule(stage) : null;
     eng.fog = this.rule?.id === 'fog' ? FOG_RADIUS : 0;
     this.eliteAt = this.rule?.id === 'elite' ? [18, 33, 48] : [];
-    this.game.ui.toast(this.rule ? `${region.name} · 규칙: ${this.rule.name} (${this.rule.desc})` : region.name);
+    const intro = {
+      stage: this.rule ? `${region.name} · 규칙: ${this.rule.name} (${this.rule.desc})` : region.name,
+      material: `재료 던전 · ${region.name}: 상자가 쏟아져요!`,
+      raid: '보스 레이드: 빨간 장판을 피해라!',
+      infinite: '무한 모드: 얼마나 버틸 수 있을까?',
+    };
+    this.game.ui.toast(intro[kind]);
 
     // 장착한 스킬만 발동한다 (레벨은 성장 탭에서 올린 그대로)
     this.equipped = [];
@@ -239,7 +273,17 @@ export class ActionMode {
       const tree = { dmg: plus, spd: Math.floor(plus / 3), cnt: Math.floor(plus / 5) };
       eng.weapons.push(createSkill(SKILL_BY_ID[bonus.weapon.skill], this.stats, tree));
     }
+    if (kind === 'raid') this.spawnRaidBoss();
     this.state = 'playing';
+  }
+
+  /** 레이드 보스: 처음부터 나와 있다 (체력 절반에서 2페이즈) */
+  private spawnRaidBoss() {
+    this.bossSpawned = true;
+    const p = this.game.engine.player;
+    this.game.engine.spawnEnemy({
+      kind: 'boss', skin: 'devil', raid: true, x: p.x, y: p.y - 230, hp: RAID_HP, r: 38, speed: 42, dmg: 24, xp: 0, t1: 2,
+    });
   }
 
   update(dt: number) {
@@ -254,22 +298,29 @@ export class ActionMode {
 
     this.time += dt;
 
-    if (!this.bossSpawned && this.time >= this.duration) this.spawnBoss();
+    if (this.kind === 'stage') {
+      if (!this.bossSpawned && this.time >= this.duration) this.spawnBoss();
+    } else if (this.kind === 'material') {
+      if (this.time >= this.duration) return this.finish(true);
+    } else if (this.kind === 'raid') {
+      if (this.time >= this.duration) return this.finish(false);
+      this.checkPhase2();
+    } else {
+      this.updateInfinite();
+    }
 
     // 초당 생성 수: 시간이 지날수록 늘어난다 (보스 스테이지가 더 빽빽하다)
     const peak = this.isBossStage ? 18 : 14;
     // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
     const horde = this.rule?.id === 'horde' ? 1.6 : 1;
-    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * horde * (this.fever > 0 ? FEVER_SPAWN : 1);
+    const kindRate = this.kind === 'raid' ? RAID_SPAWN : this.kind === 'infinite' ? 1 + this.time / 120 : 1;
+    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * horde * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1);
 
     // 정예 습격 규칙
     if (this.eliteAt.length > 0 && this.time >= this.eliteAt[0]) {
       this.eliteAt.shift();
-      const pos = this.spawnPos();
-      const s = 1 + (this.time / 60) * 0.6;
-      this.spawnMob({ kind: 'tank', skin: 'rabbit', x: pos.x, y: pos.y, hp: 160 * s, r: 20, speed: 60, dmg: 12 * s, xp: 15 });
-      this.game.ui.toast('정예 습격!');
+      this.spawnElite();
     }
 
     if (this.fever > 0) {
@@ -319,16 +370,51 @@ export class ActionMode {
     // 일정 시간마다 화면 안 가까운 곳에 보물 상자
     this.chestT -= dt;
     if (this.chestT <= 0) {
-      this.chestT = CHEST_SEC;
+      this.chestT = this.kind === 'material' ? MATERIAL_CHEST_SEC : CHEST_SEC;
       const a = Math.random() * Math.PI * 2;
       const d = 110 + Math.random() * 90;
       const p = eng.player;
       const grade = rollChest((this.fever > 0 ? 0.25 : 0) + this.chestBonus);
       eng.spawnChest(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d * 0.7, grade);
-      this.game.ui.toast(`${CHEST_NAMES[grade]} 등장!`);
+      if (this.kind !== 'material') this.game.ui.toast(`${CHEST_NAMES[grade]} 등장!`);
     }
 
     this.recycleFarEnemies();
+  }
+
+  private spawnElite() {
+    const pos = this.spawnPos();
+    const s = 1 + (this.time / 60) * 0.6;
+    this.spawnMob({ kind: 'tank', skin: 'rabbit', x: pos.x, y: pos.y, hp: 160 * s, r: 20, speed: 60, dmg: 12 * s, xp: 15 });
+    this.game.ui.toast('정예 습격!');
+  }
+
+  /** 레이드 2페이즈: 체력 절반 아래로 내려가면 한 번 알린다 (패턴은 엔진이 알아서 거세진다) */
+  private checkPhase2() {
+    const boss = this.game.engine.boss;
+    if (this.phase2 || !boss || boss.hp > boss.maxHp * 0.5) return;
+    this.phase2 = true;
+    const eng = this.game.engine;
+    eng.addEffect('ring', boss.x, boss.y, 200, 0.7, '#ff4d6d');
+    eng.addShake(8);
+    sfx.fever();
+    this.game.ui.toast('2페이즈! 마왕이 분노했다!');
+  }
+
+  /** 무한 모드: 1분마다 다음 지역(몹·바닥이 바뀌고 더 세짐), 정예가 주기적으로 */
+  private updateInfinite() {
+    const region = Math.min(4, Math.floor(this.time / INFINITE_REGION_SEC));
+    const skinStage = this.stage + region * 10;
+    if (skinStage !== this.skinStage) {
+      this.skinStage = skinStage;
+      const r = regionOf(skinStage);
+      this.game.engine.ground = r.ground;
+      this.game.ui.toast(`${r.name}(으)로 들어섰다!`);
+    }
+    if (this.time >= this.nextElite) {
+      this.nextElite += INFINITE_ELITE_SEC;
+      this.spawnElite();
+    }
   }
 
   /** 몹이 짙어지는 정도 0~1 (스테이지 길이와 상관없이 RAMP_SEC초에 걸쳐) */
@@ -376,7 +462,7 @@ export class ActionMode {
   private spawnOne(kind: EnemyKind, angle?: number) {
     const { x, y } = this.spawnPos(angle);
     const s = 1 + (this.time / 60) * 0.6;
-    const skins = stageSkins(this.stage);
+    const skins = stageSkins(this.skinStage);
     // 가끔 황금 몹: 도망치고, 잡으면 골드 폭죽
     if (kind === 'normal' && Math.random() < GOLDEN_RATE * this.game.goldenBoost) {
       this.spawnMob({ kind, skin: skins.normal, x, y, hp: 15 * s, r: 12, speed: 95, dmg: 0, xp: 5, move: 'flee', golden: true, t1: 12 });
@@ -405,7 +491,7 @@ export class ActionMode {
     const p = eng.player;
     const h = this.heading ?? 0;
     const s = 1 + (this.time / 60) * 0.6;
-    const skins = stageSkins(this.stage);
+    const skins = stageSkins(this.skinStage);
     const d = this.diag / 2 + 20;
     const n = 8 + streak * 4;
     for (let i = 0; i < n; i++) {
@@ -424,7 +510,7 @@ export class ActionMode {
     const eng = this.game.engine;
     const p = eng.player;
     const s = 1 + (this.time / 60) * 0.6;
-    const skins = stageSkins(this.stage);
+    const skins = stageSkins(this.skinStage);
     const crowd = 1 + this.ramp;
     const h = this.heading ?? Math.random() * Math.PI * 2;
     switch (wave) {
@@ -635,7 +721,8 @@ export class ActionMode {
     // 잡은 만큼 골드 + 이기면 클리어 보상
     // 피버 중 처치는 골드 2배
     let gold = (this.kills + this.feverKills) * enemyGold(this.stage) * KILL_GOLD + this.bonusGold;
-    if (win) {
+    if (win && this.kind === 'raid') gold += stageClearGold(this.stage) * 2;
+    if (win && this.kind === 'stage') {
       gold += stageClearGold(this.stage);
       save.maxStage = Math.max(save.maxStage, this.stage);
       save.bestStageEver = Math.max(save.bestStageEver, save.maxStage);
@@ -643,6 +730,15 @@ export class ActionMode {
       save.stats.stages++;
     }
     gold *= this.game.goldBoost;
+    // 레이드: 이기면 정수 3개(45초 안이면 +1), 져도 보스 체력을 절반 넘게 깎았으면 1개
+    let essence = 0;
+    if (this.kind === 'raid') {
+      const boss = this.game.engine.boss;
+      essence = win ? 3 + (this.time < 45 ? 1 : 0) : boss && boss.hp <= boss.maxHp * 0.5 ? 1 : 0;
+      save.essence += essence;
+    }
+    const best = this.kind === 'infinite' && this.time > save.infiniteBest;
+    if (best) save.infiniteBest = this.time;
     // 상자는 지금 열어서 저장에 넣고, 결과 화면에선 여는 연출만
     const total = emptyReward();
     const chests = this.chests.map((grade) => {
@@ -664,7 +760,7 @@ export class ActionMode {
     this.game.addPassXp(PLAY_PASS_XP + (win ? PLAY_PASS_XP : 0));
     const result: RunResult = {
       win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps,
-      gold, stage: this.stage, chests,
+      gold, stage: this.stage, chests, kind: this.kind, essence, best,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }

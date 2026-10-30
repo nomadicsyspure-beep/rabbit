@@ -13,6 +13,8 @@ export interface DailyState {
   claimed: string[];
   /** 오늘 본 광고 수 */
   ads: number;
+  /** 오늘 들어간 던전 횟수 */
+  entries: { material: number; raid: number };
 }
 
 export const today = () => {
@@ -25,6 +27,7 @@ export const emptyDaily = (): DailyState => ({
   counts: { kills: 0, plays: 0, chests: 0, fevers: 0, upgrades: 0, summons: 0 },
   claimed: [],
   ads: 0,
+  entries: { material: 0, raid: 0 },
 });
 
 /** 날짜가 바뀌었으면 일일 기록을 새로 */

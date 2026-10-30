@@ -20,7 +20,7 @@ import {
 import type { PetDef } from './data/pets';
 import type { GearDef } from './data/gear';
 import type { MatId } from './data/world';
-import { ActionMode } from './modes/action';
+import { ActionMode, type RunKind } from './modes/action';
 import { IdleMode } from './modes/idle';
 import { UI } from './ui/ui';
 
@@ -37,6 +37,8 @@ export const REBIRTH_UPS = {
 } as const;
 export type RebirthUp = keyof typeof REBIRTH_UPS;
 const OFFLINE_MIN_SEC = 60;
+/** 하루 입장 횟수: 재료 던전 / 보스 레이드 */
+export const DUNGEON_DAILY = { material: 2, raid: 3 } as const;
 
 export type Mode = 'idle' | 'action';
 
@@ -135,13 +137,24 @@ export class Game {
 
   // ---- 모드 전환 ----
 
-  enterAction() {
+  /** 오늘 남은 입장 횟수 */
+  entriesLeft(kind: 'material' | 'raid') {
+    return DUNGEON_DAILY[kind] - freshDaily(this.save).entries[kind];
+  }
+
+  /** 스테이지·던전 입장. 던전은 최고 스테이지 난이도로, 하루 횟수가 남아 있어야 한다 */
+  enterAction(kind: RunKind = 'stage') {
+    if ((kind === 'material' || kind === 'raid') && this.entriesLeft(kind) <= 0) {
+      this.ui.toast('오늘 입장 횟수를 다 썼어요');
+      return;
+    }
+    if (kind === 'material' || kind === 'raid') this.save.daily.entries[kind]++;
     this.persist();
     this.mode = 'action';
     this.ui.setMode('action');
     sfx.setCombat(true);
     this.resize();
-    this.action.enter(this.nextStage);
+    this.action.enter(kind === 'stage' ? this.nextStage : Math.max(1, this.save.maxStage), kind);
   }
 
   enterIdle() {

@@ -9,7 +9,7 @@ import {
 import {
   BRANCHES, EQUIP_SLOTS, SKILLS, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, type SkillDef, type SkillId,
 } from '../data/skills';
-import type { Game, Mode } from '../game';
+import { DUNGEON_DAILY, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
 import { art, coin, h, holdRepeat, skillIcon, svgIcon } from './dom';
@@ -451,15 +451,34 @@ export class UI implements UIHost {
     card.append(icon, info, btn);
     this.panel.append(card);
 
-    for (const [name, desc] of [['일일 던전', '매일 초기화 · 강화석 획득'], ['주간 던전', '매주 초기화 · 스킬북 획득']]) {
-      const c = h('div', 'card dungeon locked');
+    // 재료 던전 / 보스 레이드 / 무한 모드 (최고 스테이지 난이도)
+    const extra = ([
+      ['material', '📦', '재료 던전', '45초 동안 3초마다 보물 상자! 지역 재료·스킬북을 쓸어 담아요'],
+      ['raid', '😈', '보스 레이드', '잡몹은 적고 마왕은 거세다 · 빨간 장판을 피하고 2페이즈를 버텨요 · 🔮 보스의 정수'],
+      ['infinite', '♾️', '무한 모드', '끝없이 몰려온다 · 1분마다 다음 지역 · 오래 버틸수록 기록'],
+    ] as const).map(([kind, icon, name, desc]) => {
+      const c = h('div', 'card dungeon');
       const info = h('div', 'info');
-      info.append(h('div', 'title', name), h('div', 'sub', desc + ' (준비 중)'));
-      c.append(svgIcon(ICONS.lock), info);
+      const sub = h('div', 'ratio');
+      info.append(h('div', 'title', name), h('div', 'sub', desc), sub);
+      const enter = h('button', 'enter', '입장');
+      enter.addEventListener('click', () => this.game.enterAction(kind));
+      c.append(h('div', 'item-icon', icon), info, enter);
       this.panel.append(c);
-    }
+      return () => {
+        const s = this.game.save;
+        if (kind === 'infinite') {
+          sub.textContent = s.infiniteBest > 0 ? `최고 기록 ${fmtTime(s.infiniteBest)}` : '기록 없음';
+          return;
+        }
+        const left = this.game.entriesLeft(kind);
+        sub.textContent = `오늘 ${left}/${DUNGEON_DAILY[kind]}회${kind === 'raid' ? ` · 🔮 보유 ${s.essence}` : ''}`;
+        enter.disabled = left <= 0;
+      };
+    });
 
     this.dungeonRefresh = () => {
+      extra.forEach((r) => r());
       const stage = this.game.nextStage;
       title.textContent = isBossStage(stage) ? `스테이지 ${stage} · 마왕` : `스테이지 ${stage}`;
       const rule = stageRule(stage);
@@ -553,8 +572,13 @@ export class UI implements UIHost {
       this.hpText.textContent = `${Math.ceil(Math.max(0, p.hp))} / ${Math.ceil(p.maxHp)}`;
       this.lvEl.textContent = `Lv.${save.level}`;
       this.xpFill.style.width = `${Math.min(1, save.xp / xpToNext(save.level)) * 100}%`;
-      this.plateEl.textContent = `STAGE ${a.stage}`;
-      this.timerEl.textContent = a.bossSpawned ? (a.isBossStage ? '마왕!' : '정예!') : fmtTime(a.duration - a.time);
+      if (a.kind === 'stage') {
+        this.plateEl.textContent = `STAGE ${a.stage}`;
+        this.timerEl.textContent = a.bossSpawned ? (a.isBossStage ? '마왕!' : '정예!') : fmtTime(a.duration - a.time);
+      } else {
+        this.plateEl.textContent = { material: '재료 던전', raid: '보스 레이드', infinite: '무한 모드' }[a.kind];
+        this.timerEl.textContent = fmtTime(a.kind === 'infinite' ? a.time : Math.max(0, a.duration - a.time));
+      }
       this.timerEl.classList.toggle('boss', a.bossSpawned);
       this.killsEl.textContent = String(a.kills);
     }
@@ -652,9 +676,20 @@ export class UI implements UIHost {
     line('최고 콤보', String(r.bestCombo));
     line('경험치', `+${r.xp}` + (r.levelUps > 0 ? ` (레벨 업 ${r.levelUps}번!)` : ''));
     line('보상', coin(fmt(r.gold)));
-    const title = r.win ? `스테이지 ${r.stage} 클리어!` : '쓰러졌어요…';
-    const sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
-    const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
+    if (r.kind === 'raid') line('보스의 정수', `🔮 +${r.essence}`);
+    let title = r.win ? `스테이지 ${r.stage} 클리어!` : '쓰러졌어요…';
+    let sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
+    if (r.kind === 'material') {
+      title = r.win ? '재료 던전 완료!' : '재료 던전 끝';
+      sub = '주운 상자를 열어 보세요';
+    } else if (r.kind === 'raid') {
+      title = r.win ? '레이드 성공!' : '레이드 실패…';
+      sub = r.win ? '보스의 정수로 전설 장비를 만들어요' : '보스 체력을 절반 넘게 깎으면 정수 1개';
+    } else if (r.kind === 'infinite') {
+      title = r.best ? `신기록! ${fmtTime(r.time)}` : `${fmtTime(r.time)} 버텼어요`;
+      sub = `최고 기록 ${fmtTime(this.game.save.infiniteBest)}`;
+    }
+    const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
     if (r.chests.length > 0) parts.push(this.chestOpener(r.chests));
     // 광고 보고 보상 2배 (골드 + 상자 재료 한 번 더)
     const double = this.button('📺 광고 보고 보상 2배', 'ad', () =>
@@ -665,7 +700,7 @@ export class UI implements UIHost {
         done();
       }),
     );
-    if (this.game.adsLeft > 0) parts.push(double);
+    if (this.game.adsLeft > 0 && (r.gold > 0 || r.chests.length > 0)) parts.push(double);
     parts.push(
       this.button('돌아가기', 'primary', () => {
         this.closeModal();

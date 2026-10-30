@@ -79,6 +79,22 @@ export class Renderer {
       if (fx.active && (fx.kind === 'telegraph' || fx.kind === 'corpse')) this.drawEffect(fx);
     }
 
+    // 레이드 경고 장판: 빨간 원 안이 차오르면 터진다
+    for (const hz of eng.hazards) {
+      const k = 1 - hz.t / hz.maxT;
+      ctx.fillStyle = 'rgba(255,50,70,0.16)';
+      ctx.beginPath();
+      ctx.arc(hz.x, hz.y, hz.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,80,100,0.85)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,50,70,0.38)';
+      ctx.beginPath();
+      ctx.arc(hz.x, hz.y, hz.r * k, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     // 보물 상자: 빛나는 고리 위에서 통통 튄다
     const chest = SPRITES.ui.chest;
     for (const c of eng.chests.items) {
