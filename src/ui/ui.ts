@@ -7,8 +7,9 @@ import {
   type StatId,
 } from '../data/balance';
 import {
-  BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_GRADE, SKILL_TYPES, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, SKILL_BY_ID, type SkillDef,
+  BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_GRADE, SKILL_TYPES, branchValue, emptyTree, skillSummary, treeLevel, SKILL_BY_ID, type SkillDef,
 } from '../data/skills';
+import { SKILL_BOXES, boxCost, boxesFor, oddsText, type BoxDef } from '../data/skillbox';
 import { DUNGEON_DAILY, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
@@ -101,6 +102,7 @@ export class UI implements UIHost {
   /** 스킬 탭 위쪽 장착 중 4칸 (장착이 바뀔 때만 다시 만든다) */
   private equipBar: HTMLElement | null = null;
   private equipKey = '';
+  private boxRefresh: (() => void) | null = null;
   private powerEl: HTMLElement | null = null;
   private dungeonRefresh: (() => void) | null = null;
   /** 장비 탭 같은 추가 화면 갱신 */
@@ -290,6 +292,7 @@ export class UI implements UIHost {
     this.skillTiles = [];
     this.skillHeader = null;
     this.equipBar = null;
+    this.boxRefresh = null;
     this.powerEl = null;
     this.dungeonRefresh = null;
     this.metaRefresh = null;
@@ -354,7 +357,7 @@ export class UI implements UIHost {
     this.equipBar = h('div', 'equip-slots');
     top.append(this.skillHeader, this.equipBar);
     this.equipKey = '';
-    this.panel.append(top);
+    this.panel.append(top, this.buildBoxes());
     // 형태별로 나눠서 (공격형 · 타겟형 · 디버프형 · 버프형)
     for (const type of SKILL_TYPES) {
       const head = h('div', 'skill-type-head');
@@ -373,7 +376,71 @@ export class UI implements UIHost {
       }
       this.panel.append(head, grid);
     }
-    this.panel.append(h('div', 'hint', '형태마다 한 칸씩 장착 · 스킬을 눌러 배우기·강화·장착'));
+    this.panel.append(h('div', 'hint', '스킬은 상자에서 얻어요 · 겹치면 피해 +1 · 등급이 높을수록 강화가 비싸요'));
+  }
+
+  /** 스킬 상자 칸: 상자마다 1회·10회 버튼과 등급 확률 */
+  private buildBoxes() {
+    const g = this.game;
+    const wrap = h('div', 'box-list');
+    const refreshers = SKILL_BOXES.map((box) => {
+      const card = h('div', `card skill-box box-${box.id}`);
+      const head = h('div', 'box-head');
+      head.append(h('span', 'box-icon', box.icon), h('span', 'title', box.name));
+      const odds = h('div', 'box-odds');
+      for (const gr of ['S', 'A', 'B', 'C', 'D'] as const) {
+        const p = box.odds[gr];
+        if (p) odds.append(h('span', `tile-grade g-${gr}`, `${gr} ${p}%`));
+      }
+      const btns = h('div', 'box-btns');
+      const mk = (n: 1 | 10) => {
+        const b = h('button', 'buy');
+        const label = h('span');
+        b.append(label, h('small', '', n === 1 ? '1회' : '10회'));
+        b.addEventListener('click', () => this.openBox(box, n));
+        btns.append(b);
+        return { b, label, n };
+      };
+      const buttons = [mk(1), mk(10)];
+      card.append(head, odds, btns);
+      wrap.append(card);
+      return () => {
+        for (const { b, label, n } of buttons) {
+          const books = g.save.mats.skillbook ?? 0;
+          if (n === 1 && box.book && books > 0) label.textContent = `📕 ${books}`;
+          else {
+            const c = boxCost(box, n, g.save.maxStage);
+            label.replaceChildren(c.gold !== undefined ? coin(fmt(c.gold)) : document.createTextNode(`💎 ${fmt(c.diamonds!)}`));
+          }
+          b.disabled = !g.canOpenBox(box.id, n);
+        }
+      };
+    });
+    this.boxRefresh = () => refreshers.forEach((f) => f());
+    return wrap;
+  }
+
+  /** 상자 열기 결과: 카드가 하나씩 뒤집힌다 */
+  private openBox(box: BoxDef, n: 1 | 10) {
+    const res = this.game.openSkillBox(box.id, n);
+    if (!res) return this.toast(box.goldSec ? '골드가 모자라요' : '💎 다이아가 모자라요');
+    const grid = h('div', 'summon-grid');
+    res.forEach((r, i) => {
+      const grade = SKILL_GRADE[r.def.id];
+      const card = h('div', `summon-card box-card gr-${grade}` + (r.isNew ? ' new' : ''));
+      card.append(h('span', `tile-grade g-${grade}`, grade), skillIcon(r.def, 'tile-icon'), h('div', 'summon-name', r.def.name), h('div', 'summon-text', r.text));
+      card.style.animationDelay = `${i * 0.08}s`;
+      grid.append(card);
+    });
+    sfx.chest();
+    this.openModal(
+      h('div', 'modal-title', `${box.icon} ${box.name}!`),
+      h('div', 'modal-sub', oddsText(box)),
+      grid,
+      this.button('한 번 더', '', () => this.openBox(box, n)),
+      this.button('닫기', 'primary', () => this.closeModal()),
+    );
+    this.refresh();
   }
 
   /** 스킬 창: 설명, 배우기 또는 가지 강화, 장착·교체 */
@@ -389,22 +456,18 @@ export class UI implements UIHost {
     const gold = h('div', 'tree-gold');
 
     if (!g.skillTree(def.id)) {
-      // 아직 안 배움: 배우기
-      const learn = h('button', 'buy wide');
-      learn.append(coin(fmt(learnPrice(def))), h('small', '', '배우기'));
-      learn.addEventListener('click', () => {
-        if (!g.learnSkill(def.id)) return;
-        this.toast(`${def.name} 습득!`);
-        this.refresh();
-        this.showSkill(def);
-      });
-      this.treeRefresh = () => {
-        gold.replaceChildren(coin(fmt(g.save.gold)));
-        summary.textContent = skillSummary(def, emptyTree());
-        learn.disabled = !g.canLearn(def.id);
-      };
-      this.openModal(head, gold, learn, this.button('닫기', 'primary', () => this.closeModal()));
-      this.treeRefresh();
+      // 아직 없음: 어느 상자에서 나오는지
+      const grade = SKILL_GRADE[def.id];
+      const where = h('div', 'box-where');
+      where.append(h('div', 'title', `${grade}등급 · 이 상자에서 나와요`));
+      for (const box of boxesFor(grade)) {
+        const row = h('div', 'box-where-row');
+        row.append(h('span', '', `${box.icon} ${box.name}`), h('b', '', `${grade} ${box.odds[grade]}%`));
+        where.append(row);
+      }
+      summary.textContent = skillSummary(def, emptyTree());
+      this.treeRefresh = null;
+      this.openModal(head, where, this.button('닫기', 'primary', () => this.closeModal()));
       return;
     }
 
@@ -609,6 +672,7 @@ export class UI implements UIHost {
 
   private refreshSkills() {
     this.treeRefresh?.();
+    this.boxRefresh?.();
     if (!this.skillHeader || !this.equipBar) return;
     const g = this.game;
     const eq = g.save.equipped;
@@ -636,7 +700,6 @@ export class UI implements UIHost {
       const tree = g.skillTree(t.def.id);
       t.root.classList.toggle('unlearned', !tree);
       t.root.classList.toggle('equipped', eq.includes(t.def.id));
-      t.root.classList.toggle('can-learn', !tree && g.canLearn(t.def.id));
       t.lv.textContent = tree ? `Lv${treeLevel(tree)}` : '';
     }
   }

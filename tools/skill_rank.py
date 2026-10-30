@@ -15,12 +15,14 @@ for row in r['rows']:
         kr=k/bk; sr=min(3,(bnet+30)/(max(net,-29)+30))
         score=0.5*kr+0.5*sr; extra=f"처치 x{kr:.2f} 생존 x{sr:.2f} 쓰러짐 {st.mean(x['deaths'] for x in runs):.1f}"
     out.setdefault(t,[]).append((row['id'],score,extra))
-def grade(r):
-    return 'S' if r>=1.35 else 'A' if r>=1.12 else 'B' if r>=0.9 else 'C' if r>=0.65 else 'D'
+def grades(n):
+    # 형태 안에서 순위로: 위 15% S · 20% A · 30% B · 20% C · 15% D
+    cuts=[round(n*c) for c in (0.15,0.35,0.65,0.85)]
+    return ['S' if i<cuts[0] else 'A' if i<cuts[1] else 'B' if i<cuts[2] else 'C' if i<cuts[3] else 'D' for i in range(n)]
 result={}
 for t in ['attack','target','debuff','buff']:
     rows=sorted(out[t], key=lambda x:-x[1]); m=st.median(s for _,s,_ in rows)
-    result[t]=[(i,s,grade(s/m),e) for i,s,e in rows]
+    result[t]=[(i,s,g,e) for (i,s,e),g in zip(rows,grades(len(rows)))]
     print('==',t,'median',round(m,2), f"base kills {bk:.0f} net {bnet:.0f}" if t in('debuff','buff') else '')
     for n,(i,s,g,e) in enumerate(result[t]): print(f"{n+1:2d} {g} {i:13s} {s:8.2f}  {e}")
 json.dump(result, open(D+'ranked.json','w'), ensure_ascii=False)

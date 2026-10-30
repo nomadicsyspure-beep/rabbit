@@ -7,11 +7,12 @@ import {
   OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, idleGoldPerSec, playerStats, xpToNext, type StatId,
 } from './data/balance';
 import {
-  BRANCHES, SKILL_BY_ID, SKILL_TYPES, branchCost, emptyTree, learnPrice, type Branch, type SkillId, type SkillType,
+  BRANCHES, SKILL_BY_ID, SKILL_TYPES, branchCost, emptyTree, type Branch, type SkillId, type SkillType,
 } from './data/skills';
-import { GEAR, GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
+import { GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
 import { type Reward } from './data/items';
 import { PET_BY_ID, PET_MAX, petValue } from './data/pets';
+import { BOX_BY_ID, boxCost, rollBox, type BoxId } from './data/skillbox';
 import { CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, rollGear, rollPet, skinPrice, summonCost } from './data/shop';
 import {
   ACHIEVEMENTS, ATTEND_REWARDS, DAILY_ALL_BONUS, DAILY_MISSIONS, MISSION_PASS_XP, PASS_LEVELS, achieveReady, addDaily,
@@ -637,26 +638,49 @@ export class Game {
     return this.save.skills[id];
   }
 
-  /** 스킬북이 필요한 스킬: 그 스킬을 주는 무기를 가졌으면 책 없이 배울 수 있다 */
-  needsBook(id: SkillId) {
-    if (!SKILL_BY_ID[id].needsBook) return false;
-    return !GEAR.some((g) => g.bonusSkill === id && this.save.gear[g.id] !== undefined);
+  /** 상자 n회 열 수 있나 (은 상자 1회는 스킬북으로도) */
+  canOpenBox(id: BoxId, n: 1 | 10) {
+    const box = BOX_BY_ID[id];
+    if (n === 1 && box.book && (this.save.mats.skillbook ?? 0) > 0) return true;
+    const c = boxCost(box, n, this.save.maxStage);
+    return c.gold !== undefined ? this.save.gold >= c.gold : this.save.diamonds >= c.diamonds!;
   }
 
-  canLearn(id: SkillId) {
-    if (this.save.skills[id] || this.save.gold < learnPrice(SKILL_BY_ID[id])) return false;
-    return !this.needsBook(id) || (this.save.mats.skillbook ?? 0) > 0;
-  }
-
-  /** 배우기. 빈 장착 칸이 있으면 바로 장착한다 */
-  learnSkill(id: SkillId): boolean {
-    if (!this.canLearn(id)) return false;
-    if (this.needsBook(id)) this.save.mats.skillbook = (this.save.mats.skillbook ?? 0) - 1;
-    this.save.gold -= learnPrice(SKILL_BY_ID[id]);
-    this.save.skills[id] = emptyTree();
-    // 같은 형태 칸이 비어 있으면 바로 장착
-    if (!this.equippedOfType(SKILL_BY_ID[id].type)) this.toggleEquip(id);
-    return true;
+  /**
+   * 스킬 상자 n회. 새 스킬은 배우고 (그 형태 칸이 비어 있으면 바로 장착),
+   * 이미 가진 스킬은 피해 +1 (최대면 골드). 모자라면 null
+   */
+  openSkillBox(id: BoxId, n: 1 | 10) {
+    if (!this.canOpenBox(id, n)) return null;
+    const s = this.save;
+    const box = BOX_BY_ID[id];
+    if (n === 1 && box.book && (s.mats.skillbook ?? 0) > 0) s.mats.skillbook!--;
+    else {
+      const c = boxCost(box, n, s.maxStage);
+      if (c.gold !== undefined) s.gold -= c.gold;
+      else s.diamonds -= c.diamonds!;
+    }
+    const dmgMax = BRANCHES.find((b) => b.id === 'dmg')!.max;
+    const out: { def: (typeof SKILL_BY_ID)[SkillId]; text: string; isNew: boolean }[] = [];
+    for (let i = 0; i < n; i++) {
+      const def = rollBox(box);
+      const tree = s.skills[def.id];
+      if (!tree) {
+        s.skills[def.id] = emptyTree();
+        if (!this.equippedOfType(def.type)) this.toggleEquip(def.id);
+        out.push({ def, text: 'NEW!', isNew: true });
+      } else if (tree.dmg < dmgMax) {
+        tree.dmg++;
+        out.push({ def, text: '피해 +1', isNew: false });
+      } else {
+        const gold = branchCost(def, 'dmg', dmgMax) * 3;
+        s.gold += gold;
+        out.push({ def, text: '골드 환급', isNew: false });
+      }
+    }
+    addDaily(s, 'summons', n);
+    this.persist();
+    return out;
   }
 
   /** 가지 다음 단계 비용 (최대면 null) */

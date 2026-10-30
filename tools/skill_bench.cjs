@@ -1,6 +1,7 @@
 // 스킬 밸런스 테스트: 모든 스킬을 같은 판·같은 난수로 돌려 bench.json에 기록한다.
 //   npm run build && npx vite preview --port 4199   (다른 창에서)
 //   node tools/skill_ids.cjs > skill_ids.json && STAGE=13 ATK=10 HP=10 node tools/skill_bench.cjs
+//   (일부만: ONLY=id1,id2 OUT=bench_part.json — 결과를 bench.json의 rows에 합쳐서)
 //   python3 tools/skill_rank.py   → 형태별 순서·점수 (src/data/skills.ts의 RANKING에 옮긴다)
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -52,7 +53,7 @@ const fs = require('fs');
   for (const seed of [11, 22, 33, 44, 55, 66, 77, 88]) base.push(await pg.evaluate(([s]) => window.__sim([['slash', { dmg: 2, spd: 1, cnt: 1 }], ['feather', { dmg: 2, spd: 1, cnt: 1 }]], s, 40, false), [seed]));
   res.base = base;
   console.log('base', JSON.stringify(base));
-  for (const { id, type } of (process.env.ONLY ? ids.filter((x) => x.id === process.env.ONLY) : ids)) {
+  for (const { id, type } of (process.env.ONLY ? ids.filter((x) => process.env.ONLY.split(',').includes(x.id)) : ids)) {
     const runs = [];
     if (type === 'attack' || type === 'target') {
       for (const seed of [11, 22, 33, 44]) runs.push(await pg.evaluate(([id, s, T]) => window.__sim([[id, T]], s, 40, true), [id, seed, T]));
@@ -61,7 +62,7 @@ const fs = require('fs');
     }
     res.rows.push({ id, type, runs });
     console.log(id, type, JSON.stringify(runs));
-    fs.writeFileSync('bench.json', JSON.stringify(res));
+    fs.writeFileSync(process.env.OUT || 'bench.json', JSON.stringify(res));
   }
   console.log('errors', errs.slice(0, 3));
   await b.close();
