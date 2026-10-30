@@ -7,7 +7,7 @@ import {
   type StatId,
 } from '../data/balance';
 import {
-  BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_TYPES, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, SKILL_BY_ID, type SkillDef,
+  BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_GRADE, SKILL_TYPES, branchValue, emptyTree, learnPrice, skillSummary, treeLevel, SKILL_BY_ID, type SkillDef,
 } from '../data/skills';
 import { DUNGEON_DAILY, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
@@ -365,7 +365,8 @@ export class UI implements UIHost {
         const root = h('button', 'skill-tile');
         root.style.setProperty('--type', type.color);
         const lv = h('span', 'tile-lv');
-        root.append(skillIcon(def, 'tile-icon'), lv, h('span', 'tile-name', def.name));
+        const grade = h('span', `tile-grade g-${SKILL_GRADE[def.id]}`, SKILL_GRADE[def.id]);
+        root.append(skillIcon(def, 'tile-icon'), grade, lv, h('span', 'tile-name', def.name));
         root.addEventListener('click', () => this.showSkill(def));
         grid.append(root);
         this.skillTiles.push({ def, root, lv });
@@ -381,7 +382,9 @@ export class UI implements UIHost {
     const head = h('div', 'tree-head');
     const title = h('div', 'info');
     const summary = h('div', 'modal-sub');
-    title.append(h('div', 'modal-title', def.name), h('div', 'modal-sub', def.blurb), summary);
+    const name = h('div', 'modal-title', def.name + ' ');
+    name.append(h('span', `grade-badge g-${SKILL_GRADE[def.id]}`, `${SKILL_GRADE[def.id]}등급`));
+    title.append(name, h('div', 'modal-sub', def.blurb), summary);
     head.append(skillIcon(def, 'skill-art'), title);
     const gold = h('div', 'tree-gold');
 

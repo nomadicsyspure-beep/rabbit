@@ -1774,3 +1774,41 @@ button:disabled {
   border-color: var(--type);
   color: var(--type);
 }
+
+/* 스킬 등급 (밸런스 테스트 결과): S 빨강 · A 주황 · B 노랑 · C 초록 · D 회색 */
+.tile-grade,
+.grade-badge {
+  font-weight: 900;
+  border-radius: 5px;
+  color: #2a1606;
+}
+
+.tile-grade {
+  position: absolute;
+  top: 0;
+  left: 2px;
+  z-index: 1;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.grade-badge {
+  padding: 1px 6px;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.g-S { background: #ff5c6c; color: #fff; }
+.g-A { background: #ffa04a; }
+.g-B { background: #ffd23f; }
+.g-C { background: #7cf2a0; }
+.g-D { background: #8a7a6a; color: #fff; }
+
+/* 배울 수 있음 초록 점은 등급 배지와 안 겹치게 아이콘 오른쪽 아래로 */
+.skill-tile.can-learn::after {
+  top: auto;
+  left: auto;
+  right: 6px;
+  bottom: 18px;
+}

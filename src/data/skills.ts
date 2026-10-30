@@ -511,6 +511,23 @@ export const SKILLS: SkillDef[] = [
   },
 ];
 
+/**
+ * 밸런스 테스트 결과 (스킬 Lv 5 = 피해 2·속도 1·개수 1, 스테이지 13, 같은 난수로 40초씩 4~8번).
+ * 공격형·타겟형: 혼자 장착했을 때 준 피해. 디버프형·버프형: 회전 베기+깃털과 같이 썼을 때 처치 수·버틴 정도.
+ * 형태마다 센 순서 (앞일수록 셈)와 등급: 위 15% S · 20% A · 30% B · 20% C · 15% D
+ */
+export type Grade = 'S' | 'A' | 'B' | 'C' | 'D';
+const RANKING: Record<SkillType, [SkillId, Grade][]> = {
+  attack: [['cross', 'S'], ['quake', 'S'], ['emberring', 'S'], ['firetrail', 'A'], ['pollen', 'A'], ['wisp', 'A'], ['darkwave', 'A'], ['shockwave', 'B'], ['sunflare', 'B'], ['tornadoring', 'B'], ['slash', 'B'], ['flame', 'B'], ['petal', 'B'], ['windblade', 'B'], ['featherstorm', 'C'], ['starfall', 'C'], ['nova', 'C'], ['dark', 'C'], ['tornado', 'D'], ['boomerang', 'D'], ['phoenix', 'D']],
+  target: [['firepillar', 'S'], ['bigegg', 'S'], ['firework', 'S'], ['laser', 'S'], ['meteor', 'A'], ['arrowrain', 'A'], ['eruption', 'A'], ['holymark', 'A'], ['thunder', 'A'], ['icemeteor', 'B'], ['pillar', 'B'], ['iceorb', 'B'], ['fire', 'B'], ['egg', 'B'], ['feather', 'B'], ['shadowbolt', 'B'], ['acid', 'B'], ['lance', 'B'], ['goldspear', 'C'], ['heartbeam', 'C'], ['chain', 'C'], ['shuriken', 'C'], ['skullfire', 'C'], ['bubble', 'D'], ['candy', 'D'], ['note', 'D'], ['firefly', 'D']],
+  debuff: [['swamp', 'S'], ['vortex', 'S'], ['frostwave', 'S'], ['frostspike', 'S'], ['poisonbolt', 'A'], ['blackhole', 'A'], ['blizzard', 'A'], ['shadowhand', 'A'], ['curse', 'A'], ['poison', 'B'], ['timestop', 'B'], ['venom', 'B'], ['gravity', 'B'], ['flash', 'B'], ['ice', 'B'], ['icetrail', 'B'], ['sleepdust', 'B'], ['terror', 'C'], ['frostbite', 'C'], ['huntmark', 'C'], ['plague', 'C'], ['weaken', 'C'], ['roar', 'D'], ['dizzy', 'D'], ['ignite', 'D'], ['hex', 'D']],
+  buff: [['overdrive', 'S'], ['haste', 'S'], ['shield', 'A'], ['regen', 'A'], ['heal', 'A'], ['vampire', 'B'], ['rage', 'B'], ['invincible', 'B'], ['berserk', 'B'], ['luck', 'C'], ['magnetstorm', 'C'], ['bless', 'C'], ['thorns', 'D'], ['sprint', 'D']],
+};
+export const SKILL_GRADE = Object.fromEntries(Object.values(RANKING).flat()) as Record<SkillId, Grade>;
+const RANK = new Map(Object.values(RANKING).flat().map(([id], i) => [id, i]));
+// 스킬 탭에서 센 스킬이 앞에 오게
+SKILLS.sort((a, b) => (RANK.get(a.id) ?? 999) - (RANK.get(b.id) ?? 999));
+
 export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s])) as Record<SkillId, SkillDef>;
 
 export const emptyTree = (): SkillTree => ({ dmg: 0, spd: 0, cnt: 0 });
