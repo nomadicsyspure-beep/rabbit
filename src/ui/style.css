@@ -2630,3 +2630,17 @@ button:disabled {
   flex-direction: column;
   gap: 10px;
 }
+
+/* 자동 진행 (스테이지 깨면 다음 스테이지로) */
+.text-btn.auto-next.on {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.auto-next-count {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--gold);
+  animation: pvPulse 1s ease-in-out infinite;
+}
