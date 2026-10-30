@@ -101,8 +101,14 @@ export function monsterPic(skin: string, size = 44, cls = 'pet-pic') {
     c.getContext('2d')!.drawImage(hue ? recolored(src, hueRecolor(Number(hue))) : src, 0, 0, c.width, c.height);
     return true;
   };
-  if (!draw()) setTimeout(draw, 600);
+  retryDraw(draw);
   return c;
+}
+
+/** 그림이 아직 안 불러졌으면 불러질 때까지 다시 그린다 (폰에선 늦게 불러지기도 한다) */
+function retryDraw(draw: () => boolean, tries = 40) {
+  if (draw() || tries <= 0) return;
+  setTimeout(() => retryDraw(draw, tries - 1), 250);
 }
 
 /** 병아리 정면 그림 (장비 탭 가운데) */
@@ -118,7 +124,7 @@ export function chickPic(size = 96) {
     ctx.drawImage(src, 0, 0, c.width, c.height);
     return true;
   };
-  if (!draw()) setTimeout(draw, 600);
+  retryDraw(draw);
   return c;
 }
 

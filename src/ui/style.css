@@ -2431,12 +2431,13 @@ button:disabled {
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 40%, #fff1c2 0%, #f3cf72 70%, #d9a240 100%);
+  /* 병아리(노랑)와 겹치지 않게 하늘색 배경 */
+  background: radial-gradient(circle at 50% 35%, #d8f1ff 0%, #8fcdf0 70%, #5aa6d6 100%);
   box-shadow: 0 0 0 3px #2a1606, inset 0 0 0 2px #c98d4a, 0 2px 0 3px #140a03;
 }
 
 .hud-face .chick-pic {
-  transform: translateY(4px) scale(1.25);
+  transform: translateY(3px) scale(1.15);
 }
 
 /* ---- 가방 탭: 인벤토리 ---- */
