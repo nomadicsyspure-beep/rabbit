@@ -2105,3 +2105,262 @@ button:disabled {
 .raid-card .ibox {
   flex: none;
 }
+
+/* ==== 깔끔한 UI (첨부 애셋 스타일을 CSS로: 시트 그림 틀의 찌꺼기 없음) ==== */
+:root {
+  --wood-dark: #2a1606;
+  --wood: #8b5a2b;
+  --wood-light: #c98d4a;
+  --wood-in: #3d2614;
+  --wood-in-2: #4a2f19;
+}
+
+/* 패널: 진한 외곽선 + 나무 띠 + 어두운 안쪽 */
+.card,
+.modal {
+  border: 3px solid var(--wood-dark);
+  border-image: none;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--wood-in-2) 0%, var(--wood-in) 100%);
+  box-shadow:
+    inset 0 0 0 3px var(--wood),
+    inset 0 0 0 4px #b77c3e,
+    inset 0 0 0 6px var(--wood-dark),
+    inset 0 10px 16px rgba(0, 0, 0, 0.25),
+    0 3px 0 #140a03;
+}
+
+.card {
+  padding: 10px 12px;
+}
+
+.modal {
+  position: relative;
+  padding: 18px 16px 16px;
+}
+
+.skill-top {
+  border: 3px solid var(--wood-dark);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #553519 0%, var(--wood-in) 100%);
+  box-shadow:
+    inset 0 0 0 3px var(--wood),
+    inset 0 0 0 5px var(--wood-dark),
+    0 6px 10px rgba(0, 0, 0, 0.4);
+  padding: 10px;
+}
+
+/* 나뭇잎 장식 (모서리) */
+.modal::before,
+.skill-top::before {
+  content: '🌿';
+  position: absolute;
+  top: -10px;
+  left: -8px;
+  font-size: 20px;
+  transform: rotate(-35deg);
+  filter: saturate(0.8);
+  pointer-events: none;
+}
+
+.modal::after {
+  content: '🌿';
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  font-size: 20px;
+  transform: scaleX(-1) rotate(-35deg);
+  filter: saturate(0.8);
+  pointer-events: none;
+}
+
+/* 아이콘 틀 (스킬 이펙트 아이콘·아이템 아이콘) */
+.fx-icon,
+.item-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 11px;
+  background: radial-gradient(circle at 50% 40%, #5e3c22 0%, #33200f 100%);
+  box-shadow:
+    0 0 0 2px var(--wood-dark),
+    inset 0 0 0 2px var(--wood-light),
+    inset 0 0 0 4px #5a3418,
+    inset 0 -4px 0 rgba(0, 0, 0, 0.3),
+    0 3px 0 #140a03;
+}
+
+.sheet-icon img {
+  width: 136%;
+  height: 136%;
+  max-width: none;
+  object-fit: cover;
+}
+
+/* 아래 탭: 나무 버튼, 고른 탭은 주황 */
+.tab {
+  background: linear-gradient(180deg, #5c3a1f 0%, #3c2513 100%);
+  border: 3px solid var(--wood-dark);
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 2px var(--wood), inset 0 3px 0 2px rgba(255, 220, 170, 0.1), 0 3px 0 #140a03;
+  color: #e3c9a0;
+  filter: none;
+}
+
+.tab.active {
+  background: linear-gradient(180deg, #ffc35a 0%, #f08a22 100%);
+  box-shadow: inset 0 0 0 2px #ffe2a8, inset 0 -3px 0 rgba(160, 70, 0, 0.45), 0 3px 0 #140a03;
+  color: #fff;
+  text-shadow: 0 1px 0 #7a3a08, 1px 0 0 #7a3a08, -1px 0 0 #7a3a08, 0 -1px 0 #7a3a08;
+}
+
+.tab.active svg {
+  stroke: #fff;
+}
+
+/* 주요 버튼: 노랑 (입장·강화·구매) */
+.buy,
+.enter,
+.challenge-btn,
+.claim.ready {
+  border: 3px solid #5a2e0e;
+  border-image: none;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffe680 0%, #ffc63d 48%, #f2a21e 100%);
+  color: #5a2a06;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.65), inset 0 -3px 0 rgba(176, 90, 8, 0.55), 0 3px 0 #2a1606;
+}
+
+.buy small,
+.enter small {
+  color: #7a3e0a;
+}
+
+.buy:active:not(:disabled),
+.enter:active:not(:disabled),
+.btn:active:not(:disabled),
+.challenge-btn:active {
+  transform: translateY(2px);
+}
+
+/* 회색 (못 누름) */
+.buy:disabled,
+.enter:disabled,
+.btn:disabled {
+  border: 3px solid #2e2e2e;
+  border-image: none;
+  background: linear-gradient(180deg, #a4a4a4 0%, #7b7b7b 100%);
+  color: #e8e8e8;
+  text-shadow: 0 1px 0 #3a3a3a;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.2), 0 3px 0 #1a1a1a;
+}
+
+.buy:disabled small,
+.enter:disabled small {
+  color: #e8e8e8;
+}
+
+/* 확인 버튼: 초록 (닫기·확인·장착) */
+.btn.primary {
+  border: 3px solid #1d4a12;
+  border-image: none;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #8ef06a 0%, #4cc43a 50%, #2f9a2a 100%);
+  color: #fff;
+  text-shadow: 0 1px 0 #1d4a12, 1px 0 0 #1d4a12, -1px 0 0 #1d4a12, 0 -1px 0 #1d4a12;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), inset 0 -3px 0 rgba(20, 80, 10, 0.5), 0 3px 0 #2a1606;
+}
+
+/* 보조 버튼: 나무 */
+.btn:not(.primary):not(.danger) {
+  border: 3px solid var(--wood-dark);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #a06a38 0%, #7a4c24 100%);
+  color: #fff3dc;
+  text-shadow: 0 1px 0 #3a1d0b;
+  box-shadow: inset 0 2px 0 rgba(255, 230, 190, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.25), 0 3px 0 #140a03;
+}
+
+/* 위험 버튼: 빨강 */
+.btn.danger {
+  border: 3px solid #5a0e0e;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ff8a7a 0%, #f0524a 50%, #c02a2a 100%);
+  color: #fff;
+  text-shadow: 0 1px 0 #5a0e0e;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.45), inset 0 -3px 0 rgba(90, 10, 10, 0.4), 0 3px 0 #2a1606;
+}
+
+.challenge-btn {
+  font-weight: 900;
+}
+
+.challenge-btn.boss {
+  border-color: #5a0e0e;
+  border-image: none;
+  background: linear-gradient(180deg, #ff8a7a 0%, #f0524a 50%, #c02a2a 100%);
+  color: #fff;
+  text-shadow: 0 1px 0 #5a0e0e, 1px 0 0 #5a0e0e, -1px 0 0 #5a0e0e;
+}
+
+/* 스테이지 표지판: CSS 나무 판 + 양쪽 나뭇잎 (글자 길이에 맞게 늘어난다) */
+.plate {
+  position: relative;
+  width: auto;
+  max-width: none;
+  min-width: 110px;
+  aspect-ratio: auto;
+  padding: 4px 16px;
+  border: 3px solid var(--wood-dark);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #7a4a24 0%, #4e2e14 100%);
+  box-shadow: inset 0 0 0 2px #b77c3e, inset 0 2px 0 3px rgba(255, 220, 170, 0.15), 0 2px 0 #140a03;
+  white-space: nowrap;
+  overflow: visible;
+  color: #fff;
+  font-weight: 900;
+  text-shadow: 0 1px 0 #2a1606, 1px 0 0 #2a1606, -1px 0 0 #2a1606, 0 -1px 0 #2a1606;
+}
+
+.plate::before,
+.plate::after {
+  content: '🌿';
+  position: absolute;
+  top: 50%;
+  font-size: 15px;
+  line-height: 1;
+  filter: saturate(0.85);
+  pointer-events: none;
+}
+
+.plate::before {
+  left: -13px;
+  transform: translateY(-50%) rotate(-20deg);
+}
+
+.plate::after {
+  right: -13px;
+  transform: translateY(-50%) scaleX(-1) rotate(-20deg);
+}
+
+/* 틀은 그림 위에 겹쳐 그린다 (그림이 틀을 덮지 않게) */
+.fx-icon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 2px var(--wood-light),
+    inset 0 0 0 4px #5a3418,
+    inset 0 -4px 0 2px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+.sheet-icon img {
+  position: absolute;
+  inset: -18%;
+  width: 136%;
+  height: 136%;
+}

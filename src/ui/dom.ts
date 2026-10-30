@@ -29,7 +29,12 @@ export function art(name: string, cls = '') {
 
 /** 스킬 아이콘: UI 시트 그림, 또는 이펙트 그림을 나무 틀 안에 */
 export function skillIcon(def: SkillDef, cls: string): HTMLElement {
-  if (!def.icon.startsWith('fx:')) return art(def.icon, cls);
+  if (!def.icon.startsWith('fx:')) {
+    // 시트 아이콘은 그림 속 나무 틀(찌꺼기)을 잘라 내고 CSS 틀 안에 넣는다
+    const box = h('div', cls + ' fx-icon sheet-icon');
+    box.append(art(def.icon));
+    return box;
+  }
   const box = h('div', cls + ' fx-icon');
   const [name, hue] = def.icon.slice(3).split('@');
   if (!hue) {
