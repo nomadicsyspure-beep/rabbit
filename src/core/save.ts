@@ -1,7 +1,7 @@
 import type { SkillTree } from '../battle/weapons';
 import type { StatId } from '../data/balance';
 import { EQUIP_SLOTS, SKILL_BY_ID, emptyTree, type SkillId } from '../data/skills';
-import type { GearSlot } from '../data/gear';
+import { OLD_GEAR_IDS, type GearSlot } from '../data/gear';
 import type { MatId } from '../data/world';
 import { emptyDaily, type AttendState, type DailyState } from '../data/missions';
 
@@ -60,6 +60,10 @@ export interface SaveData {
   infiniteBest: number;
   /** 튜토리얼 단계 (-1 = 끝) */
   tutorial: number;
+  /** 가방 속 안 연 상자: '등급:스테이지' → 개수 (스테이지마다 나오는 재료가 달라서) */
+  chestBag: Record<string, number>;
+  /** 새로 얻고 아직 안 본 스킬 (NEW 표시) */
+  newSkills: SkillId[];
 }
 
 export function newSave(): SaveData {
@@ -96,6 +100,8 @@ export function newSave(): SaveData {
     pass: { xp: 0, claimed: [] },
     infiniteBest: 0,
     tutorial: 0,
+    chestBag: {},
+    newSkills: [],
   };
 }
 
@@ -145,9 +151,9 @@ export function loadSave(): SaveData {
       diamonds: data.diamonds ?? 0,
       stats: { ...base.stats, ...data.stats },
       sound: data.sound ?? true,
-      gear: { ...data.gear },
-      wear: { ...data.wear },
-      seen: { monsters: [...(data.seen?.monsters ?? [])], gear: [...(data.seen?.gear ?? [])] },
+      gear: renameKeys(data.gear ?? {}),
+      wear: migrateWear(data.wear ?? {}),
+      seen: { monsters: [...(data.seen?.monsters ?? [])], gear: (data.seen?.gear ?? []).map((id) => OLD_GEAR_IDS[id] ?? id) },
       rebirth: { ...base.rebirth, ...data.rebirth, ups: { ...base.rebirth.ups, ...data.rebirth?.ups } },
       essence: data.essence ?? 0,
       bestStageEver: Math.max(data.bestStageEver ?? 0, data.maxStage ?? 0),
@@ -164,10 +170,28 @@ export function loadSave(): SaveData {
       infiniteBest: data.infiniteBest ?? 0,
       // 이미 하던 사람은 튜토리얼 없이
       tutorial: data.tutorial ?? ((data.maxStage ?? 0) > 0 ? -1 : 0),
+      chestBag: { ...data.chestBag },
+      newSkills: (data.newSkills ?? []).filter((id) => SKILL_BY_ID[id]),
     };
   } catch {
     return newSave();
   }
+}
+
+/** 옛 장비 id(가방 → 망토)를 새 id로 */
+function renameKeys(gear: Record<string, number>) {
+  return Object.fromEntries(Object.entries(gear).map(([id, v]) => [OLD_GEAR_IDS[id] ?? id, v]));
+}
+
+/** 옛 착용(가방 칸)을 망토 칸으로 */
+function migrateWear(wear: Record<string, string | undefined>): SaveData['wear'] {
+  const out: SaveData['wear'] = {};
+  for (const [slot, id] of Object.entries(wear)) {
+    if (!id) continue;
+    const s = (slot === 'bag' ? 'cape' : slot) as GearSlot;
+    out[s] = OLD_GEAR_IDS[id] ?? id;
+  }
+  return out;
 }
 
 export function writeSave(save: SaveData) {

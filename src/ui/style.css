@@ -427,10 +427,6 @@ button:disabled {
   gap: 4px;
 }
 
-.skill-mode:disabled {
-  opacity: 0.7;
-}
-
 .action-right {
   display: grid;
   grid-template-columns: auto auto;
@@ -475,17 +471,12 @@ button:disabled {
   pointer-events: auto;
 }
 
-/* 스킬 수동: 준비된 칸은 빛난다 */
-
-.manual-skills .slot.ready .slot-icon {
-  filter: drop-shadow(0 0 6px #ffe066);
+/* 스킬 칸: 누르면 강화 창 */
+.slot:active {
+  transform: scale(0.92);
 }
 
-.slot.pressed {
-  transform: scale(0.9);
-}
-
-/* 글자 버튼 (시트에 없는 버튼: 가로 모드, 스킬 자동/수동) */
+/* 글자 버튼 (시트에 없는 버튼: 가로 모드) */
 .text-btn {
   flex: none;
   height: 30px;
@@ -498,15 +489,6 @@ button:disabled {
   font-weight: 800;
   white-space: nowrap;
   pointer-events: auto;
-}
-
-.skill-mode.on {
-  color: var(--gold);
-}
-
-.skill-mode:not(.on) {
-  background: #6b4a2e;
-  color: #fff3dc;
 }
 
 /* AUTO: 꺼져 있으면 흐리게 */
@@ -1725,7 +1707,7 @@ button:disabled {
   gap: 6px;
 }
 
-/* 스킬 형태 (공격·타겟·디버프·버프): 색으로 구분 */
+/* 스킬 형태 (공격·보조·디버프·버프): 색으로 구분 */
 .skill-type-head {
   display: flex;
   align-items: baseline;
@@ -1888,55 +1870,6 @@ button:disabled {
   font-size: 13px;
 }
 
-/* 스테이지 스킬 칸 설명 말풍선 */
-.slot-tip {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
-  max-width: 280px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(36, 22, 10, 0.94);
-  border: 2px solid #a87a4a;
-  box-shadow: 0 3px 0 #1a0d04;
-  font-size: 12px;
-  line-height: 1.35;
-  opacity: 0;
-  transform: translateY(6px);
-  transition: opacity 0.15s, transform 0.15s;
-  pointer-events: none;
-}
-
-.slot-tip.show {
-  opacity: 1;
-  transform: none;
-}
-
-.slot-tip .tip-name {
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.slot-tip .tip-type {
-  font-size: 11px;
-}
-
-.slot-tip .tip-blurb {
-  color: var(--muted);
-}
-
-.slot-tip .tip-sum {
-  margin-top: 2px;
-  color: var(--gold);
-  font-weight: 700;
-}
-
-@media (orientation: landscape) {
-  .mode-action .slot-tip {
-    left: auto;
-    right: 0;
-  }
-}
 
 /* ---- 깔끔한 아이콘 틀 (CSS로 그림: 시트 찌꺼기 없음) ---- */
 .ibox {
@@ -2240,9 +2173,14 @@ button:disabled {
 
 .buy:active:not(:disabled),
 .enter:active:not(:disabled),
-.btn:active:not(:disabled),
-.challenge-btn:active {
+.btn:active:not(:disabled) {
   transform: translateY(2px);
+}
+
+/* 도전 버튼은 가운데 맞춤(translateX)을 지킨 채로 눌린다 (예전엔 눌리면 오른쪽으로 튀어서 손을 떼면 안 눌렸다) */
+.challenge-btn:active {
+  transform: translate(-50%, 2px);
+  animation: none;
 }
 
 /* 회색 (못 누름) */
@@ -2479,4 +2417,129 @@ button:disabled {
 
 .tut-btn {
   height: 40px !important;
+}
+
+/* 스테이지 HUD 얼굴: 그림 속 얼굴을 실제 병아리 그림으로 덮는다 */
+.hud-face {
+  position: absolute;
+  left: -3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, #fff1c2 0%, #f3cf72 70%, #d9a240 100%);
+  box-shadow: 0 0 0 3px #2a1606, inset 0 0 0 2px #c98d4a, 0 2px 0 3px #140a03;
+}
+
+.hud-face .chick-pic {
+  transform: translateY(4px) scale(1.25);
+}
+
+/* ---- 가방 탭: 인벤토리 ---- */
+.gear-hint {
+  margin-top: -6px;
+}
+
+.inventory {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.inv-title {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--gold);
+}
+
+.inv-tabs .seg-btn.on {
+  background: linear-gradient(180deg, #ffc35a 0%, #f08a22 100%);
+  color: #fff;
+  text-shadow: 0 1px 0 #7a3a08;
+}
+
+.inv-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px 4px;
+}
+
+.inv-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  min-width: 0;
+}
+
+.inv-cell .tile-name {
+  font-size: 10px;
+}
+
+.ibox.blank {
+  opacity: 0.35;
+  background: #2a1a0d;
+}
+
+.ibox.chest-1 { --rar: #d8e4f0; }
+.ibox.chest-2 { --rar: #ffd23f; }
+
+.chest-emoji {
+  font-size: 26px;
+}
+
+.chest-total {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--gold);
+}
+
+/* 새로 얻은 스킬: NEW 배지 + 빛나는 테두리 (스킬 창을 열면 꺼진다) */
+.skill-tile.new .tile-icon {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #ff4d5e, 0 0 12px 3px rgba(255, 77, 94, 0.75);
+  animation: newGlow 1s ease-in-out infinite alternate;
+}
+
+.skill-tile.new::after {
+  content: 'NEW';
+  position: absolute;
+  top: -4px;
+  right: 0;
+  z-index: 2;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: #ff4d5e;
+  border: 2px solid #fff;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 13px;
+}
+
+@keyframes newGlow {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.25); }
+}
+
+/* 탭 빨간 점 (새 스킬 · 안 연 상자) */
+.tab {
+  position: relative;
+}
+
+.tab.dot::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff4d5e;
+  border: 2px solid #fff;
 }
