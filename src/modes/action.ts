@@ -289,7 +289,7 @@ export class ActionMode {
     this.bossSpawned = true;
     const p = this.game.engine.player;
     this.game.engine.spawnEnemy({
-      kind: 'boss', skin: 'devil', raid: true, x: p.x, y: p.y - 230, hp: RAID_HP, r: 38, speed: 42, dmg: 24, xp: 0, t1: 2,
+      kind: 'boss', skin: 'devil', raid: true, elite: true, x: p.x, y: p.y - 230, hp: RAID_HP, r: 38, speed: 42, dmg: 24, xp: 0, t1: 2,
     });
   }
 
@@ -392,7 +392,7 @@ export class ActionMode {
   private spawnElite() {
     const pos = this.spawnPos();
     const s = 1 + (this.time / 60) * 0.6;
-    this.spawnMob({ kind: 'tank', skin: 'rabbit', x: pos.x, y: pos.y, hp: 160 * s, r: 20, speed: 60, dmg: 12 * s, xp: 15 });
+    this.spawnMob({ kind: 'tank', skin: 'rabbit', x: pos.x, y: pos.y, hp: 160 * s, r: 20, speed: 60, dmg: 12 * s, xp: 15, elite: true });
     this.game.ui.toast('정예 습격!');
   }
 
@@ -605,10 +605,10 @@ export class ActionMode {
     const { x, y } = this.spawnPos();
     const eng = this.game.engine;
     if (this.isBossStage) {
-      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP, r: 30, speed: 50, dmg: 22, xp: 0 });
+      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP, r: 30, speed: 50, dmg: 22, xp: 0, elite: true });
       this.game.ui.toast('마왕 등장!');
     } else {
-      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP, r: 22, speed: 55, dmg: 16, xp: 0 });
+      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP, r: 22, speed: 55, dmg: 16, xp: 0, elite: true });
       this.game.ui.toast('정예 몬스터 등장!');
     }
   }

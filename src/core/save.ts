@@ -119,8 +119,11 @@ export function loadSave(): SaveData {
         skills[id as SkillId] = { ...emptyTree(), ...v };
       }
     }
+    // 형태마다 한 칸 (예전 저장은 같은 형태가 여럿일 수 있어서 처음 것만 남긴다)
+    const seenType = new Set<string>();
     const equipped = (data.equipped ?? base.equipped)
       .filter((id) => SKILL_BY_ID[id] && skills[id])
+      .filter((id) => !seenType.has(SKILL_BY_ID[id].type) && !!seenType.add(SKILL_BY_ID[id].type))
       .slice(0, EQUIP_SLOTS);
     return {
       ...base,

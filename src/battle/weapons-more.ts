@@ -1,5 +1,5 @@
-import type { Engine } from './engine';
-import { FX, RepeatWeapon, SkillWeapon, shuffle, type SkillSpec, type SkillTree, type WeaponStats } from './weapons';
+import type { BuffId, Engine } from './engine';
+import { FX, RepeatWeapon, SkillWeapon, shuffle, treeDamage, type SkillSpec, type SkillTree, type WeaponStats } from './weapons';
 
 // 추가 스킬 (2차). 그림은 아직 기존 이펙트 그림을 돌려 쓴다. 나중에 추려서 밸런스를 맞출 예정.
 
@@ -556,6 +556,143 @@ export class ZoneSkill extends SkillWeapon {
         engine.addZone(p.x + Math.cos(a) * 24, p.y + Math.sin(a) * 24, Math.cos(a) * sp, Math.sin(a) * sp, r, c.life, this.power, c.sprite, c.pull ?? 0);
       }
     }
+    return true;
+  }
+}
+
+// ---- 디버프 · 버프 스킬 (4차) ----
+
+/**
+ * 디버프: 가까운 적 (개수)마리에게, 또는 범위 안 모두에게 상태 이상.
+ * stun 기절 · fear 공포 · confuse 혼란 · weak 취약(받는 피해 ×1.5) · mark 표식(치명타 확정)
+ * burn 화상 · venom 맹독(쓰러지면 옮음) · curse 저주(쓰러지면 폭발) · timestop 화면 전체 기절 · chill 동상(지속 피해 + 느려짐)
+ */
+export type DebuffKind = 'stun' | 'fear' | 'confuse' | 'weak' | 'mark' | 'burn' | 'venom' | 'curse' | 'timestop' | 'chill';
+
+export interface DebuffCfg {
+  id: string;
+  kind: DebuffKind;
+  /** 상태 지속 시간(초) */
+  t: number;
+  /** 범위 스킬이면 반경 (개수 1레벨마다 +12) */
+  area?: number;
+  sprite?: string;
+  color: string;
+}
+
+export class DebuffSkill extends SkillWeapon {
+  readonly id: string;
+
+  constructor(stats: WeaponStats, spec: SkillSpec, tree: SkillTree, private readonly cfg: DebuffCfg) {
+    super(stats, spec, tree, 0.6);
+    this.id = cfg.id;
+  }
+
+  protected fire(engine: Engine) {
+    const c = this.cfg;
+    const p = engine.player;
+    let targets;
+    if (c.kind === 'timestop') {
+      targets = engine.nearestEnemies(p.x, p.y, 400, Math.hypot(engine.viewW, engine.viewH) / 2);
+    } else if (c.area) {
+      targets = engine.nearestEnemies(p.x, p.y, 200, (c.area + this.count * 12) * FX);
+    } else {
+      targets = engine.nearestEnemies(p.x, p.y, this.count, 240);
+    }
+    if (targets.length === 0) return false;
+    const power = this.power;
+    for (const e of targets) {
+      switch (c.kind) {
+        case 'stun':
+        case 'timestop':
+          e.stunT = Math.max(e.stunT, c.t);
+          break;
+        case 'fear':
+          e.fearT = Math.max(e.fearT, c.t);
+          break;
+        case 'confuse':
+          e.confuseT = Math.max(e.confuseT, c.t);
+          break;
+        case 'weak':
+          e.weakT = Math.max(e.weakT, c.t);
+          break;
+        case 'mark':
+          e.markT = Math.max(e.markT, c.t);
+          break;
+        case 'burn':
+          engine.addDot(e, power, c.t);
+          break;
+        case 'venom':
+          engine.addDot(e, power * 0.7, c.t, true);
+          break;
+        case 'chill':
+          engine.addDot(e, power * 0.5, c.t);
+          e.slowT = Math.max(e.slowT, c.t);
+          break;
+        case 'curse':
+          e.curseT = Math.max(e.curseT, c.t);
+          e.curseDmg = Math.max(e.curseDmg, power * 3);
+          break;
+      }
+      if (!c.area && c.kind !== 'timestop') {
+        if (c.sprite) engine.addSprite(c.sprite, e.x, e.y - e.r, 22 * FX, 0.35);
+        engine.damageEnemy(e, power * 0.3);
+      }
+    }
+    if (c.kind === 'timestop') {
+      engine.addEffect('ring', p.x, p.y, 320, 0.8, c.color);
+      if (c.sprite) engine.addSprite(c.sprite, p.x, p.y - 20, 60, 0.8, true);
+      engine.addShake(4);
+    } else if (c.area) {
+      const r = (c.area + this.count * 12) * FX;
+      engine.addEffect('ring', p.x, p.y, r, 0.4, c.color);
+      if (c.sprite) engine.addSprite(c.sprite, p.x, p.y - 10, r * 0.7, 0.35);
+    }
+    return true;
+  }
+}
+
+/**
+ * 버프: 병아리에게 좋은 효과. 피해 가지 = 효과 세기, 개수 가지 = 지속 시간(초).
+ * shield 보호막 · bless 축복(다른 스킬 쿨다운 즉시 충전) · magnet 자석 폭풍(보석 싹쓸이 + 자석 범위) · 나머지는 BuffId
+ */
+export interface BuffCfg {
+  id: string;
+  buff: BuffId | 'shield' | 'bless';
+  /** 세기 1일 때 값 */
+  v: number;
+  sprite?: string;
+  color: string;
+}
+
+export class BuffSkill extends SkillWeapon {
+  readonly id: string;
+
+  constructor(stats: WeaponStats, spec: SkillSpec, tree: SkillTree, private readonly cfg: BuffCfg) {
+    super(stats, spec, tree, 1);
+    this.id = cfg.id;
+  }
+
+  protected fire(engine: Engine) {
+    const c = this.cfg;
+    const p = engine.player;
+    // 싸우는 중일 때만 (근처에 몹이 있을 때)
+    if (engine.nearestEnemies(p.x, p.y, 1, 260).length === 0) return false;
+    const strength = this.spec.dmg * treeDamage(this.tree);
+    const t = this.count;
+    if (c.buff === 'shield') {
+      engine.addShield(p.maxHp * c.v * strength, t);
+    } else if (c.buff === 'bless') {
+      for (const w of engine.weapons) if (w !== this) w.resetCooldown?.();
+    } else if (c.buff === 'thorns') {
+      engine.buff('thorns', t, this.power * c.v);
+    } else {
+      if (c.buff === 'magnet') engine.vacuumGems();
+      engine.buff(c.buff, t, c.v * strength);
+    }
+    engine.addEffect('ring', p.x, p.y, 40, 0.4, c.color);
+    if (c.sprite) engine.addSprite(c.sprite, p.x, p.y - 16, 34, 0.5, true);
+    engine.burst(p.x, p.y - 10, 10, [c.color, '#ffffff'], 120, 0.5, -80, 2.5);
     return true;
   }
 }

@@ -1737,3 +1737,40 @@ button:disabled {
   flex-direction: column;
   gap: 6px;
 }
+
+/* 스킬 형태 (공격·타겟·디버프·버프): 색으로 구분 */
+.skill-type-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 4px 2px;
+  border-bottom: 2px solid var(--type);
+}
+
+.skill-type-head .type-name {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--type);
+}
+
+.skill-type-head .type-desc {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.skill-tile .tile-icon,
+.equip-slot .tile-icon {
+  box-shadow: inset 0 -3px 0 var(--type);
+  border-radius: 10px;
+}
+
+.equip-slot .slot-type {
+  font-size: 10px;
+  font-weight: 900;
+  color: var(--type);
+}
+
+.equip-slot.empty .tile-plus {
+  border-color: var(--type);
+  color: var(--type);
+}

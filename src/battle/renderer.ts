@@ -238,7 +238,46 @@ export class Renderer {
     const boss = eng.boss;
     if (eng.fog > 0) this.drawFog(eng, -eng.camX + eng.player.x, -eng.camY + eng.player.y);
     if (boss && eng.followCamera) this.drawBossBar(eng, boss);
+    if (eng.followCamera) this.drawOffscreenArrows(eng);
     if (joystick?.active) this.drawJoystick(joystick);
+  }
+
+  /** 화면 밖 정예·마왕(빨강)·황금 몹(금색)·구급상자 몹(초록)을 화면 테두리 화살표로 가리킨다 */
+  private drawOffscreenArrows(eng: Engine) {
+    const ctx = this.ctx;
+    const w = eng.viewW;
+    const h = eng.viewH;
+    const pad = 22;
+    for (const e of eng.enemies.items) {
+      if (!e.active) continue;
+      const color = e.golden ? '#ffd23f' : e.elite ? '#ff3b3b' : e.skin === 'firstaid' ? '#6fdc8c' : null;
+      if (!color) continue;
+      const sx = e.x - eng.camX;
+      const sy = e.y - eng.camY;
+      if (sx > -e.r && sx < w + e.r && sy > -e.r && sy < h + e.r) continue;
+      // 화면 가운데에서 몹 쪽으로 그은 선이 테두리와 만나는 곳
+      const dx = sx - w / 2;
+      const dy = sy - h / 2;
+      const k = Math.min((w / 2 - pad) / Math.abs(dx || 1e-6), (h / 2 - pad) / Math.abs(dy || 1e-6));
+      const pulse = 1 + 0.15 * Math.sin(eng.time * 8);
+      ctx.save();
+      ctx.translate(w / 2 + dx * k, h / 2 + dy * k);
+      ctx.rotate(Math.atan2(dy, dx));
+      ctx.scale(pulse, pulse);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = '#3a1d0b';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(13, 0);
+      ctx.lineTo(-8, -10);
+      ctx.lineTo(-4, 0);
+      ctx.lineTo(-8, 10);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   private drawBackground(eng: Engine) {
@@ -366,6 +405,7 @@ export class Renderer {
       this.drawEnemyShape(eng, e);
     }
     const top = anim && e.skin !== 'firstaid' ? e.y + e.r - size * 0.85 : e.y - e.r * 1.3;
+    this.drawStatus(eng, e, top);
     const showBar = !eng.followCamera || ((e.kind === 'tank' || e.golden) && e.hp < e.maxHp) || e.skin === 'firstaid';
     if (showBar && e.kind !== 'boss') {
       const bw = Math.max(18, e.r * 2);
@@ -505,7 +545,95 @@ export class Renderer {
     }
     drawOutfitFront(ctx, eng, at);
     ctx.restore();
+    this.drawBuffs(eng, footY);
     this.bar(p.x - 15, p.y + p.r + 5, 30, 4, p.hp / p.maxHp, '#6fdc8c');
+  }
+
+  /** 버프 표시: 보호막 방울 + 버프마다 발밑 색 고리 */
+  private drawBuffs(eng: Engine, footY: number) {
+    const ctx = this.ctx;
+    const p = eng.player;
+    if (eng.shieldHp > 0) {
+      const cy = footY - HERO_SIZE * 0.45;
+      ctx.globalAlpha = 0.3 + 0.1 * Math.sin(eng.time * 6);
+      ctx.fillStyle = '#9fe4ff';
+      ctx.beginPath();
+      ctx.arc(p.x, cy, 30, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = '#e8fbff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    const rings: [number, string][] = [
+      [eng.buffOn('rage'), '#ff4d4d'], [eng.buffOn('haste'), '#ffd23f'], [eng.buffOn('sprint'), '#7cf2a0'],
+      [eng.buffOn('thorns'), '#c78bff'], [eng.buffOn('luck'), '#ffb347'], [eng.buffOn('regen'), '#6fdc8c'],
+      [eng.buffOn('invuln'), '#ffffff'],
+    ];
+    let r = 20;
+    ctx.lineWidth = 2;
+    for (const [on, color] of rings) {
+      if (on <= 0) continue;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      ctx.ellipse(p.x, footY - 2, r, r * 0.38, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      r += 4;
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** 몹 디버프 표시 (도형으로): 기절 별 / 공포 느낌표 / 혼란 물음표 / 취약 보라 고리 / 표식 빨간 조준 / 저주 보라 불꽃 / 지속 피해 연기 */
+  private drawStatus(eng: Engine, e: Enemy, top: number) {
+    const ctx = this.ctx;
+    const ring = (color: string, k: number) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y + e.r * 0.85, e.r * k, e.r * k * 0.4, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    };
+    ctx.globalAlpha = 0.85;
+    if (e.weakT > 0) ring('#b05cff', 1.05);
+    if (e.curseT > 0) ring('#7a3fc8', 1.25);
+    if (e.markT > 0) {
+      // 빨간 조준점
+      const y = top - 12;
+      ctx.strokeStyle = '#ff3b3b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(e.x, y, 5, 0, Math.PI * 2);
+      ctx.moveTo(e.x - 8, y);
+      ctx.lineTo(e.x + 8, y);
+      ctx.moveTo(e.x, y - 8);
+      ctx.lineTo(e.x, y + 8);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    if (e.dotT > 0 && Math.random() < 0.25) eng.burst(e.x, e.y - e.r, 1, e.dotSpread ? ['#9be36a', '#6fbf4a'] : e.slowT > 0 ? ['#bfe8ff', '#7ad7ff'] : ['#ff7a2a', '#ffd166'], 30, 0.4, -60, 2.5);
+    if (e.stunT > 0) {
+      // 머리 위를 도는 노란 별 셋
+      ctx.fillStyle = '#ffe066';
+      for (let i = 0; i < 3; i++) {
+        const a = eng.time * 6 + (i * Math.PI * 2) / 3;
+        ctx.beginPath();
+        ctx.arc(e.x + Math.cos(a) * 9, top - 8 + Math.sin(a) * 3, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    const mark = e.fearT > 0 ? '!' : e.confuseT > 0 ? '?' : '';
+    if (mark) {
+      ctx.font = '900 13px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#3a1d0b';
+      ctx.strokeText(mark, e.x, top - 12);
+      ctx.fillStyle = e.fearT > 0 ? '#ff8a5c' : '#ffb3e6';
+      ctx.fillText(mark, e.x, top - 12);
+    }
   }
 
   /** 꾸미기 색을 입힌 병아리 프레임 */
