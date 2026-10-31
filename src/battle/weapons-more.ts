@@ -399,7 +399,8 @@ export interface ShotCfg {
   speed: number;
   range: number;
   pierce: number;
-  pattern: 'fan' | 'ring' | 'random';
+  /** fan 부채꼴(가까운 적 쪽) · ring 사방 · random 무작위 · spiral 사방인데 쏠 때마다 돌아간다 (빙글빙글 나선) */
+  pattern: 'fan' | 'ring' | 'random' | 'spiral';
   /** 부채꼴 간격(라디안) */
   gap?: number;
   home?: number;
@@ -412,6 +413,8 @@ export interface ShotCfg {
 
 export class ShotSkill extends SkillWeapon {
   readonly id: string;
+  /** 나선: 쏠 때마다 돌아가는 각도 */
+  private spin = 0;
 
   constructor(stats: WeaponStats, spec: SkillSpec, tree: SkillTree, private readonly cfg: ShotCfg) {
     super(stats, spec, tree, 0.5);
@@ -424,9 +427,9 @@ export class ShotSkill extends SkillWeapon {
     if (base === null) return false;
     const p = engine.player;
     const n = this.count;
-    const off = Math.random() * Math.PI;
+    const off = c.pattern === 'spiral' ? (this.spin += 0.55) : Math.random() * Math.PI;
     for (let i = 0; i < n; i++) {
-      const a = c.pattern === 'ring' ? off + (i / n) * Math.PI * 2
+      const a = c.pattern === 'ring' || c.pattern === 'spiral' ? off + (i / n) * Math.PI * 2
         : c.pattern === 'random' ? base + (Math.random() - 0.5) * 2.6
           : base + (i - (n - 1) / 2) * (c.gap ?? 0.22);
       engine.fireProjectile(p.x, p.y - 8, p.x + Math.cos(a), p.y - 8 + Math.sin(a), c.speed, this.power, c.range, c.pierce, c.sprite, (c.blast ?? 0) * FX, {
@@ -445,6 +448,8 @@ export interface StrikeCfg {
   /** 그림 크기 (기본 = 반경) */
   size?: number;
   slow?: number;
+  /** 맞은 적 기절(초, 보스 제외) */
+  stun?: number;
   /** 하늘에서 내리치는 번개 색 */
   bolt?: string;
   knock?: number;
@@ -470,6 +475,7 @@ export class StrikeSkill extends SkillWeapon {
       engine.addSprite(c.sprite, t.x, t.y - r * 0.3, (c.size ?? c.radius) * FX, 0.35);
       const hit = engine.blast(t.x, t.y, r, this.power, c.knock ?? 0);
       if (c.slow) for (const e of hit) e.slowT = c.slow;
+      if (c.stun) for (const e of hit) if (e.kind !== 'boss') e.stunT = Math.max(e.stunT, c.stun);
     }
     if (c.shake) engine.addShake(c.shake);
     return true;
@@ -485,6 +491,8 @@ export interface PulseCfg {
   sprite?: string;
   knock?: number;
   slow?: number;
+  /** 맞은 적 기절(초, 보스 제외) */
+  stun?: number;
 }
 
 export class PulseSkill extends RepeatWeapon {
@@ -510,6 +518,7 @@ export class PulseSkill extends RepeatWeapon {
     if (c.sprite) engine.addSprite(c.sprite, p.x, p.y - 6, r * 0.8, 0.3);
     const hit = engine.blast(p.x, p.y, r, this.power, c.knock ?? 120);
     if (c.slow) for (const e of hit) e.slowT = c.slow;
+    if (c.stun) for (const e of hit) if (e.kind !== 'boss') e.stunT = Math.max(e.stunT, c.stun);
   }
 }
 
@@ -523,6 +532,8 @@ export interface ZoneCfg {
   /** 둘레에서 퍼져 나가는 속도 */
   speed?: number;
   pull?: number;
+  /** 장판 안의 적을 느리게 (초) */
+  slow?: number;
 }
 
 export class ZoneSkill extends SkillWeapon {
@@ -540,12 +551,12 @@ export class ZoneSkill extends SkillWeapon {
     if (near.length === 0) return false;
     const r = c.r * FX;
     if (c.at === 'enemy') {
-      for (const t of shuffle(near).slice(0, this.count)) engine.addZone(t.x, t.y, 0, 0, r, c.life, this.power, c.sprite, c.pull ?? 0);
+      for (const t of shuffle(near).slice(0, this.count)) engine.addZone(t.x, t.y, 0, 0, r, c.life, this.power, c.sprite, c.pull ?? 0, 0, 0, c.slow ?? 0);
     } else if (c.at === 'player') {
       for (let i = 0; i < this.count; i++) {
         const a = Math.random() * Math.PI * 2;
         const d = i === 0 ? 0 : 20 + Math.random() * 30;
-        engine.addZone(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 0, 0, r, c.life, this.power, c.sprite, c.pull ?? 0);
+        engine.addZone(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 0, 0, r, c.life, this.power, c.sprite, c.pull ?? 0, 0, 0, c.slow ?? 0);
       }
     } else {
       const n = this.count;
@@ -553,7 +564,7 @@ export class ZoneSkill extends SkillWeapon {
       const sp = c.speed ?? 100;
       for (let i = 0; i < n; i++) {
         const a = off + (i / n) * Math.PI * 2;
-        engine.addZone(p.x + Math.cos(a) * 24, p.y + Math.sin(a) * 24, Math.cos(a) * sp, Math.sin(a) * sp, r, c.life, this.power, c.sprite, c.pull ?? 0);
+        engine.addZone(p.x + Math.cos(a) * 24, p.y + Math.sin(a) * 24, Math.cos(a) * sp, Math.sin(a) * sp, r, c.life, this.power, c.sprite, c.pull ?? 0, 0, 0, c.slow ?? 0);
       }
     }
     return true;
@@ -658,9 +669,14 @@ export class DebuffSkill extends SkillWeapon {
  */
 export interface BuffCfg {
   id: string;
-  buff: BuffId | 'shield' | 'bless';
+  /** dash = 돌진 (개수 가지 = 돌진 거리, 세기 = 피해 배율) */
+  buff: BuffId | 'shield' | 'bless' | 'dash';
   /** 세기 1일 때 값 */
   v: number;
+  /** 걸 때 이 반경(px)의 적을 밀쳐 낸다 (함성) */
+  knock?: number;
+  /** 같이 거는 버프 하나 더 */
+  also?: { buff: BuffId; v: number };
   sprite?: string;
   color: string;
 }
@@ -680,7 +696,9 @@ export class BuffSkill extends SkillWeapon {
     if (engine.nearestEnemies(p.x, p.y, 1, 260).length === 0) return false;
     const strength = this.spec.dmg * treeDamage(this.tree);
     const t = this.count;
-    if (c.buff === 'shield') {
+    if (c.buff === 'dash') {
+      engine.dashPlayer(t, this.power * c.v, c.color);
+    } else if (c.buff === 'shield') {
       engine.addShield(p.maxHp * c.v * strength, t);
     } else if (c.buff === 'bless') {
       for (const w of engine.weapons) if (w !== this) w.resetCooldown?.();
@@ -689,6 +707,11 @@ export class BuffSkill extends SkillWeapon {
     } else {
       if (c.buff === 'magnet') engine.vacuumGems();
       engine.buff(c.buff, t, c.v * strength);
+    }
+    if (c.also) engine.buff(c.also.buff, c.buff === 'dash' ? 1 : t, c.also.v * strength);
+    if (c.knock) {
+      engine.pushAway(p.x, p.y, c.knock, 420);
+      engine.addEffect('ring', p.x, p.y, c.knock, 0.35, c.color);
     }
     engine.addEffect('ring', p.x, p.y, 40, 0.4, c.color);
     if (c.sprite) engine.addSprite(c.sprite, p.x, p.y - 16, 34, 0.5, true);

@@ -112,7 +112,10 @@ export const sfx = {
       tone(1319, 0.12, 'square', 0.08, undefined, 0.06);
     }
   },
+  /** 버튼 누름: 짧고 또렷한 '톡' */
   click() {
-    if (throttle('click', 40)) tone(700, 0.03, 'triangle', 0.08);
+    if (!throttle('click', 40)) return;
+    tone(880, 0.035, 'triangle', 0.12);
+    tone(1320, 0.03, 'sine', 0.06, undefined, 0.015);
   },
 };

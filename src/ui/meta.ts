@@ -59,7 +59,7 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   const right = h('div', 'gear-col');
   const mid = h('div', 'gear-mid');
   const statLine = h('div', 'gear-stats');
-  mid.append(chickPic(92), statLine);
+  mid.append(chickPic(92, true), statLine);
   top.append(left, mid, right);
   panel.append(top, h('div', 'hint gear-hint', '칸을 누르면 장비 보기 · 꾹 누르면 바꾸기'));
   const slotEls = GEAR_SLOTS.map((slot, i) => {

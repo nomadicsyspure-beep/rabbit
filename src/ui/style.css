@@ -2174,7 +2174,9 @@ button:disabled {
 .buy:active:not(:disabled),
 .enter:active:not(:disabled),
 .btn:active:not(:disabled) {
-  transform: translateY(2px);
+  transform: translateY(2px) scale(0.97);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35), 0 1px 0 #2a1606;
+  filter: brightness(0.92);
 }
 
 /* 도전 버튼은 가운데 맞춤(translateX)을 지킨 채로 눌린다 (예전엔 눌리면 오른쪽으로 튀어서 손을 떼면 안 눌렸다) */
@@ -2648,4 +2650,24 @@ button:disabled {
 /* 자동 진행 버튼은 자기 줄에 (오른쪽 위 칸이 넓어져 스테이지 표지판을 가리지 않게) */
 .action-right .auto-next {
   grid-column: 1 / -1;
+}
+
+/* ---- 모든 버튼: 누르면 쑥 들어가는 느낌 (소리·진동은 ui.ts) ---- */
+button {
+  transition: transform 0.08s ease-out, filter 0.08s ease-out, box-shadow 0.08s ease-out;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.93);
+  filter: brightness(0.88);
+}
+
+.tab:active {
+  transform: scale(0.93) !important;
+}
+
+/* 도전 버튼은 가운데 맞춤(translateX)을 지킨 채로 */
+.challenge-btn:active {
+  transform: translate(-50%, 2px) scale(0.96);
+  filter: brightness(0.9);
 }

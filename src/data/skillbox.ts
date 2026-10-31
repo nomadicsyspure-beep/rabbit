@@ -3,7 +3,7 @@ import { DIAMOND_OVERRIDE } from './shop';
 import { SKILLS, SKILL_GRADE, type Grade, type SkillDef, type SkillType } from './skills';
 
 // 스킬은 상자를 까서 얻는다. 상자마다 등급 확률이 다르고, S급은 비싼 상자일수록 잘 나온다 (나무 0.1% · 은 1% · 금 7% · 전설 25%), 나무 상자도 A 1%.
-// 이미 가진 스킬이 나오면 그 스킬 피해 +1 (피해가 최대면 골드로 돌려준다).
+// 이미 가진 스킬이 나오면 그 스킬의 스킬 포인트 +1 (다 찍을 만큼 모았으면 골드).
 
 export type BoxId = 'wood' | 'silver' | 'gold' | 'legend';
 
