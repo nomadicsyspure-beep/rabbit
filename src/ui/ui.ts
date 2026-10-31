@@ -270,6 +270,13 @@ export class UI implements UIHost {
     this.toastEl = h('div', 'toast');
     this.app.append(this.battle, this.miniHud, this.panel, this.tabBar, this.overlay, this.toastEl);
     this.tutorial = new Tutorial(this.game, document.body, () => this.overlay.classList.contains('show'));
+    // 모든 버튼: 누르는 순간 짧은 소리와 진동 (눌린 게 확실히 느껴지게)
+    document.addEventListener('pointerdown', (e) => {
+      const b = e.target instanceof Element ? e.target.closest('button') : null;
+      if (!b || b.disabled) return;
+      sfx.click();
+      if (this.game.save.sound) navigator.vibrate?.(8);
+    }, true);
 
     // 시트 그림은 CSS 변수로 넘겨 배경·테두리에 쓴다
     for (const [name, url] of Object.entries(UI_URLS)) this.app.style.setProperty(`--art-${name}`, `url("${url}")`);

@@ -24,7 +24,9 @@ export type SkillId =
   | 'shuriken' | 'bubble' | 'petal' | 'acid' | 'windblade' | 'note' | 'skullfire' | 'iceorb' | 'candy' | 'phoenix' | 'arrowrain' | 'eruption' | 'frostspike' | 'shadowhand' | 'poisonbolt' | 'holymark' | 'shockwave' | 'pollen' | 'frostwave' | 'tornadoring' | 'swamp' | 'firepillar' | 'vortex' | 'icetrail' | 'starfall' | 'heartbeam'
   | 'flash' | 'roar' | 'dizzy' | 'sleepdust' | 'weaken' | 'hex' | 'huntmark' | 'ignite' | 'frostbite' | 'venom' | 'plague' | 'curse' | 'terror' | 'timestop' | 'shield' | 'rage' | 'berserk' | 'haste' | 'overdrive' | 'sprint' | 'thorns' | 'regen' | 'luck' | 'magnetstorm' | 'invincible' | 'bless' | 'sunflare' | 'darkwave' | 'emberring' | 'shadowbolt' | 'icemeteor' | 'goldspear'
   | 'thornring' | 'spinblades' | 'stormpulse' | 'lavapool' | 'snipe' | 'hailstorm' | 'magicmissile' | 'lavaball'
-  | 'chillaura' | 'bind' | 'doom' | 'panic' | 'fortress' | 'frenzy' | 'spikeshell' | 'guardian';
+  | 'chillaura' | 'bind' | 'doom' | 'panic' | 'fortress' | 'frenzy' | 'spikeshell' | 'guardian'
+  | 'spiralflame' | 'icering' | 'thunderpulse' | 'starspiral' | 'thunderhammer' | 'poisonarrow'
+  | 'glacier' | 'inferno' | 'mire' | 'dash' | 'warcry' | 'phantom';
 
 export type Branch = keyof SkillTree;
 
@@ -589,19 +591,80 @@ export const SKILLS: SkillDef[] = [
     dmg: 1, cd: 7, count: 0.8, countStep: 0.15, countLabel: '지속', countUnit: '초',
     create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'guardian', buff: 'invuln', v: 1, sprite: 'pillar@180', color: '#bfe8ff' }),
   },
+  // ---- 색 바꾼 스킬 2차: 새 기능 (나선 탄·기절 일격·느려지는 장판·돌진·함성·두 겹 버프) ----
+  {
+    id: 'spiralflame', type: 'attack', name: '화염 나선', icon: 'fx:fireball@18', blurb: '사방으로 빙글빙글 도는 불꽃 나선',
+    dmg: 1.2, cd: 0.9, count: 5, countLabel: '불꽃',
+    create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'spiralflame', sprite: 'fireball@18', speed: 260, range: 260, pierce: 1, pattern: 'spiral', r: 8, scale: 1.1 }),
+  },
+  {
+    id: 'icering', type: 'attack', name: '얼음 고리', icon: 'fx:ice-crystals@200', blurb: '퍼져 나가는 얼음 결정, 닿은 적은 느려진다',
+    dmg: 0.6, cd: 2.4, count: 6, countStep: 2, countLabel: '얼음',
+    create: (s, spec, t) => new ZoneSkill(s, spec, t, { id: 'icering', sprite: 'ice-crystals@200', r: 20, life: 2, at: 'ring', speed: 110, slow: 1.5 }),
+  },
+  {
+    id: 'thunderpulse', type: 'attack', name: '뇌전 파동', icon: 'fx:star-burst@55', blurb: '찌릿한 파동: 맞은 적이 잠깐 기절',
+    dmg: 0.85, cd: 2.6, count: 2, countLabel: '파동',
+    create: (s, spec, t) => new PulseSkill(s, spec, t, { id: 'thunderpulse', color: '#fff27a', radius: 55, step: 30, sprite: 'star-burst@55', knock: 40, stun: 0.5 }),
+  },
+  {
+    id: 'starspiral', type: 'target', name: '별빛 회오리탄', icon: 'fx:star-burst@280', blurb: '빙글빙글 돌며 적을 쫓아가 터지는 별',
+    dmg: 0.9, cd: 1.6, count: 4, countLabel: '별',
+    create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'starspiral', sprite: 'star-burst@280', speed: 240, range: 420, pierce: 0, pattern: 'spiral', home: 3, r: 8, blast: 30 }),
+  },
+  {
+    id: 'thunderhammer', type: 'target', name: '천둥 망치', icon: 'fx:star-burst@50', blurb: '하늘에서 망치가 쾅: 주변 적 기절',
+    dmg: 1.5, cd: 2.6, count: 2, countLabel: '망치',
+    create: (s, spec, t) => new StrikeSkill(s, spec, t, { id: 'thunderhammer', sprite: 'star-burst@50', radius: 36, bolt: '#fff27a', stun: 1, shake: 2 }),
+  },
+  {
+    id: 'poisonarrow', type: 'target', name: '독화살', icon: 'fx:feather@100', blurb: '여러 마리를 꿰뚫는 초록 화살',
+    dmg: 1.1, cd: 1.4, count: 3, countLabel: '화살',
+    create: (s, spec, t) => new ShotSkill(s, spec, t, { id: 'poisonarrow', sprite: 'feather@100', speed: 600, range: 420, pierce: 3, pattern: 'fan', gap: 0.18, r: 8 }),
+  },
+  {
+    id: 'glacier', type: 'debuff', name: '빙하 감옥', icon: 'fx:ice-crystals@185', blurb: '주변 적을 통째로 얼려 멈춘다',
+    dmg: 0.3, cd: 5, count: 2, countLabel: '범위',
+    create: (s, spec, t) => new DebuffSkill(s, spec, t, { id: 'glacier', kind: 'stun', t: 1.6, area: 70, sprite: 'ice-crystals@185', color: '#bfe8ff' }),
+  },
+  {
+    id: 'inferno', type: 'debuff', name: '불지옥', icon: 'fx:fire-burst@5', blurb: '주변 적 전부에게 불을 붙인다',
+    dmg: 0.8, cd: 4, count: 2, countLabel: '범위',
+    create: (s, spec, t) => new DebuffSkill(s, spec, t, { id: 'inferno', kind: 'burn', t: 3, area: 75, sprite: 'fire-burst@5', color: '#ff7a2a' }),
+  },
+  {
+    id: 'mire', type: 'debuff', name: '진흙탕', icon: 'fx:dust@30', blurb: '적 무리 밑에 진흙탕: 빠지면 엉금엉금',
+    dmg: 0.35, cd: 3, count: 2, countLabel: '진흙탕',
+    create: (s, spec, t) => new ZoneSkill(s, spec, t, { id: 'mire', sprite: 'dust@30', r: 46, life: 3, at: 'enemy', slow: 2 }),
+  },
+  {
+    id: 'dash', type: 'buff', name: '돌진', icon: 'fx:blue-slash@200', blurb: '바라보는 쪽으로 순식간에 돌진: 길목의 적을 치고 그동안 무적',
+    dmg: 1, cd: 3.5, count: 130, countStep: 15, countLabel: '돌진 거리', countUnit: 'px',
+    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'dash', buff: 'dash', v: 2.5, color: '#7ad7ff' }),
+  },
+  {
+    id: 'warcry', type: 'buff', name: '함성', icon: 'fx:purple-burst@30', blurb: '크게 외쳐 주변 적을 밀쳐 내고 피해 증가',
+    dmg: 1, cd: 8, count: 3, countStep: 0.5, countLabel: '지속', countUnit: '초',
+    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'warcry', buff: 'rage', v: 0.3, knock: 110, sprite: 'purple-burst@30', color: '#ff9a4a' }),
+  },
+  {
+    id: 'phantom', type: 'buff', name: '유령화', icon: 'fx:purple-flame@220', blurb: '잠깐 유령이 된다: 무적 + 이동 속도 증가',
+    dmg: 1, cd: 12, count: 1.2, countStep: 0.2, countLabel: '지속', countUnit: '초',
+    create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'phantom', buff: 'invuln', v: 1, also: { buff: 'sprint', v: 0.9 }, sprite: 'purple-flame@220', color: '#c9b8ff' }),
+  },
 ];
 
 /**
- * 밸런스 테스트 결과 (밸런스 패치 후 다시 잼, 상자 추가분 16개·부메랑 버그·탄환 방향 버그 수정분 포함. 스킬 Lv 5 = 피해 2·속도 1·개수 1, 스테이지 13, 같은 난수로 40초씩 4~8번).
+ * 밸런스 테스트 결과 (밸런스 패치 후 다시 잼, 상자 추가분 16개·부메랑 버그·탄환 방향 버그 수정분·새 기능 12종 포함. 스킬 Lv 5 = 피해 2·속도 1·개수 1, 스테이지 13, 같은 난수로 40초씩 4~8번).
  * 공격형·보조형: 혼자 장착했을 때 준 피해. 디버프형·버프형: 회전 베기+깃털과 같이 썼을 때 처치 수·버틴 정도.
  * 형태마다 센 순서 (앞일수록 셈)와 등급: 위 15% S · 20% A · 30% B · 20% C · 15% D
  */
 export type Grade = 'S' | 'A' | 'B' | 'C' | 'D';
 const RANKING: Record<SkillType, [SkillId, Grade][]> = {
-  attack: [['cross', 'S'], ['phoenix', 'S'], ['thornring', 'S'], ['quake', 'S'], ['boomerang', 'A'], ['lavapool', 'A'], ['firetrail', 'A'], ['emberring', 'A'], ['pollen', 'A'], ['spinblades', 'B'], ['windblade', 'B'], ['shockwave', 'B'], ['stormpulse', 'B'], ['wisp', 'B'], ['darkwave', 'B'], ['sunflare', 'B'], ['tornadoring', 'C'], ['starfall', 'C'], ['featherstorm', 'C'], ['slash', 'C'], ['petal', 'C'], ['nova', 'D'], ['flame', 'D'], ['tornado', 'D'], ['dark', 'D']],
-  target: [['firepillar', 'S'], ['bigegg', 'S'], ['firework', 'S'], ['goldspear', 'S'], ['snipe', 'S'], ['lance', 'A'], ['laser', 'A'], ['eruption', 'A'], ['meteor', 'A'], ['thunder', 'A'], ['arrowrain', 'A'], ['icemeteor', 'B'], ['lavaball', 'B'], ['holymark', 'B'], ['shuriken', 'B'], ['hailstorm', 'B'], ['acid', 'B'], ['shadowbolt', 'B'], ['iceorb', 'B'], ['fire', 'B'], ['pillar', 'C'], ['heartbeam', 'C'], ['feather', 'C'], ['egg', 'C'], ['skullfire', 'C'], ['chain', 'C'], ['magicmissile', 'D'], ['candy', 'D'], ['bubble', 'D'], ['note', 'D'], ['firefly', 'D']],
-  debuff: [['swamp', 'S'], ['vortex', 'S'], ['frostwave', 'S'], ['blackhole', 'S'], ['blizzard', 'A'], ['curse', 'A'], ['icetrail', 'A'], ['frostspike', 'A'], ['timestop', 'A'], ['shadowhand', 'A'], ['poisonbolt', 'B'], ['venom', 'B'], ['gravity', 'B'], ['poison', 'B'], ['frostbite', 'B'], ['ice', 'B'], ['flash', 'B'], ['doom', 'B'], ['dizzy', 'B'], ['plague', 'B'], ['bind', 'C'], ['roar', 'C'], ['huntmark', 'C'], ['terror', 'C'], ['hex', 'C'], ['ignite', 'C'], ['sleepdust', 'D'], ['weaken', 'D'], ['panic', 'D'], ['chillaura', 'D']],
-  buff: [['overdrive', 'S'], ['regen', 'S'], ['shield', 'S'], ['heal', 'A'], ['fortress', 'A'], ['haste', 'A'], ['vampire', 'B'], ['luck', 'B'], ['berserk', 'B'], ['rage', 'B'], ['invincible', 'B'], ['bless', 'B'], ['spikeshell', 'C'], ['guardian', 'C'], ['magnetstorm', 'C'], ['frenzy', 'D'], ['thorns', 'D'], ['sprint', 'D']],
+  attack: [['cross', 'S'], ['phoenix', 'S'], ['thornring', 'S'], ['icering', 'S'], ['quake', 'A'], ['boomerang', 'A'], ['lavapool', 'A'], ['firetrail', 'A'], ['emberring', 'A'], ['pollen', 'A'], ['spinblades', 'B'], ['windblade', 'B'], ['shockwave', 'B'], ['stormpulse', 'B'], ['wisp', 'B'], ['darkwave', 'B'], ['sunflare', 'B'], ['tornadoring', 'B'], ['spiralflame', 'C'], ['starfall', 'C'], ['featherstorm', 'C'], ['thunderpulse', 'C'], ['slash', 'C'], ['petal', 'C'], ['nova', 'D'], ['flame', 'D'], ['tornado', 'D'], ['dark', 'D']],
+  target: [['firepillar', 'S'], ['bigegg', 'S'], ['firework', 'S'], ['goldspear', 'S'], ['snipe', 'S'], ['lance', 'A'], ['laser', 'A'], ['eruption', 'A'], ['meteor', 'A'], ['thunder', 'A'], ['arrowrain', 'A'], ['icemeteor', 'A'], ['lavaball', 'B'], ['poisonarrow', 'B'], ['holymark', 'B'], ['shuriken', 'B'], ['hailstorm', 'B'], ['acid', 'B'], ['shadowbolt', 'B'], ['iceorb', 'B'], ['fire', 'B'], ['pillar', 'B'], ['thunderhammer', 'C'], ['heartbeam', 'C'], ['feather', 'C'], ['egg', 'C'], ['skullfire', 'C'], ['starspiral', 'C'], ['chain', 'C'], ['magicmissile', 'D'], ['candy', 'D'], ['bubble', 'D'], ['note', 'D'], ['firefly', 'D']],
+  debuff: [['mire', 'S'], ['swamp', 'S'], ['vortex', 'S'], ['frostwave', 'S'], ['blackhole', 'S'], ['blizzard', 'A'], ['curse', 'A'], ['icetrail', 'A'], ['frostspike', 'A'], ['timestop', 'A'], ['shadowhand', 'A'], ['poisonbolt', 'A'], ['venom', 'B'], ['gravity', 'B'], ['poison', 'B'], ['frostbite', 'B'], ['ice', 'B'], ['flash', 'B'], ['inferno', 'B'], ['doom', 'B'], ['dizzy', 'B'], ['glacier', 'C'], ['plague', 'C'], ['bind', 'C'], ['roar', 'C'], ['huntmark', 'C'], ['terror', 'C'], ['hex', 'C'], ['ignite', 'D'], ['sleepdust', 'D'], ['weaken', 'D'], ['panic', 'D'], ['chillaura', 'D']],
+  buff: [['overdrive', 'S'], ['regen', 'S'], ['shield', 'S'], ['heal', 'A'], ['fortress', 'A'], ['haste', 'A'], ['vampire', 'A'], ['warcry', 'B'], ['luck', 'B'], ['phantom', 'B'], ['berserk', 'B'], ['rage', 'B'], ['invincible', 'B'], ['bless', 'B'], ['spikeshell', 'C'], ['guardian', 'C'], ['magnetstorm', 'C'], ['frenzy', 'C'], ['dash', 'D'], ['thorns', 'D'], ['sprint', 'D']],
 };
 export const SKILL_GRADE = Object.fromEntries(Object.values(RANKING).flat()) as Record<SkillId, Grade>;
 const RANK = new Map(Object.values(RANKING).flat().map(([id], i) => [id, i]));

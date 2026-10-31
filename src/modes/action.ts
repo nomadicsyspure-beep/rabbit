@@ -22,6 +22,9 @@ const BASE_SPEED = 165;
 const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
 const ELITE_HP = 1800;
+/** 초반 스테이지는 쉽게: 스테이지 1은 몹 체력·피해·숫자 EASY_START배, EASY_UNTIL 스테이지부터 원래대로 */
+const EASY_START = 0.5;
+const EASY_UNTIL = 12;
 const BOSS_HP = 5000;
 /** 일반 몹 난이도 배율 (체력 / 부딪힐 때 피해) */
 const MOB_HP = 1.8;
@@ -305,7 +308,7 @@ export class ActionMode {
     // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
     const kindRate = this.kind === 'raid' ? RAID_SPAWN : this.kind === 'infinite' ? 1 + this.time / 120 : 1;
-    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1);
+    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1) * (0.5 + 0.5 * this.ease);
 
     if (this.fever > 0) {
       this.fever -= dt;
@@ -374,6 +377,12 @@ export class ActionMode {
       this.nextElite += INFINITE_ELITE_SEC;
       this.spawnElite();
     }
+  }
+
+  /** 초반 스테이지 쉬움 배율 (스테이지 판에서만, 1 = 원래 난이도) */
+  private get ease() {
+    if (this.kind !== 'stage') return 1;
+    return Math.min(1, EASY_START + ((1 - EASY_START) * (this.stage - 1)) / (EASY_UNTIL - 1));
   }
 
   /** 몹이 짙어지는 정도 0~1 (스테이지 길이와 상관없이 RAMP_SEC초에 걸쳐) */
@@ -521,7 +530,8 @@ export class ActionMode {
 
   /** 일반 몹 생성: 난이도 배율(MOB_HP, MOB_DMG)을 적용한다 */
   private spawnMob(init: Parameters<Engine['spawnEnemy']>[0]) {
-    return this.game.engine.spawnEnemy({ ...init, hp: init.hp * MOB_HP, dmg: (init.dmg ?? 1) * MOB_DMG });
+    const ease = this.ease;
+    return this.game.engine.spawnEnemy({ ...init, hp: init.hp * MOB_HP * ease, dmg: (init.dmg ?? 1) * MOB_DMG * ease });
   }
 
   private spawnBoss() {
@@ -529,10 +539,10 @@ export class ActionMode {
     const { x, y } = this.spawnPos();
     const eng = this.game.engine;
     if (this.isBossStage) {
-      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP, r: 30, speed: 50, dmg: 22, xp: 0, elite: true });
+      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP * this.ease, r: 30, speed: 50, dmg: 22 * this.ease, xp: 0, elite: true });
       this.game.ui.toast('마왕 등장!');
     } else {
-      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP, r: 22, speed: 55, dmg: 16, xp: 0, elite: true });
+      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP * this.ease, r: 22, speed: 55, dmg: 16 * this.ease, xp: 0, elite: true });
       this.game.ui.toast('정예 몬스터 등장!');
     }
   }

@@ -1,4 +1,5 @@
 import { FX_URLS, SPRITES, UI_URLS } from '../battle/sprites';
+import { frameAt } from '../battle/anim';
 import { hueRecolor, recolored } from '../battle/tint';
 import type { SkillDef } from '../data/skills';
 
@@ -112,19 +113,31 @@ function retryDraw(draw: () => boolean, tries = 40) {
 }
 
 /** 병아리 정면 그림 (장비 탭 가운데) */
-export function chickPic(size = 96) {
+export function chickPic(size = 96, walk = false) {
   const c = h('canvas', 'chick-pic');
   c.width = c.height = size * 2;
   c.style.width = c.style.height = `${size}px`;
   const draw = () => {
-    const src = SPRITES.hero.walk[2]?.frames[0];
-    if (!src) return false;
+    const anim = SPRITES.hero.walk[2];
+    if (!anim) return false;
+    // walk = 정면으로 걷는 모습 (프레임을 돌린다)
+    const src = walk ? frameAt(anim, performance.now()) : anim.frames[0];
     const ctx = c.getContext('2d')!;
     ctx.clearRect(0, 0, c.width, c.height);
     ctx.drawImage(src, 0, 0, c.width, c.height);
     return true;
   };
   retryDraw(draw);
+  if (walk) {
+    // 화면에서 떨어지면(탭을 옮기면) 멈춘다
+    const loop = () => {
+      if (!c.isConnected && c.dataset.started) return;
+      if (c.isConnected) c.dataset.started = '1';
+      draw();
+      setTimeout(loop, 80);
+    };
+    loop();
+  }
   return c;
 }
 

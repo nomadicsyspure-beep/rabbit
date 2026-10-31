@@ -126,6 +126,8 @@ export interface Zone {
   /** 사라질 때 이 피해로 blastR 반경 폭발 */
   blast: number;
   blastR: number;
+  /** 0보다 크면 장판 안의 적을 이 시간(초)만큼 느리게 */
+  slow: number;
 }
 
 export interface EnemyBullet {
@@ -446,7 +448,7 @@ export class Engine {
   }), 500);
   readonly zones = new Pool<Zone>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 20, dmg: 1, life: 0, maxLife: 1, sprite: '', nextHit: new Map(),
-    pull: 0, blast: 0, blastR: 0,
+    pull: 0, blast: 0, blastR: 0, slow: 0,
   }), 60);
   readonly bullets = new Pool<EnemyBullet>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
@@ -505,6 +507,7 @@ export class Engine {
     for (const id of BUFF_IDS) this.buffs[id].t = 0;
     this.shieldHp = 0;
     this.shieldT = 0;
+    this.dashT = 0;
     this.weapons = [];
     this.time = 0;
     this.shake = 0;
@@ -564,6 +567,38 @@ export class Engine {
       }
     }
     return out;
+  }
+
+  /** 돌진 남은 시간과 속도 */
+  private dashT = 0;
+  private dashVX = 0;
+  private dashVY = 0;
+
+  /** 돌진 (버프형 '돌진'): 바라보는 쪽으로 dist만큼 순식간에, 지나간 길의 적에게 피해 + 밀치기, 그동안 무적 */
+  dashPlayer(dist: number, dmg: number, color: string) {
+    const p = this.player;
+    const dx = p.faceX;
+    const dy = p.faceY;
+    const ex = p.x + dx * dist;
+    const ey = p.y + dy * dist;
+    this.lineHit(p.x, p.y, ex, ey, 22, dmg, 160);
+    this.addEffect('bolt', p.x, p.y - 8, 0, 0.3, color, ex, ey - 8);
+    this.burst(p.x, p.y - 8, 10, [color, '#ffffff'], 140, 0.4, 0, 2.5);
+    const T = 0.16;
+    this.dashT = T;
+    this.dashVX = (dx * dist) / T;
+    this.dashVY = (dy * dist) / T;
+    p.invuln = Math.max(p.invuln, T + 0.15);
+  }
+
+  /** 주변 적을 바깥으로 밀쳐 낸다 (함성 등) */
+  pushAway(x: number, y: number, r: number, force: number) {
+    for (const e of this.nearestEnemies(x, y, 200, r)) {
+      if (e.kind === 'boss') continue;
+      const d = Math.hypot(e.x - x, e.y - y) || 1;
+      e.kx += ((e.x - x) / d) * force;
+      e.ky += ((e.y - y) / d) * force;
+    }
   }
 
   /** 버프 걸기 (더 긴 시간 / 더 큰 값으로) */
@@ -840,7 +875,7 @@ export class Engine {
 
   addZone(
     x: number, y: number, vx: number, vy: number, r: number, life: number, dmg: number, sprite: string,
-    pull = 0, blast = 0, blastR = 0,
+    pull = 0, blast = 0, blastR = 0, slow = 0,
   ) {
     const z = this.zones.get();
     if (!z) return;
@@ -857,6 +892,7 @@ export class Engine {
     z.pull = pull;
     z.blast = blast;
     z.blastR = blastR;
+    z.slow = slow;
   }
 
   fireBullet(x: number, y: number, angle: number, speed: number, dmg: number) {
@@ -1009,7 +1045,12 @@ export class Engine {
       else if (p.curSpeed < target * START_SPEED) p.curSpeed = target * START_SPEED;
       else if (p.curSpeed > target) p.curSpeed = target;
       else p.curSpeed += (target - p.curSpeed) * (1 - Math.exp(-ACCEL * dt));
-      if (p.moving) {
+      if (this.dashT > 0) {
+        // 돌진 중: 정해진 방향으로 쭉 (조종은 잠깐 무시)
+        this.dashT -= dt;
+        p.x += this.dashVX * dt;
+        p.y += this.dashVY * dt;
+      } else if (p.moving) {
         p.x += (mv.x / len) * p.curSpeed * dt;
         p.y += (mv.y / len) * p.curSpeed * dt;
         p.faceX = mv.x / len;
@@ -1457,6 +1498,7 @@ export class Engine {
         if ((e.x - z.x) ** 2 + (e.y - z.y) ** 2 > (e.r + z.r) ** 2) continue;
         if ((z.nextHit.get(e.id) ?? 0) > this.time) continue;
         z.nextHit.set(e.id, this.time + 0.35);
+        if (z.slow > 0) e.slowT = Math.max(e.slowT, z.slow);
         const sp = Math.hypot(z.vx, z.vy) || 1;
         this.damageEnemy(e, z.dmg, (z.vx / sp) * 80, (z.vy / sp) * 80);
       }
