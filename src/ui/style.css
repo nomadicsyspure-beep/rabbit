@@ -2671,3 +2671,153 @@ button:active:not(:disabled) {
   transform: translate(-50%, 2px) scale(0.96);
   filter: brightness(0.9);
 }
+
+/* 스테이지 오른쪽 아래: 스킬 칸 + AUTO (엄지로 누르기 좋게) */
+.bottom-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.action-bottom .skill-slots {
+  align-self: auto;
+}
+
+.bottom-row .auto-btn {
+  width: 48px;
+  height: 48px;
+}
+
+/* 스킬 탭 형태별 탭 (공격형 · 보조형 · 디버프형 · 버프형) */
+.skill-type-seg {
+  flex: none;
+}
+
+.skill-type-seg .seg-btn {
+  color: var(--type);
+  font-weight: 900;
+}
+
+.skill-type-seg .seg-btn.on {
+  background: var(--type);
+  color: #2a1606;
+  text-shadow: none;
+}
+
+.skill-type-desc {
+  margin-top: -6px;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* 성장 탭: 능력치 4개를 2×2 작은 칸으로 */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.stat-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 8px 9px;
+  min-width: 0;
+}
+
+.stat-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stat-card .icon {
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.stat-card .icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.stat-card .title {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.stat-card .sub {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-card .buy {
+  width: 100%;
+  height: 40px;
+  min-width: 0;
+}
+
+/* 스킬 상자: 2×2 작은 칸 (확률은 상자를 누르면 창으로) */
+.box-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.skill-box {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px;
+  min-width: 0;
+}
+
+.box-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  min-width: 0;
+  text-align: left;
+}
+
+.box-head .box-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.box-head .title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.box-head .box-info {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.skill-box .box-btns .buy {
+  flex: 1;
+  width: auto;
+  height: 40px;
+}
+
+.skill-box .box-btns .buy span {
+  font-size: 12px;
+}
+
+.odds-grade {
+  position: static;
+  padding: 1px 8px;
+  font-size: 12px;
+  line-height: 18px;
+}

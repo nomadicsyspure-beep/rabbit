@@ -81,7 +81,7 @@ export class Tutorial {
       { when: () => modalOpen(), target: () => $('.modal .btn.primary:last-child'), text: '스킬은 골드로 못 올려. 상자를 많이 까서 포인트를 모으자! 이제 닫아 보자' },
       { when: idle, target: tab('성장'), text: '성장 탭에서는 병아리 능력치를 올려' },
       {
-        when: idle, target: () => $('.panel .card.row .buy'), text: '공격력을 한 번 올려 보자! (누르고 있으면 연속 강화)',
+        when: idle, target: () => $('.panel .stat-card .buy'), text: '공격력을 한 번 올려 보자! (누르고 있으면 연속 강화)',
         enter: () => {
           const s = game.save;
           const c = game.statCost('atk');

@@ -13,34 +13,38 @@ import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
-// 스테이지는 1분: 일반 스테이지는 60초 버티면 정예 몬스터 / 보스 스테이지(10단위)는 마왕 보스
-const NORMAL_SECONDS = 60;
-const BOSS_STAGE_SECONDS = 60;
+// 스테이지는 30초: 시간이 다 되면 일반 스테이지는 정예 몬스터 / 보스 스테이지(10단위)는 마왕 보스. 중간에 중간 보스.
+// 스테이지 1은 튜토리얼처럼 15초, 몹 아주 적고 보스도 약하다
+const NORMAL_SECONDS = 30;
+const BOSS_STAGE_SECONDS = 30;
+const FIRST_STAGE_SECONDS = 15;
+/** 중간 보스가 나오는 시각(초) */
+const MID_BOSS_AT = [10, 20];
 const BASE_POWER = 10;
 const BASE_HP = 150;
 const BASE_SPEED = 165;
 const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
-const ELITE_HP = 1800;
+const ELITE_HP = 4500;
 /** 초반 스테이지는 쉽게: 스테이지 1은 몹 체력·피해·숫자 EASY_START배, EASY_UNTIL 스테이지부터 원래대로 */
 const EASY_START = 0.5;
 const EASY_UNTIL = 12;
-const BOSS_HP = 5000;
+const BOSS_HP = 14000;
 /** 일반 몹 난이도 배율 (체력 / 부딪힐 때 피해) */
 const MOB_HP = 1.8;
 const MOB_DMG = 1.5;
 /** 몹 수·구성이 최대로 짙어지기까지 걸리는 시간(초) */
-const RAMP_SEC = 90;
+const RAMP_SEC = 30;
 /** 피버: 게이지(처치 수, 콤보와 상관없이 쌓임)가 FEVER_NEED만큼 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
-export const FEVER_NEED = 500;
+export const FEVER_NEED = 250;
 export const FEVER_SEC = 10;
 const FEVER_BONUS = 5;
 const FEVER_SPAWN = 2.5;
 const FEVER_MOVE = 1.7;
 
 /** 패턴 웨이브: 첫 웨이브까지 / 웨이브 간격(초) */
-const WAVE_FIRST = 8;
-const WAVE_GAP = 11;
+const WAVE_FIRST = 5;
+const WAVE_GAP = 8;
 type Wave = 'ring' | 'stampede' | 'wall';
 const WAVES: Wave[] = ['ring', 'stampede', 'wall'];
 /** 움직이는 중 새 몹이 가는 방향 앞쪽에서 나올 확률 */
@@ -51,7 +55,7 @@ export const COMBO_SEC = 2;
 /** 처치 1마리당 골드 = 그 스테이지 몹 골드 × 이 값 (이기든 지든) */
 const KILL_GOLD = 0.3;
 /** 재료 상자가 나오는 간격(초) */
-const CHEST_SEC = 12;
+const CHEST_SEC = 9;
 /** 황금 몹: 나올 확률, 잡으면 골드 (몹 골드 × 이 값) + 다이아 + 금 상자 */
 const GOLDEN_RATE = 0.003;
 const GOLDEN_GOLD = 150;
@@ -59,9 +63,14 @@ const GOLDEN_DIAMONDS = 5;
 /** 구급상자 몹: 나올 확률. 단단하고, 잡으면 체력 회복템 */
 const FIRSTAID_RATE = 0.004;
 /** 웨이브 몹(돌진·포위·벽)은 색이 다르고 더 아프다: 피하라는 신호 */
-const CHARGE_DMG = 2.2;
-const RING_DMG = 2;
+const CHARGE_DMG = 4;
+const RING_DMG = 3.5;
 const WALL_DMG = 1.5;
+/** 몹 무리: 한 덩어리로 우르르 몰려오는 무리 간격(초) / 도망 다니는 무리(쫓아가서 잡는 맛) 간격(초) */
+const PACK_SEC = 4;
+const HERD_SEC = 9;
+/** 따로따로 하나씩 나오는 몹은 이만큼만 (나머지는 무리로) */
+const TRICKLE = 0.55;
 /** 몇 콤보마다 보석 싹쓸이 */
 const VACUUM_COMBO = 100;
 
@@ -132,6 +141,10 @@ export class ActionMode {
   private spawnAcc = 0;
   /** 다음 패턴 웨이브까지 남은 시간 / 몇 번째 패턴인지 */
   private waveT = 0;
+  private packT = 0;
+  private herdT = 0;
+  /** 아직 안 나온 중간 보스 시각들 */
+  private midBosses: number[] = [];
   private waveIdx = 0;
   private baseHp = BASE_HP;
   private endT = -1;
@@ -194,7 +207,7 @@ export class ActionMode {
     this.phase2 = false;
     this.nextElite = INFINITE_ELITE_SEC;
     this.duration = kind === 'material' ? MATERIAL_SECONDS : kind === 'raid' ? RAID_SECONDS : kind === 'infinite' ? Infinity
-      : isBossStage(stage) ? BOSS_STAGE_SECONDS : NORMAL_SECONDS;
+      : stage === 1 ? FIRST_STAGE_SECONDS : isBossStage(stage) ? BOSS_STAGE_SECONDS : NORMAL_SECONDS;
     const save = this.game.save;
     const st = this.game.stats;
     const bonus = this.game.bonus;
@@ -231,6 +244,9 @@ export class ActionMode {
     this.bossSpawned = false;
     this.spawnAcc = 0;
     this.waveT = WAVE_FIRST;
+    this.packT = 1.5;
+    this.herdT = 4;
+    this.midBosses = kind === 'stage' && stage > 1 ? [...MID_BOSS_AT] : [];
     this.waveIdx = Math.floor(Math.random() * WAVES.length);
     this.endT = -1;
     this.chestT = kind === 'material' ? 1 : kind === 'raid' ? Infinity : CHEST_SEC * 0.6;
@@ -308,7 +324,8 @@ export class ActionMode {
     // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
     const kindRate = this.kind === 'raid' ? RAID_SPAWN : this.kind === 'infinite' ? 1 + this.time / 120 : 1;
-    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1) * (0.5 + 0.5 * this.ease);
+    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1) * (0.5 + 0.5 * this.ease)
+      * (this.kind === 'stage' ? TRICKLE : 1) * (this.firstStage ? 0.5 : 1);
 
     if (this.fever > 0) {
       this.fever -= dt;
@@ -321,9 +338,27 @@ export class ActionMode {
       if (eng.enemies.countActive() < MAX_ALIVE) this.spawnOne(this.pickKind());
     }
 
-    // 패턴 웨이브: 포위 / 돌진 / 벽을 돌아가며 (한 방향으로 달린다고 벽이 생기진 않는다)
+    // 몹 무리: 가끔 한 덩어리로 우르르 / 도망 다니는 무리 (스테이지만)
+    if (this.kind === 'stage' && !this.bossSpawned) {
+      this.packT -= dt;
+      if (this.packT <= 0) {
+        this.packT = PACK_SEC * (0.7 + Math.random() * 0.6) * (this.firstStage ? 1.6 : 1);
+        this.spawnPack();
+      }
+      this.herdT -= dt;
+      if (this.herdT <= 0) {
+        this.herdT = HERD_SEC * (0.8 + Math.random() * 0.4);
+        this.spawnHerd();
+      }
+      if (this.midBosses.length > 0 && this.time >= this.midBosses[0]) {
+        this.midBosses.shift();
+        this.spawnMidBoss();
+      }
+    }
+
+    // 패턴 웨이브: 포위 / 돌진 / 벽을 돌아가며 (한 방향으로 달린다고 벽이 생기진 않는다). 스테이지 1은 없음
     this.waveT -= dt;
-    if (this.waveT <= 0 && !this.bossSpawned) {
+    if (this.waveT <= 0 && !this.bossSpawned && !this.firstStage) {
       this.waveT = this.isBossStage ? WAVE_GAP * 0.75 : WAVE_GAP;
       const wave = WAVES[this.waveIdx++ % WAVES.length];
       this.spawnWave(wave);
@@ -342,6 +377,56 @@ export class ActionMode {
     }
 
     this.recycleFarEnemies();
+  }
+
+  /** 스테이지 1 (튜토리얼처럼 쉽게) */
+  private get firstStage() {
+    return this.kind === 'stage' && this.stage === 1;
+  }
+
+  /** 몹 덩어리: 화면 밖 한 곳에서 한꺼번에 우르르 몰려온다 */
+  private spawnPack() {
+    const { x, y } = this.spawnPos();
+    const s = 1 + (this.time / 60) * 0.6;
+    const skins = stageSkins(this.skinStage);
+    const n = Math.round((8 + 10 * this.ramp) * (this.firstStage ? 0.5 : 1));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.sqrt(Math.random()) * 45;
+      const fast = i % 4 === 3;
+      this.spawnMob({
+        kind: fast ? 'fast' : 'normal', skin: fast ? skins.fast : skins.normal, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d,
+        hp: (fast ? 4 : 5) * s, r: fast ? 10 : 11, speed: fast ? 100 : 66, dmg: 3 * s, xp: 1,
+      });
+    }
+  }
+
+  /** 도망 다니는 몹 무리: 가까이 가면 우르르 도망 (병아리보다 느리다). 쫓아가서 쓸어 담으면 경험치 3배 */
+  private spawnHerd() {
+    const eng = this.game.engine;
+    const p = eng.player;
+    const s = 1 + (this.time / 60) * 0.6;
+    const skins = stageSkins(this.skinStage);
+    const a = Math.random() * Math.PI * 2;
+    const d = this.diag / 2 - 30;
+    const cx = p.x + Math.cos(a) * d;
+    const cy = p.y + Math.sin(a) * d * 0.8;
+    const n = 10 + Math.floor(Math.random() * 6);
+    for (let i = 0; i < n; i++) {
+      const b = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * 40;
+      this.spawnMob({ kind: 'normal', skin: skins.normal, x: cx + Math.cos(b) * r, y: cy + Math.sin(b) * r, hp: 5 * s, r: 11, speed: 72, dmg: 1 * s, xp: 3, move: 'herd' });
+    }
+    this.game.ui.toast('도망가는 몹 무리! 쫓아가서 잡자');
+  }
+
+  /** 중간 보스: 크고 단단한 정예 (바닥에 붉은 오라) */
+  private spawnMidBoss() {
+    const pos = this.spawnPos();
+    const s = 1 + (this.time / 60) * 0.6;
+    const skins = stageSkins(this.skinStage);
+    this.spawnMob({ kind: 'tank', skin: skins.tank, x: pos.x, y: pos.y, hp: 260 * s, r: 24, speed: 52, dmg: 14 * s, xp: 25, elite: true });
+    this.game.ui.toast('중간 보스 등장!');
   }
 
   private spawnElite() {
@@ -466,7 +551,7 @@ export class ActionMode {
     switch (wave) {
       case 'ring': {
         // 사방을 둘러싸고 조여 온다: 빈틈 한 군데로 빠져나가야 한다
-        const n = Math.round(28 * crowd);
+        const n = Math.round(44 * crowd);
         const r = this.diag / 2 + 10;
         const gap = Math.random() * Math.PI * 2;
         for (let i = 0; i < n; i++) {
@@ -485,9 +570,9 @@ export class ActionMode {
         const dirX = -Math.cos(side);
         const dirY = -Math.sin(side);
         const startD = this.diag / 2 + 20;
-        const n = Math.round(14 * crowd);
+        const n = Math.round(24 * crowd);
         for (let i = 0; i < n; i++) {
-          const along = (i - (n - 1) / 2) * 26;
+          const along = (i - (n - 1) / 2) * 22;
           // 줄을 가는 방향 쪽으로 조금 밀어서 앞길을 쓸고 지나가게
           const cx = p.x + Math.cos(side) * startD + Math.cos(h) * (along + 60);
           const cy = p.y + Math.sin(side) * startD + Math.sin(h) * (along + 60);
@@ -539,10 +624,12 @@ export class ActionMode {
     const { x, y } = this.spawnPos();
     const eng = this.game.engine;
     if (this.isBossStage) {
-      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP * this.ease, r: 30, speed: 50, dmg: 22 * this.ease, xp: 0, elite: true });
+      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP * this.ease, r: 32, speed: 52, dmg: 32 * this.ease, xp: 0, elite: true });
       this.game.ui.toast('마왕 등장!');
     } else {
-      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP * this.ease, r: 22, speed: 55, dmg: 16 * this.ease, xp: 0, elite: true });
+      // 스테이지 1은 멍때려도 잡히는 약한 보스
+      const k = this.firstStage ? 0.02 : this.ease;
+      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP * k, r: 24, speed: this.firstStage ? 40 : 58, dmg: (this.firstStage ? 6 : 24) * this.ease, xp: 0, elite: true });
       this.game.ui.toast('정예 몬스터 등장!');
     }
   }

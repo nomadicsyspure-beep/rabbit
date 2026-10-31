@@ -393,6 +393,27 @@ export class Renderer {
     const hue = at < 0 ? '' : e.skin.slice(at + 1);
     const anim = SPRITES.monsters[skin] ?? SPRITES.monsters.slime ?? Object.values(SPRITES.monsters)[0];
     const size = e.r * ENEMY_SPRITE_SCALE;
+    if (e.elite) {
+      // 정예·중간 보스·보스: 바닥에 맥박치는 붉은 오라 (멀리서도 눈에 띄게)
+      const ctx = this.ctx;
+      const pulse = 0.5 + 0.5 * Math.sin(eng.time * 6 + e.id);
+      const rx = e.r * (2 + 0.35 * pulse);
+      const fy = e.y + e.r * 0.85;
+      const color = e.kind === 'boss' ? '160,60,255' : '255,60,60';
+      const g = ctx.createRadialGradient(e.x, fy, 2, e.x, fy, rx);
+      g.addColorStop(0, `rgba(${color},0.55)`);
+      g.addColorStop(0.7, `rgba(${color},0.25)`);
+      g.addColorStop(1, `rgba(${color},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(e.x, fy, rx, rx * 0.42, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(${color},${0.6 + 0.4 * pulse})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(e.x, fy, rx * 0.8, rx * 0.34, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     if (e.golden) {
       // 황금 몹은 금빛
       const ctx = this.ctx;

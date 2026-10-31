@@ -235,15 +235,16 @@ function skinSection(panel: HTMLElement, game: Game, host: UIHost, kind: 'chick'
 
 /** 상점 탭: 소환, 꾸미기, 다이아 충전(출시 때) */
 /** 상점 탭 안의 보기: 상점 / 동료 (탭을 옮겨 다녀도 마지막 보기를 기억) */
-let shopView: 'shop' | 'pets' = 'shop';
+type ShopView = 'pets' | 'summon' | 'deco';
+let shopView: ShopView = 'pets';
 
-/** 상점 탭: 위에 '상점 · 동료' 고르기, 아래 그 내용 */
+/** 상점 탭: 위에 '동료 · 소환 · 치장' 고르기, 아래 그 내용 (마지막 보기를 기억) */
 export function buildShopTab(panel: HTMLElement, game: Game, host: UIHost) {
   const seg = h('div', 'seg shop-seg');
   const body = h('div', 'shop-body');
   panel.append(seg, body);
   let inner: () => void = () => {};
-  const btns = ([['shop', '🛒 상점'], ['pets', '🐾 동료']] as const).map(([id, name]) => {
+  const btns = ([['pets', '🐾 동료'], ['summon', '🎲 소환'], ['deco', '✨ 치장']] as const).map(([id, name]) => {
     const b = h('button', 'seg-btn', name);
     b.addEventListener('click', () => {
       shopView = id;
@@ -256,22 +257,21 @@ export function buildShopTab(panel: HTMLElement, game: Game, host: UIHost) {
     for (const x of btns) x.b.classList.toggle('on', x.id === shopView);
     body.replaceChildren();
     panel.scrollTop = 0;
-    inner = shopView === 'shop' ? buildShopBody(body, game, host) : buildPetsTab(body, game, host);
+    inner = shopView === 'pets' ? buildPetsTab(body, game, host) : shopView === 'summon' ? buildSummonBody(body, game, host) : buildDecoBody(body, game, host);
     host.refresh();
   };
   render();
   return () => inner();
 }
 
-/** 상점 보기: 소환, 스킬 이펙트 색, 다이아 충전 */
-function buildShopBody(panel: HTMLElement, game: Game, host: UIHost) {
+/** 소환 보기: 동료·장비 소환, 다이아 충전 */
+function buildSummonBody(panel: HTMLElement, game: Game, host: UIHost) {
   const wallet = diamondBar(game);
   panel.append(wallet.el);
 
   const pet = summonCard(game, host, 'pet');
   const gear = summonCard(game, host, 'gear');
-  panel.append(h('div', 'section-title', '소환'), pet.el, gear.el);
-  const fx = skinSection(panel, game, host, 'fx');
+  panel.append(pet.el, gear.el);
 
   panel.append(h('div', 'section-title', '💎 다이아 충전'));
   const packs = h('div', 'skin-grid');
@@ -287,6 +287,16 @@ function buildShopBody(panel: HTMLElement, game: Game, host: UIHost) {
     wallet.refresh();
     pet.refresh();
     gear.refresh();
+  };
+}
+
+/** 치장 보기: 스킬 이펙트 색 */
+function buildDecoBody(panel: HTMLElement, game: Game, host: UIHost) {
+  const wallet = diamondBar(game);
+  panel.append(wallet.el);
+  const fx = skinSection(panel, game, host, 'fx');
+  return () => {
+    wallet.refresh();
     fx();
   };
 }

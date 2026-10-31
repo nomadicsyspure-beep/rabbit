@@ -34,6 +34,9 @@ function setText(el: HTMLElement, v: string) {
   if (el.textContent !== v) el.textContent = v;
 }
 
+/** 스킬 탭에서 보고 있는 형태 (탭을 옮겨 다녀도 기억) */
+let skillTypeView: SkillDef['type'] = 'attack';
+
 /** 자동 진행: 결과 화면에서 이만큼(초) 기다린 뒤 다음 스테이지 */
 const AUTO_NEXT_SEC = 3;
 
@@ -44,7 +47,7 @@ const TABS: { id: TabId; name: string; locked: boolean }[] = [
   { id: 'skill', name: '스킬', locked: false },
   { id: 'gear', name: '가방', locked: false },
   { id: 'craft', name: '제작', locked: false },
-  { id: 'dungeon', name: '던전', locked: false },
+  { id: 'dungeon', name: '모험', locked: false },
   { id: 'shop', name: '상점', locked: false },
 ];
 
@@ -112,7 +115,6 @@ export class UI implements UIHost {
   private readonly killsEl: HTMLElement;
   private readonly slotsEl: HTMLElement;
   private readonly autoBtn: HTMLButtonElement;
-  private readonly rotateBtn: HTMLButtonElement;
   /** 스테이지를 깨면 다음 스테이지 자동 진행 켜기/끄기 */
   private readonly autoNextBtn: HTMLButtonElement;
   private readonly comboEl: HTMLElement;
@@ -217,12 +219,8 @@ export class UI implements UIHost {
       this.toast(this.game.save.autoMove ? 'AUTO 켜짐: 알아서 싸워요 (조이스틱을 쓰면 그동안은 직접 조종)' : 'AUTO 꺼짐');
       this.refreshToggles();
     });
-    this.rotateBtn = h('button', 'text-btn', '가로');
-    this.rotateBtn.setAttribute('aria-label', '가로 모드');
-    this.rotateBtn.addEventListener('click', () => void this.game.toggleLandscape());
-    const rotateBtn = this.rotateBtn;
     const left = h('div', 'action-left');
-    left.append(player, this.autoBtn);
+    left.append(player);
     this.autoNextBtn = h('button', 'text-btn auto-next');
     this.autoNextBtn.addEventListener('click', () => {
       this.game.save.autoNext = !this.game.save.autoNext;
@@ -230,13 +228,16 @@ export class UI implements UIHost {
       this.refreshToggles();
     });
     const right = h('div', 'action-right');
-    right.append(kills, pauseBtn, rotateBtn, this.autoNextBtn);
+    right.append(kills, pauseBtn, this.autoNextBtn);
     this.hudAction.append(left, center, right);
 
     // 하단: 스킬 칸 (수동일 땐 눌러서 발동) + 스킬 자동/수동 전환
     const bottom = h('div', 'action-bottom');
     this.slotsEl = h('div', 'skill-slots');
-    bottom.append(this.slotsEl);
+    // 오른쪽 아래: 스킬 칸 + AUTO (엄지로 누르기 좋게)
+    const bottomRow = h('div', 'bottom-row');
+    bottomRow.append(this.slotsEl, this.autoBtn);
+    bottom.append(bottomRow);
     this.comboEl = h('div', 'combo');
     this.feverBanner = h('div', 'fever-banner', 'FEVER TIME!');
 
@@ -301,7 +302,6 @@ export class UI implements UIHost {
   /** 자동 이동 / 스킬 자동 / 가로 버튼 표시 */
   refreshToggles() {
     const save = this.game.save;
-    this.rotateBtn.textContent = this.game.landscapeLocked ? '세로' : '가로';
     this.autoBtn.classList.toggle('on', save.autoMove);
     this.autoNextBtn.textContent = save.autoNext ? '자동 진행 ON' : '자동 진행 OFF';
     this.autoNextBtn.classList.toggle('on', save.autoNext);
@@ -395,17 +395,19 @@ export class UI implements UIHost {
   private buildGrowth() {
     this.powerEl = h('div', 'summary');
     this.panel.append(this.powerEl);
+    // 능력치 4개를 2×2 작은 칸으로 (스크롤 없이 한 화면에)
+    const grid = h('div', 'stat-grid');
     for (const id of STAT_ORDER) {
       const def = STATS[id];
       const meta = STAT_META[id];
-      const card = h('div', 'card row');
+      const card = h('div', 'card stat-card');
       const icon = svgIcon(ICONS[id], meta.color);
-      const info = h('div', 'info');
       const name = h('div', 'title', def.name + ' ');
       const lv = h('span', 'lv');
       name.append(lv);
+      const head = h('div', 'stat-head');
+      head.append(icon, name);
       const val = h('div', 'sub');
-      info.append(name, val);
       const btn = h('button', 'buy');
       const cost = h('span');
       btn.append(cost, h('small', '', '강화'));
@@ -414,27 +416,12 @@ export class UI implements UIHost {
         if (ok) this.refresh();
         return ok;
       });
-      card.append(icon, info, btn);
-      this.panel.append(card);
+      card.append(head, val, btn);
+      grid.append(card);
       this.statRows.set(id, { lv, val, cost, btn });
     }
-    // 도감·환생: 능력치 줄과 같은 모양
-    const g = this.game;
-    const extra: [string, string, string, string, () => void][] = [
-      ['📖', '도감', `${g.collectionCount}개 모음 · 공격력·체력 +${Math.round(g.collectionCount * COLLECTION_BONUS * 100)}%`, '보기', () => showCollection(g, this)],
-      ['🪶', '환생', `${g.save.rebirth.count}번 · 깃털 ${g.save.rebirth.feathers}개 · 최고 스테이지 ${REBIRTH_MIN_STAGE}부터`, '열기', () => showRebirth(g, this)],
-    ];
-    for (const [icon, title, sub, label, fn] of extra) {
-      const card = h('div', 'card row');
-      const info = h('div', 'info');
-      info.append(h('div', 'title', title), h('div', 'sub', sub));
-      const btn = h('button', 'buy');
-      btn.append(h('span', '', label));
-      btn.addEventListener('click', fn);
-      card.append(h('div', 'item-icon', icon), info, btn);
-      this.panel.append(card);
-    }
-    this.panel.append(h('div', 'hint', '버튼을 누르고 있으면 연속 강화 · 전투 화면을 탭하면 추가 피해'));
+    this.panel.append(grid);
+    this.panel.append(h('div', 'hint', '버튼을 누르고 있으면 연속 강화 · 전투 화면을 탭하면 추가 피해 · 도감·환생은 모험 탭에'));
   }
 
   /** 스킬 탭: 위에 장착 중 4칸 고정, 아래는 아이콘 격자(5줄)만 스크롤 */
@@ -445,12 +432,28 @@ export class UI implements UIHost {
     top.append(this.skillHeader, this.equipBar);
     this.equipKey = '';
     this.panel.append(top, this.buildBoxes());
-    // 형태별로 나눠서 (공격형 · 보조형 · 디버프형 · 버프형)
-    for (const type of SKILL_TYPES) {
-      const head = h('div', 'skill-type-head');
-      head.style.setProperty('--type', type.color);
-      head.append(h('span', 'type-name', type.name), h('span', 'type-desc', type.desc));
-      const grid = h('div', 'skill-grid');
+    // 형태별 탭 (공격형 · 보조형 · 디버프형 · 버프형): 한 번에 한 형태만
+    const seg = h('div', 'seg skill-type-seg');
+    const desc = h('div', 'skill-type-desc');
+    const grid = h('div', 'skill-grid');
+    const btns = SKILL_TYPES.map((type) => {
+      const b = h('button', 'seg-btn', type.name);
+      b.style.setProperty('--type', type.color);
+      b.addEventListener('click', () => {
+        skillTypeView = type.id;
+        render();
+        this.refresh();
+      });
+      seg.append(b);
+      return { type, b };
+    });
+    const render = () => {
+      const type = SKILL_TYPES.find((t) => t.id === skillTypeView)!;
+      for (const x of btns) x.b.classList.toggle('on', x.type.id === type.id);
+      desc.textContent = type.desc;
+      desc.style.color = type.color;
+      this.skillTiles = [];
+      grid.replaceChildren();
       for (const def of SKILLS.filter((d) => d.type === type.id)) {
         const root = h('button', 'skill-tile');
         root.style.setProperty('--type', type.color);
@@ -461,8 +464,9 @@ export class UI implements UIHost {
         grid.append(root);
         this.skillTiles.push({ def, root, lv });
       }
-      this.panel.append(head, grid);
-    }
+    };
+    render();
+    this.panel.append(seg, desc, grid);
     this.panel.append(h('div', 'hint', '스킬은 상자에서 얻어요 · 겹쳐 나오면 그 스킬 포인트 +1 · 스킬 창에서 피해·속도·개수 중 골라 찍어요'));
   }
 
@@ -499,13 +503,11 @@ export class UI implements UIHost {
     const g = this.game;
     const wrap = h('div', 'box-list');
     const refreshers = SKILL_BOXES.map((box) => {
-      const card = h('div', `card row skill-box box-${box.id}`);
-      const info = h('div', 'info');
-      const odds = h('div', 'box-odds');
-      for (const gr of ['S', 'A', 'B', 'C', 'D'] as const) {
-        const p = box.odds[gr];
-        if (p) odds.append(h('span', `tile-grade g-${gr}`, `${gr} ${p}%`));
-      }
+      // 작은 칸: 위에 상자(누르면 확률), 아래 1회·10회
+      const card = h('div', `card skill-box box-${box.id}`);
+      const head = h('button', 'box-head');
+      head.append(h('span', 'box-icon', box.icon), h('span', 'title', box.name), h('span', 'box-info', 'ⓘ'));
+      head.addEventListener('click', () => this.showBoxOdds(box));
       const btns = h('div', 'box-btns');
       const mk = (n: 1 | 10) => {
         const b = h('button', 'buy');
@@ -516,8 +518,7 @@ export class UI implements UIHost {
         return { b, label, n };
       };
       const buttons = [mk(1), mk(10)];
-      info.append(h('div', 'title', box.name), odds);
-      card.append(h('div', 'item-icon box-icon', box.icon), info, btns);
+      card.append(head, btns);
       wrap.append(card);
       return () => {
         for (const { b, label, n } of buttons) {
@@ -533,6 +534,24 @@ export class UI implements UIHost {
     });
     this.boxRefresh = () => refreshers.forEach((f) => f());
     return wrap;
+  }
+
+  /** 상자 확률 창 */
+  private showBoxOdds(box: BoxDef) {
+    const list = h('div', 'box-where');
+    for (const gr of ['S', 'A', 'B', 'C', 'D'] as const) {
+      const p = box.odds[gr];
+      if (!p) continue;
+      const row = h('div', 'box-where-row');
+      row.append(h('span', `tile-grade g-${gr} odds-grade`, `${gr}급`), h('b', '', `${p}%`));
+      list.append(row);
+    }
+    this.openModal(
+      h('div', 'modal-title', `${box.icon} ${box.name}`),
+      h('div', 'modal-sub', '등급별 확률 · 같은 등급 안에선 스킬이 고르게 나와요'),
+      list,
+      this.button('닫기', 'primary', () => this.closeModal()),
+    );
   }
 
   /** 상자 열기 결과: 카드가 하나씩 뒤집힌다 */
@@ -692,8 +711,27 @@ export class UI implements UIHost {
       };
     });
 
+    // 도감·환생 (성장 탭에서 옮겨 옴)
+    const g = this.game;
+    const more: [string, string, () => string, string, () => void][] = [
+      ['📖', '도감', () => `${g.collectionCount}개 모음 · 공격력·체력 +${Math.round(g.collectionCount * COLLECTION_BONUS * 100)}%`, '보기', () => showCollection(g, this)],
+      ['🪶', '환생', () => `${g.save.rebirth.count}번 · 깃털 ${g.save.rebirth.feathers}개 · 최고 스테이지 ${REBIRTH_MIN_STAGE}부터`, '열기', () => showRebirth(g, this)],
+    ];
+    const moreRefresh = more.map(([icon, title, sub, label, fn]) => {
+      const card = h('div', 'card dungeon');
+      const info = h('div', 'info');
+      const subEl = h('div', 'sub');
+      info.append(h('div', 'title', title), subEl);
+      const btn = h('button', 'enter', label);
+      btn.addEventListener('click', fn);
+      card.append(h('div', 'item-icon', icon), info, btn);
+      this.panel.append(card);
+      return () => setText(subEl, sub());
+    });
+
     this.dungeonRefresh = () => {
       extra.forEach((r) => r());
+      moreRefresh.forEach((r) => r());
       const stage = this.game.nextStage;
       title.textContent = isBossStage(stage) ? `스테이지 ${stage} · 마왕` : `스테이지 ${stage}`;
       sub.textContent = `${regionOf(stage).name} · 권장 전투력 ${fmt(recommendedPower(stage))} · 클리어 보상 ${fmt(stageClearGold(stage))}`;
@@ -898,6 +936,7 @@ export class UI implements UIHost {
         this.closeModal();
         resume();
       }),
+      this.button('⚙️ 설정', '', () => this.showSettings(() => this.showPause(resume, giveUp))),
       this.button('포기하기', '', () => {
         this.closeModal();
         giveUp();
@@ -1014,8 +1053,10 @@ export class UI implements UIHost {
     );
   }
 
-  private showSettings() {
+  /** 설정 창. back이 있으면 (일시정지 창에서 왔으면) 닫을 때 그리로 돌아간다 */
+  private showSettings(back?: () => void) {
     const g = this.game;
+    const close = () => (back ? back() : this.closeModal());
     this.openModal(
       h('div', 'modal-title', '설정'),
       h('div', 'modal-sub', `프로토타입 v0.4 · 빌드 ${new Date(__BUILD_TIME__).toLocaleString('ko-KR')}`),
@@ -1027,8 +1068,17 @@ export class UI implements UIHost {
       }),
       this.button(g.save.sound ? '소리 끄기' : '소리 켜기', '', () => {
         g.toggleSound();
-        this.closeModal();
-        this.showSettings();
+        this.showSettings(back);
+      }),
+      // 가로 모드: 스테이지에서만 (켜 두면 스테이지에 들어갈 때 가로로)
+      this.button(`스테이지 가로 모드: ${g.save.landscape ? 'ON' : 'OFF'}`, '', () => {
+        g.save.landscape = !g.save.landscape;
+        if (g.mode === 'action') {
+          if (g.save.landscape) void g.toggleLandscape();
+          else g.exitLandscape();
+        }
+        this.toast(g.save.landscape ? '가로 모드 켜짐: 스테이지에서 가로로 (왼손 조이스틱 · 오른손 스킬)' : '가로 모드 꺼짐');
+        this.showSettings(back);
       }),
       this.button('테스트: 골드 지급', '', () => {
         g.save.gold += g.goldPerSec * 500;
@@ -1047,7 +1097,7 @@ export class UI implements UIHost {
         this.tutorial.restart();
       }),
       this.confirmButton('저장 초기화', '한 번 더 누르면 모두 지워져요', () => g.resetSave()),
-      this.button('닫기', 'primary', () => this.closeModal()),
+      this.button(back ? '돌아가기' : '닫기', 'primary', close),
     );
   }
 }
