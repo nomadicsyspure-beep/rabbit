@@ -503,13 +503,11 @@ export class UI implements UIHost {
     const g = this.game;
     const wrap = h('div', 'box-list');
     const refreshers = SKILL_BOXES.map((box) => {
-      const card = h('div', `card row skill-box box-${box.id}`);
-      const info = h('div', 'info');
-      const odds = h('div', 'box-odds');
-      for (const gr of ['S', 'A', 'B', 'C', 'D'] as const) {
-        const p = box.odds[gr];
-        if (p) odds.append(h('span', `tile-grade g-${gr}`, `${gr} ${p}%`));
-      }
+      // 작은 칸: 위에 상자(누르면 확률), 아래 1회·10회
+      const card = h('div', `card skill-box box-${box.id}`);
+      const head = h('button', 'box-head');
+      head.append(h('span', 'box-icon', box.icon), h('span', 'title', box.name), h('span', 'box-info', 'ⓘ'));
+      head.addEventListener('click', () => this.showBoxOdds(box));
       const btns = h('div', 'box-btns');
       const mk = (n: 1 | 10) => {
         const b = h('button', 'buy');
@@ -520,8 +518,7 @@ export class UI implements UIHost {
         return { b, label, n };
       };
       const buttons = [mk(1), mk(10)];
-      info.append(h('div', 'title', box.name), odds);
-      card.append(h('div', 'item-icon box-icon', box.icon), info, btns);
+      card.append(head, btns);
       wrap.append(card);
       return () => {
         for (const { b, label, n } of buttons) {
@@ -537,6 +534,24 @@ export class UI implements UIHost {
     });
     this.boxRefresh = () => refreshers.forEach((f) => f());
     return wrap;
+  }
+
+  /** 상자 확률 창 */
+  private showBoxOdds(box: BoxDef) {
+    const list = h('div', 'box-where');
+    for (const gr of ['S', 'A', 'B', 'C', 'D'] as const) {
+      const p = box.odds[gr];
+      if (!p) continue;
+      const row = h('div', 'box-where-row');
+      row.append(h('span', `tile-grade g-${gr} odds-grade`, `${gr}급`), h('b', '', `${p}%`));
+      list.append(row);
+    }
+    this.openModal(
+      h('div', 'modal-title', `${box.icon} ${box.name}`),
+      h('div', 'modal-sub', '등급별 확률 · 같은 등급 안에선 스킬이 고르게 나와요'),
+      list,
+      this.button('닫기', 'primary', () => this.closeModal()),
+    );
   }
 
   /** 상자 열기 결과: 카드가 하나씩 뒤집힌다 */

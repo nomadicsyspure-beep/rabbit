@@ -2762,3 +2762,62 @@ button:active:not(:disabled) {
   height: 40px;
   min-width: 0;
 }
+
+/* 스킬 상자: 2×2 작은 칸 (확률은 상자를 누르면 창으로) */
+.box-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.skill-box {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px;
+  min-width: 0;
+}
+
+.box-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  min-width: 0;
+  text-align: left;
+}
+
+.box-head .box-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.box-head .title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.box-head .box-info {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.skill-box .box-btns .buy {
+  flex: 1;
+  width: auto;
+  height: 40px;
+}
+
+.skill-box .box-btns .buy span {
+  font-size: 12px;
+}
+
+.odds-grade {
+  position: static;
+  padding: 1px 8px;
+  font-size: 12px;
+  line-height: 18px;
+}
