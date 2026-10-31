@@ -68,6 +68,8 @@ export interface SaveData {
   skillPoints: Partial<Record<SkillId, number>>;
   /** 스테이지를 깨면 다음 스테이지로 자동 진행 */
   autoNext: boolean;
+  /** 스테이지를 가로 모드로 (설정) */
+  landscape: boolean;
   /** 스킬 탭을 마지막으로 둘러봤을 때의 새 스킬·포인트 합 (그 뒤로 늘어야 탭에 빨간 점) */
   skillTabSeen: { skills: SkillId[]; points: number };
 }
@@ -111,6 +113,7 @@ export function newSave(): SaveData {
     skillPoints: {},
     skillTabSeen: { skills: [], points: 0 },
     autoNext: false,
+    landscape: false,
   };
 }
 
@@ -184,6 +187,7 @@ export function loadSave(): SaveData {
       skillPoints: { ...data.skillPoints },
       skillTabSeen: { skills: [...(data.skillTabSeen?.skills ?? [])], points: data.skillTabSeen?.points ?? 0 },
       autoNext: data.autoNext ?? false,
+      landscape: data.landscape ?? false,
     };
   } catch {
     return newSave();

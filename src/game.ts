@@ -158,6 +158,8 @@ export class Game {
     sfx.setCombat(true);
     this.resize();
     this.action.enter(kind === 'stage' ? this.nextStage : Math.max(1, this.save.maxStage), kind, raidId);
+    // 설정에서 가로 모드를 켰으면 스테이지는 가로로
+    if (this.save.landscape && !this.landscapeLocked) void this.toggleLandscape();
   }
 
   enterIdle() {

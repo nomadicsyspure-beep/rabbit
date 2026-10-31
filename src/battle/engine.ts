@@ -10,7 +10,7 @@ export type EnemyKind = 'normal' | 'fast' | 'tank' | 'boss';
  * charge = 정한 방향으로 곧장 돌진하고 사라짐 (dashX·dashY 방향, t1초 뒤) /
  * flee = 플레이어에게서 도망치다 t1초 뒤 사라짐 (황금 몹)
  */
-export type EnemyMove = 'chase' | 'lead' | 'charge' | 'flee';
+export type EnemyMove = 'chase' | 'lead' | 'charge' | 'flee' | 'herd';
 
 /** 그릴 때 쓰는 외형(src/assets/monsters). 행동(kind)과 따로 둔다. */
 /** firstaid = 구급상자 몹 (그림 없이 코드로 그린다. 잡으면 체력 회복템) */
@@ -399,6 +399,8 @@ const ACCEL = 6;
 const MAX_SHAKE = 7;
 /** 황금 몹이 도망치기 시작하는 거리(px) */
 const GOLDEN_FLEE_DIST = 170;
+/** 도망 다니는 몹 무리가 도망치기 시작하는 거리 */
+const HERD_FLEE_DIST = 230;
 /** 상자를 끌어오는 거리(px). 보석 자석보다 훨씬 넓다 */
 const CHEST_MAGNET = 240;
 
@@ -1190,6 +1192,16 @@ export class Engine {
         if (e.t1 <= 0) {
           e.active = false;
           continue;
+        }
+      } else if (e.move === 'herd') {
+        // 도망 다니는 무리: 가까이 오면 다 같이 반대쪽으로 (병아리보다 느리다), 멀면 어슬렁
+        if (d < HERD_FLEE_DIST) {
+          e.x -= (dx / d) * e.speed * slow * dt;
+          e.y -= (dy / d) * e.speed * slow * dt;
+        } else {
+          const a = e.phase + this.time * 0.5;
+          e.x += Math.cos(a) * e.speed * 0.25 * dt;
+          e.y += Math.sin(a) * e.speed * 0.25 * dt;
         }
       } else if (!p.dead) {
         let tx = dx;
