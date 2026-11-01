@@ -1,11 +1,15 @@
 import { idleGoldPerSec } from './balance';
 import { DIAMOND_OVERRIDE } from './shop';
 import { SKILLS, SKILL_GRADE, type Grade, type SkillDef, type SkillType } from './skills';
+import type { MatId } from './world';
 
 // 스킬은 상자를 까서 얻는다. 상자마다 등급 확률이 다르고, S급은 비싼 상자일수록 잘 나온다 (나무 0.1% · 은 1% · 금 7% · 전설 25%), 나무 상자도 A 1%.
-// 이미 가진 스킬이 나오면 그 스킬의 스킬 포인트 +1 (다 찍을 만큼 모았으면 골드).
+// 이미 가진 스킬이 나오면 그 스킬의 스킬 포인트 +1과 스킬 조각 (다 찍을 만큼 모았으면 조각만).
+// 천장: 상자마다 정해진 횟수 안에 목표 등급이 안 나오면 다음 번은 확정.
+// 열쇠: 은·금 상자는 열쇠(보스·제작)로도 1회. 은 상자는 4시간마다 무료 1회.
+// 형태 선택 상자: 공격·보조·디버프·버프 중 골라서 그 형태만. 주간 픽업: 이번 주 S 1개·A 2개는 그 등급이 나오면 절반 확률로 픽업 스킬.
 
-export type BoxId = 'wood' | 'silver' | 'gold' | 'legend';
+export type BoxId = 'wood' | 'silver' | 'gold' | 'legend' | 'pick';
 
 export interface BoxDef {
   id: BoxId;
@@ -17,18 +21,52 @@ export interface BoxDef {
   goldSec?: number;
   /** 다이아 상자: 1회 값 (10회는 9배) */
   diamonds?: number;
-  /** 스킬북 1권 = 이 상자 1회 */
-  book?: boolean;
+  /** 이 재료 1개 = 이 상자 1회 (앞에서부터 먼저 쓴다) */
+  keys?: MatId[];
+  /** 천장: every회 안에 grade 이상이 안 나오면 다음 번 확정 */
+  pity?: { grade: Grade; every: number };
+  /** 형태를 골라서 연다 */
+  pick?: boolean;
+  /** 주간 픽업이 걸리는 상자 */
+  pickup?: boolean;
 }
 
 export const GRADES: Grade[] = ['S', 'A', 'B', 'C', 'D'];
 
 export const SKILL_BOXES: BoxDef[] = [
-  { id: 'wood', name: '나무 상자', icon: '📦', goldSec: 600, odds: { S: 0.1, A: 1, B: 10, C: 35, D: 53.9 } },
-  { id: 'silver', name: '은 상자', icon: '🎁', diamonds: 40, book: true, odds: { S: 1, A: 10, B: 30, C: 40, D: 19 } },
-  { id: 'gold', name: '금 상자', icon: '💛', diamonds: 150, odds: { S: 7, A: 28, B: 45, C: 20 } },
-  { id: 'legend', name: '전설 상자', icon: '💜', diamonds: 450, odds: { S: 25, A: 50, B: 25 } },
+  { id: 'wood', name: '나무 상자', icon: '📦', goldSec: 600, odds: { S: 0.1, A: 1, B: 10, C: 35, D: 53.9 }, pity: { grade: 'B', every: 10 } },
+  { id: 'silver', name: '은 상자', icon: '🎁', diamonds: 40, keys: ['key_silver', 'skillbook'], odds: { S: 1, A: 10, B: 30, C: 40, D: 19 }, pity: { grade: 'A', every: 10 } },
+  { id: 'gold', name: '금 상자', icon: '💛', diamonds: 150, keys: ['key_gold'], odds: { S: 7, A: 28, B: 45, C: 20 }, pity: { grade: 'S', every: 20 }, pickup: true },
+  { id: 'legend', name: '전설 상자', icon: '💜', diamonds: 450, odds: { S: 25, A: 50, B: 25 }, pity: { grade: 'S', every: 6 }, pickup: true },
+  { id: 'pick', name: '형태 선택 상자', icon: '🎯', diamonds: 250, odds: { S: 7, A: 28, B: 45, C: 20 }, pity: { grade: 'S', every: 20 }, pick: true, pickup: true },
 ];
+
+/** 은 상자 무료: 이 간격(ms)마다 1회 */
+export const FREE_BOX_MS = 4 * 60 * 60 * 1000;
+
+/** 스킬 조각: 겹쳐 나오면 등급별로 받고, 모아서 원하는 스킬과 바꾼다 (새 스킬이면 배우기, 있으면 포인트 +1) */
+export const SHARD_GAIN: Record<Grade, number> = { D: 1, C: 2, B: 3, A: 6, S: 15 };
+export const SHARD_COST: Record<Grade, number> = { D: 30, C: 60, B: 120, A: 300, S: 800 };
+
+const GRADE_RANK: Record<Grade, number> = { S: 4, A: 3, B: 2, C: 1, D: 0 };
+export const gradeAtLeast = (g: Grade, target: Grade) => GRADE_RANK[g] >= GRADE_RANK[target];
+
+/** 이번 주 픽업 스킬: S 1개 · A 2개 (주마다 바뀐다, 모두에게 같게) */
+export function weeklyPickup(now = Date.now()) {
+  const week = Math.floor((now / 86400000 + 3) / 7);
+  let seed = week * 9301 + 49297;
+  const rnd = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  const pick = (grade: Grade, n: number) => {
+    const pool = SKILLS.filter((s) => SKILL_GRADE[s.id] === grade);
+    const out: SkillDef[] = [];
+    while (out.length < n && pool.length) out.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
+    return out;
+  };
+  return { S: pick('S', 1), A: pick('A', 2) };
+}
 
 export const BOX_BY_ID = Object.fromEntries(SKILL_BOXES.map((b) => [b.id, b])) as Record<BoxId, BoxDef>;
 
@@ -39,8 +77,8 @@ export function boxCost(box: BoxDef, n: 1 | 10, maxStage: number): { gold?: numb
   return { diamonds: (DIAMOND_OVERRIDE ?? box.diamonds!) * mult };
 }
 
-/** 등급 고르고 → 그 등급 스킬 중 하나 (type을 주면 그 형태에서만: 튜토리얼 상자는 공격형) */
-export function rollBox(box: BoxDef, type?: SkillType): SkillDef {
+/** 등급 뽑기 (force면 그 등급) */
+export function rollGrade(box: BoxDef): Grade {
   let r = Math.random() * 100;
   let grade: Grade = 'D';
   for (const g of GRADES) {
@@ -50,13 +88,26 @@ export function rollBox(box: BoxDef, type?: SkillType): SkillDef {
     r -= p;
     if (r <= 0) break;
   }
+  return grade;
+}
+
+/**
+ * 등급 고르고 → 그 등급 스킬 중 하나 (type을 주면 그 형태에서만: 형태 선택 상자, 튜토리얼 상자는 공격형).
+ * 픽업 상자에서 S·A가 나오면 절반 확률로 이번 주 픽업 스킬
+ */
+export function rollBox(box: BoxDef, type?: SkillType, force?: Grade): SkillDef {
+  const grade = force ?? rollGrade(box);
+  if (box.pickup && (grade === 'S' || grade === 'A') && Math.random() < 0.5) {
+    const ups = weeklyPickup()[grade].filter((s) => !type || s.type === type);
+    if (ups.length) return ups[Math.floor(Math.random() * ups.length)];
+  }
   const pool = SKILLS.filter((s) => SKILL_GRADE[s.id] === grade && (!type || s.type === type));
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
 /** 이 등급 스킬이 나오는 상자들 (확률 높은 순) */
 export const boxesFor = (grade: Grade) =>
-  SKILL_BOXES.filter((b) => (b.odds[grade] ?? 0) > 0).sort((a, b) => (b.odds[grade] ?? 0) - (a.odds[grade] ?? 0));
+  SKILL_BOXES.filter((b) => !b.pick && (b.odds[grade] ?? 0) > 0).sort((a, b) => (b.odds[grade] ?? 0) - (a.odds[grade] ?? 0));
 
 export const oddsText = (box: BoxDef) =>
   GRADES.filter((g) => box.odds[g]).map((g) => `${g} ${box.odds[g]}%`).join(' · ');

@@ -1,7 +1,10 @@
 import { fmt } from '../core/format';
 import { GEAR, GEAR_BY_ID, GEAR_MAX, GEAR_SLOTS, SLOT_ICONS, SLOT_NAMES, enhanceCost, gearEffectText, type GearDef, type GearSlot } from '../data/gear';
-import { MATS, MAT_BY_ID } from '../data/items';
+import { CHEST_NAMES, MATS, MAT_BY_ID, addReward, emptyReward, rewardText, type ChestGrade } from '../data/items';
+import { sfx } from '../audio/sfx';
 import type { Game } from '../game';
+import { BOOSTERS, RECIPES, type BoosterId } from '../data/craft';
+import type { MatId } from '../data/world';
 import { COLLECTION_BONUS, REBIRTH_MIN_STAGE, REBIRTH_UPS, type RebirthUp } from '../game';
 import { chickPic, coin, h, holdRepeat, ibox } from './dom';
 
@@ -32,8 +35,9 @@ export function walletBar(game: Game) {
   return { el: bar, refresh };
 }
 
-type InvTab = 'all' | 'gear' | 'mat';
-const INV_TABS: [InvTab, string][] = [['all', '전체'], ['gear', '장비'], ['mat', '재료']];
+type InvTab = 'all' | 'chest' | 'gear' | 'mat';
+const INV_TABS: [InvTab, string][] = [['all', '전체'], ['chest', '상자'], ['gear', '장비'], ['mat', '재료']];
+const CHEST_ICONS = ['📦', '🎁', '💛'];
 /** 인벤토리 칸 수 (최소, 한 줄 5칸) */
 const INV_MIN_CELLS = 20;
 
@@ -49,7 +53,7 @@ interface InvItem {
 
 /**
  * 가방 탭: 위에 병아리 + 장비 6칸 고정 (왼쪽 무기·장갑·신발 / 오른쪽 모자·망토·장신구),
- * 칸을 누르면 그 장비 (빈 칸이면 고르기), 꾹 누르면 바꾸기. 아래는 인벤토리 (장비·재료)
+ * 칸을 누르면 그 장비 (빈 칸이면 고르기), 꾹 누르면 바꾸기. 아래는 인벤토리 (상자·장비·재료, 상자는 눌러서 하나씩 연다)
  */
 export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   const top = h('div', 'skill-top gear-top');
@@ -113,6 +117,9 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   const items = (): InvItem[] => {
     const s = game.save;
     const out: InvItem[] = [];
+    game.chestCounts.forEach((n, g) => {
+      if (n > 0) out.push({ kind: 'chest', icon: CHEST_ICONS[g], count: `×${n}`, name: CHEST_NAMES[g], cls: `chest-${g}`, onClick: () => showChestOpen(game, host, g as ChestGrade, 1) });
+    });
     for (const def of GEAR) {
       const plus = s.gear[def.id];
       if (plus === undefined) continue;
@@ -121,6 +128,11 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
     for (const m of MATS) {
       const n = s.mats[m.id] ?? 0;
       if (n > 0) out.push({ kind: 'mat', icon: m.icon, count: fmt(n), name: m.name, onClick: () => host.toast(`${m.icon} ${m.name} ${fmt(n)}개 · ${m.id === 'skillbook' ? '스킬 은 상자 1회' : '장비 제작·강화 재료'}`) });
+    }
+    if (s.shards > 0) out.push({ kind: 'mat', icon: '🧩', count: fmt(s.shards), name: '스킬 조각', onClick: () => host.toast('🧩 스킬 조각: 스킬 탭 조각 교환에서 원하는 스킬과 바꿔요') });
+    for (const [b, n] of Object.entries(s.boosters)) {
+      const def = BOOSTERS[b as BoosterId];
+      if (n && def) out.push({ kind: 'mat', icon: def.icon, count: `×${n}`, name: def.name, onClick: () => host.toast(`${def.icon} ${def.name}: ${def.desc} (스테이지에 들어가면 자동으로)`) });
     }
     if (s.essence > 0) out.push({ kind: 'mat', icon: '🔮', count: fmt(s.essence), name: '보스의 정수', onClick: () => host.toast('🔮 보스의 정수: 전설 장비 재료 (보스 레이드)') });
     if (s.tickets.pet > 0) out.push({ kind: 'mat', icon: '🐾', count: `×${s.tickets.pet}`, name: '동료 소환권', onClick: () => host.toast('동료 탭에서 소환할 때 먼저 써요') });
@@ -161,6 +173,47 @@ export function buildCraftTab(panel: HTMLElement, game: Game, host: UIHost) {
   const wallet = walletBar(game);
   panel.append(wallet.el);
   const tiles: (() => void)[] = [wallet.refresh];
+  // 레시피: 재료 → 열쇠 · 스킬 조각 · 부스터 (부스터는 다음 스테이지에 자동으로)
+  const rhead = h('div', 'skill-type-head');
+  rhead.style.setProperty('--type', '#7cf2a0');
+  rhead.append(h('span', 'type-name', '🧪 레시피'), h('span', 'type-desc', '재료로 열쇠·조각·부스터 만들기'));
+  const rlist = h('div', 'recipe-list');
+  for (const r of RECIPES) {
+    const card = h('div', 'card recipe');
+    const info = h('div', 'info');
+    const owned = h('span', 'recipe-owned');
+    const name = h('div', 'title', `${r.icon} ${r.name} `);
+    name.append(owned);
+    const cost = h('div', 'sub');
+    info.append(name, h('div', 'recipe-desc', r.desc), cost);
+    const btn = h('button', 'buy');
+    btn.append(h('span', '', '만들기'));
+    holdRepeat(btn, () => {
+      const ok = game.craftRecipe(r);
+      if (ok) {
+        host.toast(`${r.icon} ${r.name} 제작!`);
+        host.refresh();
+      }
+      return ok;
+    });
+    card.append(info, btn);
+    rlist.append(card);
+    tiles.push(() => {
+      const s = game.save;
+      cost.replaceChildren(...Object.entries(r.cost).map(([m, n]) => {
+        const have = s.mats[m as MatId] ?? 0;
+        return h('span', 'recipe-cost' + (have >= (n ?? 0) ? '' : ' lack'), `${MAT_BY_ID[m as MatId].icon} ${fmt(have)}/${n}`);
+      }));
+      const b = r.gives.booster;
+      owned.textContent = b ? `보유 ${s.boosters[b] ?? 0}` : r.gives.shards ? `보유 🧩 ${fmt(s.shards)}` : r.gives.mats ? `보유 ${Object.keys(r.gives.mats).map((m) => s.mats[m as MatId] ?? 0).join('')}` : '';
+      btn.disabled = !game.canCraftRecipe(r);
+    });
+  }
+  panel.append(rhead, rlist);
+  const ghead = h('div', 'skill-type-head');
+  ghead.style.setProperty('--type', '#ffd166');
+  ghead.append(h('span', 'type-name', '⚒️ 장비 제작'));
+  panel.append(ghead);
   for (const slot of GEAR_SLOTS) {
     const head = h('div', 'skill-type-head');
     head.style.setProperty('--type', '#ffd166');
@@ -362,4 +415,37 @@ export function showRebirth(game: Game, host: UIHost) {
     }),
     host.button('닫기', 'primary', () => host.closeModal()),
   );
+}
+
+/** 가방 상자 열기: 그 등급 상자를 n개 열고, 상자가 흔들리다 펑 (보상은 이미 받은 상태). 남았으면 이어서 열기 */
+function showChestOpen(game: Game, host: UIHost, grade: ChestGrade, n: number) {
+  const res = game.openChests(grade, n);
+  if (res.length === 0) return host.closeModal();
+  const row = h('div', 'chest-row');
+  const total = emptyReward();
+  res.forEach((c, i) => {
+    addReward(total, c.reward);
+    const el = h('div', `chest-item grade-${c.grade} shake`);
+    el.append(h('span', 'chest-emoji', CHEST_ICONS[c.grade]), h('span', '', CHEST_NAMES[c.grade]));
+    setTimeout(() => {
+      el.classList.remove('shake');
+      el.classList.add('opened');
+    }, 350 + i * 70);
+    row.append(el);
+  });
+  sfx.chest();
+  const left = game.chestCounts[grade];
+  const more: HTMLElement[] = [];
+  if (left > 0) {
+    more.push(host.button(`하나 더 열기 (남은 ${left}개)`, '', () => showChestOpen(game, host, grade, 1)));
+    if (left > 1) more.push(host.button(`${Math.min(10, left)}개 열기`, '', () => showChestOpen(game, host, grade, 10)));
+  }
+  host.openModal(
+    h('div', 'modal-title win', `${CHEST_NAMES[grade]} ${res.length > 1 ? `${res.length}개 ` : ''}열기!`),
+    row,
+    h('div', 'chest-total', `얻은 것: ${[rewardText(total), `🪙 ${fmt(total.gold)}`].filter(Boolean).join(' · ')}`),
+    ...more,
+    host.button('닫기', 'primary', () => host.closeModal()),
+  );
+  host.refresh();
 }

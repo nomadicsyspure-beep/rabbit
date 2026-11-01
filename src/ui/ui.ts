@@ -1,5 +1,5 @@
 import { sfx } from '../audio/sfx';
-import { CHEST_NAMES, rewardText, type ChestGrade, type Reward } from '../data/items';
+import { CHEST_NAMES, MAT_BY_ID, type ChestGrade } from '../data/items';
 import { regionOf } from '../data/world';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
@@ -7,10 +7,10 @@ import {
   type StatId,
 } from '../data/balance';
 import {
-  BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_GRADE, SKILL_TYPES, branchValue, emptyTree, skillSummary, treeLevel, SKILL_BY_ID, type SkillDef,
+  BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_GRADE, SKILL_TYPES, branchValue, emptyTree, skillSummary, treeLevel, SKILL_BY_ID, type Grade, type SkillDef,
 } from '../data/skills';
 import { RAID_BOSSES } from '../data/raids';
-import { SKILL_BOXES, boxCost, boxesFor, oddsText, type BoxDef } from '../data/skillbox';
+import { SHARD_COST, SKILL_BOXES, boxCost, boxesFor, weeklyPickup, type BoxDef } from '../data/skillbox';
 import { COLLECTION_BONUS, DUNGEON_DAILY, REBIRTH_MIN_STAGE, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
@@ -498,32 +498,57 @@ export class UI implements UIHost {
     );
   }
 
-  /** 스킬 상자 칸: 상자마다 1회·10회 버튼과 등급 확률 */
+  /** 스킬 상자 칸: 주간 픽업 띠 + 상자 5종 + 조각 교환 (2열). 상자를 누르면 확률 */
   private buildBoxes() {
     const g = this.game;
-    const wrap = h('div', 'box-list');
+    const wrap = h('div', 'box-area');
+    // 이번 주 픽업
+    const up = weeklyPickup();
+    const banner = h('button', 'pickup-banner');
+    banner.append(h('span', 'pickup-title', '⭐ 이번 주 픽업'));
+    for (const d of [...up.S, ...up.A]) {
+      const chip = h('span', 'pickup-chip');
+      chip.append(skillIcon(d, 'pickup-icon'), h('span', `tile-grade g-${SKILL_GRADE[d.id]}`, SKILL_GRADE[d.id]));
+      banner.append(chip);
+    }
+    banner.addEventListener('click', () => this.openModal(
+      h('div', 'modal-title', '⭐ 이번 주 픽업'),
+      h('div', 'modal-sub', '금·전설·형태 선택 상자에서 S·A급이 나오면 절반 확률로 이 스킬이에요 (매주 바뀜)'),
+      ...[...up.S, ...up.A].map((d) => {
+        const row = h('div', 'box-where-row');
+        row.append(h('span', '', `${d.name}`), h('b', `tile-grade g-${SKILL_GRADE[d.id]} odds-grade`, `${SKILL_GRADE[d.id]}급`));
+        return row;
+      }),
+      this.button('닫기', 'primary', () => this.closeModal()),
+    ));
+    const list = h('div', 'box-list');
+    wrap.append(banner, list);
     const refreshers = SKILL_BOXES.map((box) => {
-      // 작은 칸: 위에 상자(누르면 확률), 아래 1회·10회
+      // 작은 칸: 위에 상자(누르면 확률), 천장까지 남은 횟수, 아래 1회·10회
       const card = h('div', `card skill-box box-${box.id}`);
       const head = h('button', 'box-head');
       head.append(h('span', 'box-icon', box.icon), h('span', 'title', box.name), h('span', 'box-info', 'ⓘ'));
       head.addEventListener('click', () => this.showBoxOdds(box));
+      const pity = h('div', 'box-pity');
       const btns = h('div', 'box-btns');
       const mk = (n: 1 | 10) => {
         const b = h('button', 'buy');
         const label = h('span');
         b.append(label, h('small', '', n === 1 ? '1회' : '10회'));
-        b.addEventListener('click', () => this.openBox(box, n));
+        b.addEventListener('click', () => (box.pick ? this.pickType(box, n) : this.openBox(box, n)));
         btns.append(b);
         return { b, label, n };
       };
       const buttons = [mk(1), mk(10)];
-      card.append(head, btns);
-      wrap.append(card);
+      card.append(head, pity, btns);
+      list.append(card);
       return () => {
+        const left = g.pityLeft(box.id);
+        setText(pity, left !== null && box.pity ? `${box.pity.grade}급 확정까지 ${left}회` : '');
         for (const { b, label, n } of buttons) {
-          const books = g.save.mats.skillbook ?? 0;
-          if (n === 1 && box.book && books > 0) label.textContent = `📕 ${books}`;
+          const key = n === 1 ? g.boxKey(box.id) : null;
+          if (n === 1 && box.id === 'silver' && g.freeBoxReady) label.textContent = '🎁 무료!';
+          else if (key) label.textContent = `${MAT_BY_ID[key].icon} ${g.save.mats[key]}`;
           else {
             const c = boxCost(box, n, g.save.maxStage);
             label.replaceChildren(c.gold !== undefined ? coin(fmt(c.gold)) : document.createTextNode(`💎 ${fmt(c.diamonds!)}`));
@@ -532,8 +557,69 @@ export class UI implements UIHost {
         }
       };
     });
+    // 조각 교환 칸
+    const shardCard = h('div', 'card skill-box box-shard');
+    const shardHead = h('div', 'box-head');
+    shardHead.append(h('span', 'box-icon', '🧩'), h('span', 'title', '조각 교환'));
+    const shardLine = h('div', 'box-pity');
+    const shardBtn = this.button('원하는 스킬로', 'primary', () => this.showShardShop());
+    shardCard.append(shardHead, shardLine, shardBtn);
+    list.append(shardCard);
+    refreshers.push(() => setText(shardLine, `보유 🧩 ${fmt(g.save.shards)} · 겹치면 쌓여요`));
     this.boxRefresh = () => refreshers.forEach((f) => f());
     return wrap;
+  }
+
+  /** 형태 선택 상자: 형태 고르기 */
+  private pickType(box: BoxDef, n: 1 | 10) {
+    if (!this.game.canOpenBox(box.id, n)) return this.toast('💎 다이아가 모자라요');
+    this.openModal(
+      h('div', 'modal-title', `${box.icon} 어떤 형태로 뽑을까요?`),
+      h('div', 'modal-sub', '고른 형태의 스킬만 나와요'),
+      ...SKILL_TYPES.map((t) => {
+        const b = this.button(`${t.name} · ${t.desc}`, '', () => this.openBox(box, n, t.id));
+        b.style.color = t.color;
+        return b;
+      }),
+      this.button('닫기', 'primary', () => this.closeModal()),
+    );
+  }
+
+  /** 조각 교환: 형태별로 스킬과 조각 값, 누르면 교환 (없으면 배우기, 있으면 포인트 +1) */
+  private showShardShop(type: SkillDef['type'] = skillTypeView) {
+    const g = this.game;
+    const seg = h('div', 'seg skill-type-seg');
+    for (const t of SKILL_TYPES) {
+      const b = h('button', 'seg-btn' + (t.id === type ? ' on' : ''), t.name);
+      b.style.setProperty('--type', t.color);
+      b.addEventListener('click', () => this.showShardShop(t.id));
+      seg.append(b);
+    }
+    const grid = h('div', 'skill-grid shard-grid');
+    for (const def of SKILLS.filter((d) => d.type === type)) {
+      const grade = SKILL_GRADE[def.id];
+      const cost = SHARD_COST[grade];
+      const t = h('button', 'skill-tile');
+      const owned = !!g.skillTree(def.id);
+      t.classList.toggle('unlearned', !owned);
+      t.append(skillIcon(def, 'tile-icon'), h('span', `tile-grade g-${grade}`, grade), h('span', 'tile-lv', `🧩${cost}`), h('span', 'tile-name', def.name));
+      t.disabled = g.save.shards < cost;
+      t.addEventListener('click', () => {
+        if (!g.exchangeShards(def.id)) return this.toast('🧩 조각이 모자라요');
+        sfx.chest();
+        this.toast(owned ? `${def.name} 스킬 포인트 +1` : `${def.name} 획득!`);
+        this.refresh();
+        this.showShardShop(type);
+      });
+      grid.append(t);
+    }
+    this.openModal(
+      h('div', 'modal-title', '🧩 조각 교환'),
+      h('div', 'modal-sub', `보유 🧩 ${fmt(g.save.shards)} · 없는 스킬은 배우고, 있는 스킬은 스킬 포인트 +1`),
+      seg,
+      grid,
+      this.button('닫기', 'primary', () => this.closeModal()),
+    );
   }
 
   /** 상자 확률 창 */
@@ -555,27 +641,35 @@ export class UI implements UIHost {
   }
 
   /** 상자 열기 결과: 카드가 하나씩 뒤집힌다 */
-  private openBox(box: BoxDef, n: 1 | 10) {
-    const res = this.game.openSkillBox(box.id, n);
+  /** 상자 열기: 상자가 흔들리다 (가장 좋은 등급 색으로 빛나며) 펑 → 카드가 뒤집힌다. A급 이상은 반짝, S급은 무지개 */
+  private openBox(box: BoxDef, n: 1 | 10, type?: SkillDef['type']) {
+    const res = this.game.openSkillBox(box.id, n, type);
     if (!res) return this.toast(box.goldSec ? '골드가 모자라요' : '💎 다이아가 모자라요');
+    const order: Grade[] = ['S', 'A', 'B', 'C', 'D'];
+    const best = order.find((gr) => res.some((r) => SKILL_GRADE[r.def.id] === gr)) ?? 'D';
+    const reveal = h('div', `box-reveal glow-${best}`);
+    reveal.append(h('div', 'reveal-box', box.icon));
     const grid = h('div', 'summon-grid');
     res.forEach((r, i) => {
       const grade = SKILL_GRADE[r.def.id];
-      const card = h('div', `summon-card box-card gr-${grade}` + (r.isNew ? ' new' : ''));
-      card.append(h('span', `tile-grade g-${grade}`, grade), skillIcon(r.def, 'tile-icon'), h('div', 'summon-name', r.def.name), h('div', 'summon-text', r.text));
+      const card = h('div', `summon-card box-card gr-${grade}` + (r.isNew ? ' new' : '') + (grade === 'S' || grade === 'A' ? ' shine' : ''));
+      card.append(h('span', `tile-grade g-${grade}`, grade), skillIcon(r.def, 'tile-icon'), h('div', 'summon-name', r.def.name), h('div', 'summon-text', r.pity ? '천장!' : r.text));
       card.style.animationDelay = `${i * 0.08}s`;
       grid.append(card);
     });
+    const again = this.button('한 번 더', '', () => (type ? this.openBox(box, n, type) : this.openBox(box, n)));
+    const close = this.button('닫기', 'primary', () => this.closeModal());
+    this.openModal(h('div', 'modal-title', `${box.icon} ${box.name}!`), reveal);
     sfx.chest();
-    this.openModal(
-      h('div', 'modal-title', `${box.icon} ${box.name}!`),
-      h('div', 'modal-sub', oddsText(box)),
-      grid,
-      this.button('한 번 더', '', () => this.openBox(box, n)),
-      this.button('닫기', 'primary', () => this.closeModal()),
-    );
+    setTimeout(() => {
+      if (!reveal.isConnected) return;
+      if (best === 'S') sfx.fever();
+      else sfx.chest();
+      this.openModal(h('div', 'modal-title', `${box.icon} ${box.name}!`), grid, again, close);
+    }, 750);
     this.refresh();
   }
+
 
   /** 스킬 발동 미리보기 창: 돌아가기 = 그 스킬 창으로 */
   private showSkillPreview(def: SkillDef) {
@@ -822,6 +916,7 @@ export class UI implements UIHost {
       this.challengeBtn.classList.toggle('boss', isBossStage(next));
       this.missionBtn.classList.toggle('dot', g.hasClaimable);
       // 새 스킬이 있으면 스킬 탭에 빨간 점, 안 연 상자가 있으면 가방 탭에
+      this.tabButtons.get('gear')?.classList.toggle('dot', g.chestCounts.some((n) => n > 0));
       // 스킬 탭을 한 번 둘러보면 꺼진다 (NEW 배지는 스킬 창을 열 때까지 그대로). 보고 있는 동안 생긴 것도 본 것으로
       if (this.currentTab === 'skill') g.seeSkillTab();
       this.tabButtons.get('skill')?.classList.toggle('dot', g.skillTabUnseen);
@@ -982,7 +1077,7 @@ export class UI implements UIHost {
     let sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
     if (r.kind === 'material') {
       title = r.win ? '재료 던전 완료!' : '재료 던전 끝';
-      sub = '상자에서 나온 재료는 가방에 들어갔어요';
+      sub = '주운 상자는 가방 탭에서 열어요';
     } else if (r.kind === 'raid') {
       title = r.win ? '레이드 성공!' : '레이드 실패…';
       sub = r.win ? '보스의 정수로 전설 장비를 만들어요' : '보스 체력을 절반 넘게 깎으면 정수 1개';
@@ -992,7 +1087,7 @@ export class UI implements UIHost {
     }
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
     // 주운 상자: 하나씩 튀어나오는 연출만 (가방에 들어갔다)
-    if (r.chests.length > 0) parts.push(this.chestShow(r.chests, r.loot));
+    if (r.chests.length > 0) parts.push(this.chestShow(r.chests));
     // 자동 진행: 스테이지를 깼으면 몇 초 뒤 다음 스테이지 (지거나 다른 판이면 멈춘다)
     let timer = 0;
     const g = this.game;
@@ -1037,8 +1132,8 @@ export class UI implements UIHost {
     this.openModal(...parts);
   }
 
-  /** 결과 화면 상자: 연 상자가 하나씩 통통 튀어나오고, 나온 것 합계 */
-  private chestShow(chests: ChestGrade[], loot: Reward) {
+  /** 결과 화면 상자: 먹은 상자가 하나씩 통통 튀어나와 반짝인다 (가방에 들어갔고, 가방 탭에서 하나씩 연다) */
+  private chestShow(chests: ChestGrade[]) {
     const box = h('div', 'chests');
     const row = h('div', 'chest-row');
     // 좋은 상자부터
@@ -1052,8 +1147,7 @@ export class UI implements UIHost {
     box.append(
       h('div', 'chests-title', `🎉 상자 ${chests.length}개 획득!`),
       row,
-      h('div', 'chest-hint', n.map(([g, k]) => `${CHEST_NAMES[g]} ×${k}`).join(' · ')),
-      h('div', 'chest-total', `얻은 것: ${[rewardText(loot), `🪙 ${fmt(loot.gold)}`].filter(Boolean).join(' · ')}`),
+      h('div', 'chest-hint', `${n.map(([g, k]) => `${CHEST_NAMES[g]} ×${k}`).join(' · ')}  →  🎒 가방에 쏙! (가방 탭에서 열어요)`),
     );
     setTimeout(() => sfx.chest(), 150);
     return box;

@@ -61,7 +61,8 @@ export const STATS: Record<StatId, StatDef> = {
   },
 };
 
-export const STAT_ORDER: StatId[] = ['atk', 'hp', 'aps', 'spd'];
+/** 성장 탭에 나오는 능력치 (이동 속도는 뺐다: 레벨 그대로 계산에만) */
+export const STAT_ORDER: StatId[] = ['atk', 'hp', 'aps'];
 
 // 캐릭터 레벨: 스테이지에서 모은 경험치 보석으로 영구히 오른다. 레벨마다 공격력·체력 +5%
 export const xpToNext = (level: number) => Math.round(40 * Math.pow(1.2, level - 1));
