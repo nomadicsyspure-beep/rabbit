@@ -403,7 +403,7 @@ const MAX_SHAKE = 7;
  * 보스(몸통·탄막·장판)는 세게, 일반 몹은 아주 가볍게
  */
 const HURT_HEAVY = { knock: 430, slowT: 0.75, slow: 0.45, shake: 12, vign: 0.8, bounce: 0 };
-const HURT_LIGHT = { knock: 18, slowT: 0, slow: 1, shake: 0.6, vign: 0.2, bounce: 40 };
+const HURT_LIGHT = { knock: 5, slowT: 0, slow: 1, shake: 0.01, vign: 0.01, bounce: 40 };
 /** 보스에게 맞으면: 화면이 잠깐 멈춘다(초) / 화면 전체 붉은 번쩍(초) */
 const HIT_STOP = 0.09;
 const IMPACT_T = 0.16;
