@@ -39,7 +39,7 @@ const MOB_DMG = 1.5;
 /** 몹 수·구성이 최대로 짙어지기까지 걸리는 시간(초) */
 const RAMP_SEC = 30;
 /** 피버: 게이지(처치 수, 콤보와 상관없이 쌓임)가 FEVER_NEED만큼 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
-export const FEVER_NEED = 250;
+export const FEVER_NEED = 200;
 export const FEVER_SEC = 10;
 const FEVER_BONUS = 5;
 const FEVER_SPAWN = 2.5;
