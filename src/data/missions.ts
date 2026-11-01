@@ -49,7 +49,7 @@ export const DAILY_MISSIONS: MissionDef[] = [
   { id: 'plays', name: '스테이지 3번 도전', goal: 3, diamonds: 20 },
   { id: 'chests', name: '보물 상자 10개 열기', goal: 10, diamonds: 20 },
   { id: 'fevers', name: '피버 2번', goal: 2, diamonds: 20 },
-  { id: 'upgrades', name: '강화 20번 (능력치·스킬·장비)', goal: 20, diamonds: 15 },
+  { id: 'upgrades', name: '강화 20번 (능력치·스킬·유물)', goal: 20, diamonds: 15 },
   { id: 'summons', name: '소환 1번', goal: 1, diamonds: 15 },
 ];
 export const DAILY_ALL_BONUS = 60;
@@ -96,7 +96,7 @@ export const ACHIEVEMENTS: AchieveDef[] = [
   { id: 'fevers', name: '피버', value: (s) => s.stats.fevers, goals: [10, 50, 200], diamonds: 40 },
   { id: 'golden', name: '황금 몹 사냥', value: (s) => s.stats.golden, goals: [5, 30, 100], diamonds: 40 },
   { id: 'chests', name: '보물 상자', value: (s) => s.stats.chests, goals: [30, 300, 2000], diamonds: 40 },
-  { id: 'gear', name: '장비 수집', value: (s) => Object.keys(s.gear).length, goals: [3, 8, 17], diamonds: 60 },
+  { id: 'relic', name: '유물 수집', value: (s) => Object.keys(s.relics).length, goals: [3, 10, 20, 30], diamonds: 60 },
   { id: 'pets', name: '동료 수집', value: (s) => Object.keys(s.pets).length, goals: [2, 5, 9], diamonds: 60 },
   { id: 'rebirth', name: '환생', value: (s) => s.rebirth.count, goals: [1, 3, 10], diamonds: 100 },
 ];

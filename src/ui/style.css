@@ -3070,3 +3070,54 @@ button:active:not(:disabled) {
 .gear-set-row.on::before {
   content: '✓ ';
 }
+
+/* 유물 등급 틀: 일반 · 희귀 · 영웅 · 전설 */
+.ibox.rar-0 {
+  --rar: #c9b79c;
+}
+
+.ibox.rar-1 {
+  --rar: #7ad7ff;
+  background: radial-gradient(circle at 50% 40%, #2f5a6e 0%, #3a2312 78%);
+}
+
+.ibox.rar-2 {
+  --rar: #c78bff;
+  background: radial-gradient(circle at 50% 40%, #6a3f8a 0%, #3a2312 78%);
+}
+
+.ibox.rar-3 {
+  --rar: #ffd23f;
+  background: radial-gradient(circle at 50% 40%, #8a6a1f 0%, #3a2312 78%);
+  animation: relic-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes relic-glow {
+  50% {
+    filter: brightness(1.18);
+  }
+}
+
+/* 인벤토리: 끼운 유물 */
+.ibox.on::before {
+  content: 'E';
+  position: absolute;
+  left: 3px;
+  top: 2px;
+  font-size: 9px;
+  font-weight: 900;
+  color: #2a1606;
+  background: var(--gold);
+  border-radius: 4px;
+  padding: 0 3px;
+  line-height: 13px;
+}
+
+.relic-lore {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.relic-tag {
+  font-weight: 800;
+}

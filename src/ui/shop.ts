@@ -7,6 +7,7 @@ import {
   freshDaily, passLevel, passReward,
 } from '../data/missions';
 import { PETS, PET_BY_ID, PET_MAX, PET_SLOTS, RARITY_COLORS, RARITY_NAMES, petEffectText, type PetDef } from '../data/pets';
+import { RELIC_RARITY_COLORS } from '../data/relics';
 import { CHICK_SKINS, FX_SKINS, skinPrice, summonCost, type SkinDef } from '../data/shop';
 import type { Game } from '../game';
 import { h, ibox, monsterPic } from './dom';
@@ -21,14 +22,14 @@ function diamondBar(game: Game) {
     const s = game.save;
     const chips = [h('span', 'chip', `💎 ${fmt(s.diamonds)}`)];
     if (s.tickets.pet > 0) chips.push(h('span', 'chip', `🐾 소환권 ${s.tickets.pet}`));
-    if (s.tickets.gear > 0) chips.push(h('span', 'chip', `🎟️ 장비 소환권 ${s.tickets.gear}`));
+    if (s.tickets.relic > 0) chips.push(h('span', 'chip', `🎟️ 유물 소환권 ${s.tickets.relic}`));
     bar.replaceChildren(...chips);
   };
   return { el: bar, refresh };
 }
 
 /** 소환 결과: 카드가 하나씩 뒤집힌다 */
-function showSummon(game: Game, host: UIHost, kind: 'pet' | 'gear', n: 1 | 10) {
+function showSummon(game: Game, host: UIHost, kind: 'pet' | 'relic', n: 1 | 10) {
   const res = game.summon(kind, n);
   if (!res) return host.toast('💎 다이아가 모자라요 (미션·출석으로 모아요)');
   const grid = h('div', 'summon-grid');
@@ -38,6 +39,7 @@ function showSummon(game: Game, host: UIHost, kind: 'pet' | 'gear', n: 1 | 10) {
       card.style.setProperty('--rar', RARITY_COLORS[r.def.rarity]);
       card.append(monsterPic(r.def.skin, 40));
     } else {
+      card.style.setProperty('--rar', RELIC_RARITY_COLORS[r.def.rarity]);
       card.append(h('div', 'summon-emoji', r.def.icon));
     }
     card.append(h('div', 'summon-name', r.def.name), h('div', 'summon-text', r.text));
@@ -46,7 +48,7 @@ function showSummon(game: Game, host: UIHost, kind: 'pet' | 'gear', n: 1 | 10) {
   });
   sfx.chest();
   host.openModal(
-    h('div', 'modal-title', kind === 'pet' ? '동료 소환!' : '장비 소환!'),
+    h('div', 'modal-title', kind === 'pet' ? '동료 소환!' : '유물 소환!'),
     grid,
     host.button('한 번 더', '', () => showSummon(game, host, kind, n)),
     host.button('닫기', 'primary', () => host.closeModal()),
@@ -54,10 +56,10 @@ function showSummon(game: Game, host: UIHost, kind: 'pet' | 'gear', n: 1 | 10) {
   host.refresh();
 }
 
-function summonCard(game: Game, host: UIHost, kind: 'pet' | 'gear') {
+function summonCard(game: Game, host: UIHost, kind: 'pet' | 'relic') {
   const card = h('div', 'card row summon-box');
-  const title = kind === 'pet' ? '🐾 동료 소환' : '⚔️ 장비 소환';
-  const sub = kind === 'pet' ? '보통 70% · 희귀 26% · 전설 4% · 겹치면 레벨 업' : '전설 제외 장비 · 겹치면 +1 강화';
+  const title = kind === 'pet' ? '🐾 동료 소환' : '🔮 유물 소환';
+  const sub = kind === 'pet' ? '보통 70% · 희귀 26% · 전설 4% · 겹치면 레벨 업' : '일반 60% · 희귀 30% · 영웅 10% · 겹치면 +1 강화';
   const info = h('div', 'info');
   info.append(h('div', 'title', title), h('div', 'sub', sub));
   const one = h('button', 'buy');
@@ -264,14 +266,14 @@ export function buildShopTab(panel: HTMLElement, game: Game, host: UIHost) {
   return () => inner();
 }
 
-/** 소환 보기: 동료·장비 소환, 다이아 충전 */
+/** 소환 보기: 동료·유물 소환, 다이아 충전 */
 function buildSummonBody(panel: HTMLElement, game: Game, host: UIHost) {
   const wallet = diamondBar(game);
   panel.append(wallet.el);
 
   const pet = summonCard(game, host, 'pet');
-  const gear = summonCard(game, host, 'gear');
-  panel.append(pet.el, gear.el);
+  const relic = summonCard(game, host, 'relic');
+  panel.append(pet.el, relic.el);
 
   panel.append(h('div', 'section-title', '💎 다이아 충전'));
   const packs = h('div', 'skin-grid');
@@ -286,7 +288,7 @@ function buildSummonBody(panel: HTMLElement, game: Game, host: UIHost) {
   return () => {
     wallet.refresh();
     pet.refresh();
-    gear.refresh();
+    relic.refresh();
   };
 }
 

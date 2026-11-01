@@ -1,5 +1,8 @@
 import { fmt } from '../core/format';
-import { GEAR, GEAR_BY_ID, GEAR_MAX, GEAR_SLOTS, SETS, SLOT_ICONS, SLOT_NAMES, enhanceCost, gearEffectText, type GearDef, type GearSlot } from '../data/gear';
+import {
+  REGIONS, REGION_NAMES, RELICS, RELIC_BY_ID, RELIC_MAX, RELIC_RARITY_COLORS, RELIC_RARITY_NAMES, RELIC_SLOTS, SETS, SLOT_UNLOCK, enhanceCost, relicEffectText,
+  type RelicDef,
+} from '../data/relics';
 import { CHEST_NAMES, MATS, MAT_BY_ID, addReward, emptyReward, rewardText, type ChestGrade } from '../data/items';
 import { sfx } from '../audio/sfx';
 import type { Game } from '../game';
@@ -8,7 +11,7 @@ import type { MatId } from '../data/world';
 import { COLLECTION_BONUS, REBIRTH_MIN_STAGE, REBIRTH_UPS, type RebirthUp } from '../game';
 import { chickPic, coin, h, holdRepeat, ibox } from './dom';
 
-// 가방 탭(장비 6칸 + 인벤토리), 도감, 환생 화면.
+// 가방 탭(유물 6칸 + 인벤토리), 제작 탭, 도감, 환생 화면.
 
 /** 화면 쪽에서 필요한 것: 토스트, 전체 새로고침, 모달 열기/닫기 */
 export interface UIHost {
@@ -35,8 +38,8 @@ export function walletBar(game: Game) {
   return { el: bar, refresh };
 }
 
-type InvTab = 'all' | 'chest' | 'gear' | 'mat';
-const INV_TABS: [InvTab, string][] = [['all', '전체'], ['chest', '상자'], ['gear', '장비'], ['mat', '재료']];
+type InvTab = 'all' | 'chest' | 'relic' | 'mat';
+const INV_TABS: [InvTab, string][] = [['all', '전체'], ['chest', '상자'], ['relic', '유물'], ['mat', '재료']];
 const CHEST_ICONS = ['📦', '🎁', '💛'];
 /** 인벤토리 칸 수 (최소, 한 줄 5칸) */
 const INV_MIN_CELLS = 20;
@@ -51,11 +54,19 @@ interface InvItem {
   onClick: () => void;
 }
 
+/** 유물 아이콘 틀 (등급 색) */
+function relicBox(def: RelicDef, cls = '') {
+  return ibox(def.icon, `rar-${def.rarity}` + (cls ? ' ' + cls : ''));
+}
+
+/** 가진 유물 (등급 높은 순) */
+const ownedRelics = (game: Game) => RELICS.filter((r) => game.save.relics[r.id] !== undefined).sort((a, b) => b.rarity - a.rarity);
+
 /**
- * 가방 탭: 위에 병아리 + 장비 6칸 고정 (왼쪽 무기·장갑·신발 / 오른쪽 모자·망토·장신구),
- * 칸을 누르면 그 장비 (빈 칸이면 고르기), 꾹 누르면 바꾸기. 아래는 인벤토리 (상자·장비·재료, 상자는 눌러서 하나씩 연다)
+ * 가방 탭: 위에 병아리 + 유물 6칸 고정 (왼쪽 3칸 · 오른쪽 3칸, 칸은 스테이지 따라 열린다),
+ * 칸을 누르면 그 유물 (빈 칸이면 고르기), 꾹 누르면 바꾸기. 아래는 인벤토리 (상자·유물·재료, 상자는 눌러서 하나씩 연다)
  */
-export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
+export function buildBagTab(panel: HTMLElement, game: Game, host: UIHost) {
   const top = h('div', 'skill-top gear-top');
   const left = h('div', 'gear-col');
   const right = h('div', 'gear-col');
@@ -63,35 +74,43 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   const statLine = h('div', 'gear-stats');
   mid.append(chickPic(92, true), statLine);
   top.append(left, mid, right);
-  panel.append(top, h('div', 'hint gear-hint', '칸을 누르면 장비 보기 · 꾹 누르면 바꾸기'));
-  const slotEls = GEAR_SLOTS.map((slot, i) => {
+  panel.append(top, h('div', 'hint gear-hint', '칸을 누르면 유물 보기 · 꾹 누르면 바꾸기 · 같은 지역 유물 2·4·6개 = 세트'));
+  const slotEls = Array.from({ length: RELIC_SLOTS }, (_, i) => {
     const b = h('button', 'gear-slot');
-    longPress(b, () => showSlotPicker(game, host, slot), () => {
-      const w = game.worn(slot);
-      if (w) showGear(game, host, w.def);
-      else showSlotPicker(game, host, slot);
-    });
+    const tapSlot = () => {
+      if (!game.slotUnlocked(i)) return host.toast(`🔒 스테이지 ${SLOT_UNLOCK[i]}을 깨면 열려요`);
+      const id = game.save.relicSlots[i];
+      if (id) showRelic(game, host, RELIC_BY_ID[id]);
+      else showSlotPicker(game, host, i);
+    };
+    longPress(b, () => (game.slotUnlocked(i) ? showSlotPicker(game, host, i) : tapSlot()), tapSlot);
     (i < 3 ? left : right).append(b);
-    return { slot, b };
+    return b;
   });
   let key = '';
   const refreshTop = () => {
     const s = game.save;
-    const k = GEAR_SLOTS.map((sl) => `${s.wear[sl] ?? ''}+${s.gear[s.wear[sl] ?? ''] ?? ''}`).join();
+    const k = s.relicSlots.map((id, i) => `${game.slotUnlocked(i)}${id ?? ''}+${id ? s.relics[id] : ''}`).join();
     if (k !== key) {
       key = k;
-      for (const { slot, b } of slotEls) {
-        const w = game.worn(slot);
-        const box = ibox(w ? w.def.icon : SLOT_ICONS[slot], 'big' + (w ? '' : ' empty'));
-        if (w?.def.essence) box.classList.add('legend');
-        if (w) box.append(h('span', 'ibox-lv', `+${w.plus}`));
-        b.replaceChildren(box, h('span', 'tile-name', w ? w.def.name : SLOT_NAMES[slot]));
-      }
+      slotEls.forEach((b, i) => {
+        const id = s.relicSlots[i];
+        const def = id ? RELIC_BY_ID[id] : null;
+        if (!game.slotUnlocked(i)) {
+          b.replaceChildren(ibox('🔒', 'big empty'), h('span', 'tile-name', `스테이지 ${SLOT_UNLOCK[i]}`));
+        } else if (!def) {
+          b.replaceChildren(ibox('➕', 'big empty'), h('span', 'tile-name', '빈 칸'));
+        } else {
+          const box = relicBox(def, 'big');
+          box.append(h('span', 'ibox-lv', `+${s.relics[def.id] ?? 0}`));
+          b.replaceChildren(box, h('span', 'tile-name', def.name));
+        }
+      });
     }
     const bo = game.bonus;
     const st = game.stats;
-    // 켜진 세트 (같은 지역 장비 2·4·6개)
-    const sets = game.gearSets.map((set) => h('div', 'gear-set-line', `🔗 ${set.name} ${set.count}/6 · ${set.active.map((b) => b.text).join(' · ')}`));
+    // 켜진 세트 (같은 지역 유물 2·4·6개)
+    const sets = game.relicSets.map((set) => h('div', 'gear-set-line', `🔗 ${set.name} ${set.count}/6 · ${set.active.map((b) => b.text).join(' · ')}`));
     statLine.replaceChildren(
       h('div', '', `❤️ 체력 ${fmt(st.hp)}`),
       h('div', '', `⚔️ 공격력 ${fmt(st.atk)}`),
@@ -123,30 +142,29 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
     game.chestCounts.forEach((n, g) => {
       if (n > 0) out.push({ kind: 'chest', icon: CHEST_ICONS[g], count: `×${n}`, name: CHEST_NAMES[g], cls: `chest-${g}`, onClick: () => showChestOpen(game, host, g as ChestGrade, 1) });
     });
-    for (const def of GEAR) {
-      const plus = s.gear[def.id];
-      if (plus === undefined) continue;
-      out.push({ kind: 'gear', icon: def.icon, count: `+${plus}`, name: def.name, cls: def.essence ? 'legend' : '', onClick: () => showGear(game, host, def) });
+    for (const def of ownedRelics(game)) {
+      const on = game.isRelicOn(def.id);
+      out.push({ kind: 'relic', icon: def.icon, count: `+${s.relics[def.id]}`, name: def.name, cls: `rar-${def.rarity}` + (on ? ' on' : ''), onClick: () => showRelic(game, host, def) });
     }
     for (const m of MATS) {
       const n = s.mats[m.id] ?? 0;
-      if (n > 0) out.push({ kind: 'mat', icon: m.icon, count: fmt(n), name: m.name, onClick: () => host.toast(`${m.icon} ${m.name} ${fmt(n)}개 · ${m.id === 'skillbook' ? '스킬 은 상자 1회' : '장비 제작·강화 재료'}`) });
+      if (n > 0) out.push({ kind: 'mat', icon: m.icon, count: fmt(n), name: m.name, onClick: () => host.toast(`${m.icon} ${m.name} ${fmt(n)}개 · ${m.id === 'skillbook' ? '스킬 은 상자 1회' : '유물 제작·강화 재료'}`) });
     }
     if (s.shards > 0) out.push({ kind: 'mat', icon: '🧩', count: fmt(s.shards), name: '스킬 조각', onClick: () => host.toast('🧩 스킬 조각: 스킬 탭 조각 교환에서 원하는 스킬과 바꿔요') });
     for (const [b, n] of Object.entries(s.boosters)) {
       const def = BOOSTERS[b as BoosterId];
       if (n && def) out.push({ kind: 'mat', icon: def.icon, count: `×${n}`, name: def.name, onClick: () => host.toast(`${def.icon} ${def.name}: ${def.desc} (스테이지에 들어가면 자동으로)`) });
     }
-    if (s.essence > 0) out.push({ kind: 'mat', icon: '🔮', count: fmt(s.essence), name: '보스의 정수', onClick: () => host.toast('🔮 보스의 정수: 전설 장비 재료 (보스 레이드)') });
-    if (s.tickets.pet > 0) out.push({ kind: 'mat', icon: '🐾', count: `×${s.tickets.pet}`, name: '동료 소환권', onClick: () => host.toast('동료 탭에서 소환할 때 먼저 써요') });
-    if (s.tickets.gear > 0) out.push({ kind: 'mat', icon: '🎟️', count: `×${s.tickets.gear}`, name: '장비 소환권', onClick: () => host.toast('상점 장비 소환에 먼저 써요') });
+    if (s.essence > 0) out.push({ kind: 'mat', icon: '🔮', count: fmt(s.essence), name: '보스의 정수', onClick: () => host.toast('🔮 보스의 정수: 전설 유물 재료 (보스 레이드)') });
+    if (s.tickets.pet > 0) out.push({ kind: 'mat', icon: '🐾', count: `×${s.tickets.pet}`, name: '동료 소환권', onClick: () => host.toast('상점 동료 소환에 먼저 써요') });
+    if (s.tickets.relic > 0) out.push({ kind: 'mat', icon: '🎟️', count: `×${s.tickets.relic}`, name: '유물 소환권', onClick: () => host.toast('상점 유물 소환에 먼저 써요') });
     return out.filter((it) => tab === 'all' || it.kind === tab);
   };
   let invKey = '';
   const refreshInv = () => {
     for (const t of tabBtns) t.b.classList.toggle('on', t.id === tab);
     const list = items();
-    const k = tab + '|' + list.map((it) => it.name + it.count).join();
+    const k = tab + '|' + list.map((it) => it.name + it.count + it.cls).join();
     if (k === invKey) return;
     invKey = k;
     const cells: HTMLElement[] = list.map((it) => {
@@ -171,7 +189,7 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   };
 }
 
-/** 제작 탭: 위에 재료, 아래 부위별 장비 격자 (누르면 만들기·강화·착용 창). 초록 점 = 지금 만들 수 있음 */
+/** 제작 탭: 위에 재료, 레시피, 아래 지역(세트)별 유물 격자 (누르면 만들기·강화·끼우기 창). 초록 점 = 지금 만들 수 있음 */
 export function buildCraftTab(panel: HTMLElement, game: Game, host: UIHost) {
   const wallet = walletBar(game);
   panel.append(wallet.el);
@@ -214,32 +232,39 @@ export function buildCraftTab(panel: HTMLElement, game: Game, host: UIHost) {
   }
   panel.append(rhead, rlist);
   const ghead = h('div', 'skill-type-head');
-  ghead.style.setProperty('--type', '#ffd166');
-  ghead.append(h('span', 'type-name', '⚒️ 장비 제작'));
+  ghead.style.setProperty('--type', '#c78bff');
+  ghead.append(h('span', 'type-name', '🔮 유물 제작'), h('span', 'type-desc', '지역 재료로 · 같은 지역 2·4·6개 = 세트'));
   panel.append(ghead);
-  for (const slot of GEAR_SLOTS) {
+  for (const region of REGIONS) {
+    const mat = MAT_BY_ID[region];
+    const relics = RELICS.filter((r) => r.region === region);
     const head = h('div', 'skill-type-head');
-    head.style.setProperty('--type', '#ffd166');
-    head.append(h('span', 'type-name', `${SLOT_ICONS[slot]} ${SLOT_NAMES[slot]}`));
+    head.style.setProperty('--type', RELIC_RARITY_COLORS[relics[0].rarity]);
+    const setCount = h('span', 'type-desc');
+    head.append(h('span', 'type-name', `${mat.icon} ${SETS[region].name}`), setCount);
     const grid = h('div', 'skill-grid');
-    for (const def of GEAR.filter((g) => g.slot === slot)) {
+    for (const def of relics) {
       const t = h('button', 'skill-tile');
       const lv = h('span', 'tile-lv');
-      t.append(ibox(def.icon, def.essence ? 'legend' : ''), lv, h('span', 'tile-name', def.name));
-      t.addEventListener('click', () => showGear(game, host, def));
+      t.append(relicBox(def), lv, h('span', 'tile-name', def.name));
+      t.addEventListener('click', () => showRelic(game, host, def));
       grid.append(t);
       tiles.push(() => {
-        const plus = game.save.gear[def.id];
+        const plus = game.save.relics[def.id];
         const owned = plus !== undefined;
         t.classList.toggle('unlearned', !owned);
-        t.classList.toggle('equipped', game.save.wear[slot] === def.id);
-        t.classList.toggle('can-make', !owned && game.canCraft(def.id));
+        t.classList.toggle('equipped', game.isRelicOn(def.id));
+        t.classList.toggle('can-make', !owned && game.canCraftRelic(def.id));
         lv.textContent = owned ? `+${plus}` : '';
       });
     }
+    tiles.push(() => {
+      const have = relics.filter((r) => game.save.relics[r.id] !== undefined).length;
+      setCount.textContent = `${REGION_NAMES[region]} 유물 ${have}/6 · ${mat.icon} ${fmt(game.save.mats[region] ?? 0)}`;
+    });
     panel.append(head, grid);
   }
-  panel.append(h('div', 'hint', '재료는 스테이지 보물 상자·재료 던전에서 · 초록 점 = 지금 만들 수 있음 · 착용은 가방 탭에서도'));
+  panel.append(h('div', 'hint', '재료는 스테이지 보물 상자·재료 던전에서 · 초록 점 = 지금 만들 수 있음 · 끼우기는 가방 탭에서도'));
   return () => tiles.forEach((f) => f());
 }
 
@@ -264,91 +289,131 @@ function longPress(el: HTMLElement, long: () => void, tap: () => void) {
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-/** 장비 칸 바꾸기: 그 부위 장비 격자 (누르면 장비 창) */
-function showSlotPicker(game: Game, host: UIHost, slot: GearSlot) {
+/** 칸에 끼울 유물 고르기: 가진 유물 격자 (누르면 그 칸에 끼운다) */
+function showSlotPicker(game: Game, host: UIHost, slot: number) {
   const grid = h('div', 'skill-grid');
-  for (const def of GEAR.filter((g) => g.slot === slot)) {
+  const cur = game.save.relicSlots[slot];
+  const list = ownedRelics(game);
+  for (const def of list) {
     const t = h('button', 'skill-tile');
-    const plus = game.save.gear[def.id];
-    const box = ibox(def.icon, def.essence ? 'legend' : '');
-    t.append(box, h('span', 'tile-lv', plus !== undefined ? `+${plus}` : ''), h('span', 'tile-name', def.name));
-    t.classList.toggle('unlearned', plus === undefined);
-    t.classList.toggle('equipped', game.save.wear[slot] === def.id);
-    t.classList.toggle('can-make', plus === undefined && game.canCraft(def.id));
-    t.addEventListener('click', () => showGear(game, host, def));
+    t.append(relicBox(def), h('span', 'tile-lv', `+${game.save.relics[def.id]}`), h('span', 'tile-name', def.name));
+    t.classList.toggle('equipped', game.isRelicOn(def.id));
+    t.addEventListener('click', () => {
+      if (def.id !== cur) game.equipRelic(def.id, slot);
+      host.closeModal();
+      host.toast(`${def.icon} ${def.name} 끼움`);
+      host.refresh();
+    });
     grid.append(t);
   }
+  const btns: HTMLElement[] = [];
+  if (cur) {
+    btns.push(host.button('이 칸 비우기', '', () => {
+      game.unequipRelic(cur);
+      host.closeModal();
+      host.refresh();
+    }));
+  }
   host.openModal(
-    h('div', 'modal-title', `${SLOT_ICONS[slot]} ${SLOT_NAMES[slot]} 바꾸기`),
-    h('div', 'modal-sub', '장비를 눌러 만들기·강화·착용 · 초록 점 = 지금 만들 수 있음'),
+    h('div', 'modal-title', `유물 칸 ${slot + 1}`),
+    h('div', 'modal-sub', list.length ? '누르면 이 칸에 끼워요 · 테두리 = 다른 칸에 끼운 것 (옮겨요)' : '아직 유물이 없어요 · 제작 탭에서 만들거나 상점 유물 소환으로 얻어요'),
+    grid,
+    ...btns,
+    host.button('닫기', 'primary', () => host.closeModal()),
+  );
+}
+
+/** 칸이 다 찼을 때: 어느 칸과 바꿀지 고르기 */
+function showReplacePicker(game: Game, host: UIHost, def: RelicDef) {
+  const grid = h('div', 'skill-grid');
+  game.equippedRelics.forEach((r) => {
+    const t = h('button', 'skill-tile');
+    t.append(relicBox(r.def), h('span', 'tile-lv', `+${r.plus}`), h('span', 'tile-name', r.def.name));
+    t.addEventListener('click', () => {
+      game.equipRelic(def.id, r.slot);
+      host.closeModal();
+      host.toast(`${r.def.name} → ${def.name}`);
+      host.refresh();
+    });
+    grid.append(t);
+  });
+  host.openModal(
+    h('div', 'modal-title', `${def.icon} ${def.name} 끼우기`),
+    h('div', 'modal-sub', '칸이 다 찼어요 · 뺄 유물을 고르세요'),
     grid,
     host.button('닫기', 'primary', () => host.closeModal()),
   );
 }
 
-
-/** 장비 창: 효과, 제작 / 강화, 착용 / 해제 */
-function showGear(game: Game, host: UIHost, def: GearDef) {
+/** 유물 창: 효과, 지역 세트, 제작 / 강화, 끼우기 / 빼기 */
+function showRelic(game: Game, host: UIHost, def: RelicDef) {
   const head = h('div', 'tree-head');
   const info = h('div', 'info');
   const name = h('div', 'modal-title');
   const eff = h('div', 'modal-sub');
   const cost = h('div', 'modal-sub');
-  info.append(name, h('div', 'modal-sub', SLOT_NAMES[def.slot] + (def.essence ? ' · 전설' : '')), eff, cost);
-  head.append(ibox(def.icon, 'huge' + (def.essence ? ' legend' : '')), info);
-  // 이 장비의 지역 세트: 같은 지역 장비를 몇 개 꼈는지, 켜진 효과
+  const tag = h('div', 'modal-sub relic-tag', `${RELIC_RARITY_NAMES[def.rarity]} · ${REGION_NAMES[def.region]} 유물`);
+  tag.style.color = RELIC_RARITY_COLORS[def.rarity];
+  info.append(name, tag, h('div', 'modal-sub relic-lore', `“${def.lore}”`), eff, cost);
+  head.append(relicBox(def, 'huge'), info);
+  // 이 유물의 지역 세트: 같은 지역 유물을 몇 개 꼈는지, 켜진 효과
   const setInfo = h('div', 'gear-set');
-  const set = SETS[def.mat];
-  if (set) {
-    const worn = GEAR_SLOTS.filter((sl) => game.worn(sl)?.def.mat === def.mat).length;
-    setInfo.append(h('div', 'title', `🔗 ${set.name} (지금 ${worn}개)`));
-    for (const b of set.bonuses) setInfo.append(h('div', 'gear-set-row' + (worn >= b.need ? ' on' : ''), `${b.need}개: ${b.text}`));
-  }
+  const set = SETS[def.region];
+  const renderSet = () => {
+    const on = game.equippedRelics.filter((r) => r.def.region === def.region).length;
+    setInfo.replaceChildren(h('div', 'title', `🔗 ${set.name} (지금 ${on}개)`));
+    for (const b of set.bonuses) setInfo.append(h('div', 'gear-set-row' + (on >= b.need ? ' on' : ''), `${b.need}개: ${b.text}`));
+  };
   const main = h('button', 'buy wide');
   const mainLabel = h('span');
   const mainSmall = h('small');
   main.append(mainLabel, mainSmall);
   holdRepeat(main, () => {
-    const owned = game.save.gear[def.id] !== undefined;
-    const ok = owned ? game.enhanceGear(def.id) : game.craftGear(def.id);
-    if (ok && !owned) host.toast(`${def.name} 제작!`);
+    const owned = game.save.relics[def.id] !== undefined;
+    const ok = owned ? game.enhanceRelic(def.id) : game.craftRelic(def.id);
+    if (ok && !owned) {
+      sfx.chest();
+      host.toast(`${def.icon} ${def.name} 제작!`);
+    }
     if (ok) host.refresh();
     return ok && owned;
   });
   const wear = host.button('', 'primary', () => {
-    game.toggleWear(def.id);
+    if (game.isRelicOn(def.id)) game.unequipRelic(def.id);
+    else if (!game.equipRelic(def.id)) return showReplacePicker(game, host, def);
     host.refresh();
   });
   const render = () => {
     const s = game.save;
-    const plus = s.gear[def.id];
+    const plus = s.relics[def.id];
     const owned = plus !== undefined;
-    const mat = MAT_BY_ID[def.mat];
+    const mat = MAT_BY_ID[def.region];
     name.textContent = owned ? `${def.name} +${plus}` : def.name;
-    eff.textContent = owned && plus < GEAR_MAX
-      ? `${gearEffectText(def, plus)}  →  +${plus + 1}: ${gearEffectText(def, plus + 1)}`
-      : gearEffectText(def, plus ?? 0);
+    eff.textContent = owned && plus < RELIC_MAX
+      ? `${relicEffectText(def, plus)}  →  +${plus + 1}: ${relicEffectText(def, plus + 1)}`
+      : relicEffectText(def, plus ?? 0);
     if (!owned) {
-      cost.textContent = `제작: ${mat.icon} ${def.matCost}${def.essence ? ` · 🔮 ${def.essence}` : ''} (보유 ${fmt(s.mats[def.mat] ?? 0)})`;
+      cost.textContent = `제작: ${mat.icon} ${def.matCost}${def.essence ? ` · 🔮 ${def.essence}` : ''} (보유 ${fmt(s.mats[def.region] ?? 0)})`;
       mainLabel.replaceChildren(coin(fmt(def.goldCost)));
       mainSmall.textContent = '제작';
-      main.disabled = !game.canCraft(def.id);
-    } else if (plus >= GEAR_MAX) {
+      main.disabled = !game.canCraftRelic(def.id);
+    } else if (plus >= RELIC_MAX) {
       cost.textContent = '최대 강화';
       mainLabel.textContent = 'MAX';
       mainSmall.textContent = '';
       main.disabled = true;
     } else {
       const c = enhanceCost(def, plus);
-      cost.textContent = `강화: ${mat.icon} ${c.mat}${c.essence ? ` · 🔮 ${c.essence}` : ''} (보유 ${fmt(s.mats[def.mat] ?? 0)})`;
+      cost.textContent = `강화: ${mat.icon} ${c.mat}${c.essence ? ` · 🔮 ${c.essence}` : ''} (보유 ${fmt(s.mats[def.region] ?? 0)}) · 효과 +15%`;
       mainLabel.replaceChildren(coin(fmt(c.gold)));
       mainSmall.textContent = '강화 (누르고 있으면 연속)';
-      main.disabled = !game.canEnhance(def.id);
+      main.disabled = !game.canEnhanceRelic(def.id);
     }
-    const worn = s.wear[def.slot] === def.id;
-    const cur = s.wear[def.slot] ? GEAR_BY_ID[s.wear[def.slot]!] : null;
-    wear.textContent = worn ? '해제' : cur ? `착용 (${cur.name} → ${def.name})` : '착용';
+    const on = game.isRelicOn(def.id);
+    const free = s.relicSlots.some((x, i) => !x && game.slotUnlocked(i));
+    wear.textContent = on ? '빼기' : free ? '끼우기' : '바꿔 끼우기';
     wear.disabled = !owned;
+    renderSet();
   };
   render();
   host.openModal(head, setInfo, main, wear, host.button('닫기', '', () => host.closeModal()));
@@ -360,7 +425,7 @@ const MONSTER_NAMES: Record<string, string> = {
   golem: '돌 골렘', snail: '달팽이 토끼', rabbit: '토끼 전사', devil: '악마 마왕', firstaid: '구급상자',
 };
 
-/** 도감: 잡은 몬스터·만든 장비 하나마다 공격력·체력 +1% */
+/** 도감: 잡은 몬스터·얻은 유물 하나마다 공격력·체력 +1% */
 export function showCollection(game: Game, host: UIHost) {
   const s = game.save;
   const grid = (title: string, items: [string, boolean][]) => {
@@ -371,12 +436,12 @@ export function showCollection(game: Game, host: UIHost) {
     box.append(g);
     return box;
   };
-  const total = Object.keys(MONSTER_NAMES).length + GEAR.length;
+  const total = Object.keys(MONSTER_NAMES).length + RELICS.length;
   host.openModal(
     h('div', 'modal-title', '도감'),
     h('div', 'modal-sub', `${game.collectionCount} / ${total} · 공격력·체력 +${Math.round(game.collectionCount * COLLECTION_BONUS * 100)}%`),
     grid('몬스터', Object.entries(MONSTER_NAMES).map(([k, v]) => [v, s.seen.monsters.includes(k)])),
-    grid('장비', GEAR.map((g) => [`${g.icon} ${g.name}`, s.seen.gear.includes(g.id)])),
+    grid('유물', RELICS.map((g) => [`${g.icon} ${g.name}`, s.seen.relics.includes(g.id)])),
     host.button('닫기', 'primary', () => host.closeModal()),
   );
 }
@@ -414,7 +479,7 @@ export function showRebirth(game: Game, host: UIHost) {
   render();
   host.openModal(
     h('div', 'modal-title', '환생'),
-    h('div', 'modal-sub', '골드·최고 스테이지·능력치 강화가 처음으로 돌아가요. 스킬·장비·재료·다이아·레벨은 그대로'),
+    h('div', 'modal-sub', '골드·최고 스테이지·능력치 강화가 처음으로 돌아가요. 스킬·유물·재료·다이아·레벨은 그대로'),
     info,
     ups,
     host.confirmButton('환생하기', '정말 환생? 한 번 더 누르세요', () => {
