@@ -1,5 +1,6 @@
 import { sfx } from '../audio/sfx';
 import { fmt } from '../core/format';
+import { emptyProcs, type Procs } from '../data/gear';
 
 // 방치 모드와 액션 모드가 같이 쓰는 전투 엔진.
 // 엔진은 "누가 조종하는지"(Controller)와 "적을 어떻게 내보내는지"(모드)를 모른다.
@@ -569,6 +570,14 @@ export class Engine {
     return out;
   }
 
+  /** 장비·세트 발동 효과 (스테이지가 넣어 준다) / 그 효과의 공격력 기준 / 쿨다운 */
+  procs: Procs = emptyProcs();
+  procPower = 0;
+  private frostCd = 0;
+  private hurtCd = 0;
+  /** 발동 효과 안에서 또 발동하지 않게 */
+  private inProc = false;
+
   /** 돌진 남은 시간과 속도 */
   private dashT = 0;
   private dashVX = 0;
@@ -645,6 +654,23 @@ export class Engine {
     }
     if (crit) sfx.crit();
     else sfx.hit();
+    // 장비: 치명타 때 빙결 / 번개 (번개가 또 번개를 부르지 않게)
+    if (crit && !this.inProc) {
+      if (this.procs.critFreeze > 0 && e.kind !== 'boss') e.stunT = Math.max(e.stunT, this.procs.critFreeze);
+      if (this.procs.critBolt > 0 && Math.random() < this.procs.critBolt) {
+        this.inProc = true;
+        let fx = e.x;
+        let fy = e.y;
+        for (const t of this.nearestEnemies(e.x, e.y, 4, 160)) {
+          if (t === e) continue;
+          this.addEffect('bolt', fx, fy - 8, 0, 0.18, '#fff27a', t.x, t.y - 8);
+          this.damageEnemy(t, this.procPower * 1.5);
+          fx = t.x;
+          fy = t.y;
+        }
+        this.inProc = false;
+      }
+    }
     // 맞은 자리에 작은 불꽃
     this.burst(e.x, e.y - e.r * 0.4, crit ? 5 : 2, crit ? ['#ffb347', '#fff3a0'] : ['#fff3a0', '#ffffff'], 120, 0.22, 0);
     if (this.showDamageText) {
@@ -710,6 +736,12 @@ export class Engine {
   damagePlayer(dmg: number) {
     const p = this.player;
     if (p.dead || p.invuln > 0 || dmg <= 0 || this.buffOn('invuln') > 0) return;
+    // 장비 회피
+    if (this.procs.dodge > 0 && Math.random() < this.procs.dodge) {
+      p.invuln = 0.3;
+      this.addText(p.x, p.y - p.r - 10, '회피!', '#9fe4ff', 14);
+      return;
+    }
     // 보호막이 먼저 막는다
     if (this.shieldHp > 0) {
       const absorbed = Math.min(this.shieldHp, dmg);
@@ -726,6 +758,18 @@ export class Engine {
     p.flash = 0.2;
     this.addShake(4);
     this.addText(p.x, p.y - p.r - 6, '-' + fmt(dmg), '#ff6b6b', 12);
+    // 장비: 맞으면 냉기 (주변 적 느리게) / 반격 폭발
+    if (this.procs.frostHurt > 0 && this.frostCd <= 0) {
+      this.frostCd = 2;
+      for (const e of this.nearestEnemies(p.x, p.y, 60, 120)) e.slowT = Math.max(e.slowT, this.procs.frostHurt);
+      this.addEffect('ring', p.x, p.y, 120, 0.4, '#bfe8ff');
+    }
+    if (this.procs.hurtBlast > 0 && this.hurtCd <= 0) {
+      this.hurtCd = 3;
+      this.blast(p.x, p.y, 90, this.procPower * this.procs.hurtBlast, 220);
+      this.addEffect('burst', p.x, p.y, 90, 0.4, '#ffb347');
+      this.burst(p.x, p.y - 10, 18, ['#ffb347', '#ff7a2a', '#ffffff'], 260, 0.5, 0, 3);
+    }
     if (p.hp <= 0) {
       p.hp = 0;
       p.dead = true;
@@ -1064,6 +1108,8 @@ export class Engine {
     }
     p.invuln -= dt;
     p.flash -= dt;
+    this.frostCd -= dt;
+    this.hurtCd -= dt;
     for (const id of BUFF_IDS) this.buffs[id].t -= dt;
     this.shieldT -= dt;
     if (this.shieldT <= 0) this.shieldHp = 0;

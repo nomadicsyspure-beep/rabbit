@@ -9,7 +9,7 @@ import {
 import {
   BRANCHES, BRANCH_POINTS, SKILLS, SKILL_BY_ID, SKILL_GRADE, SKILL_TYPES, emptyTree, type Branch, type SkillId, type SkillType,
 } from './data/skills';
-import { GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
+import { GEAR_BY_ID, GEAR_MAX, GEAR_SLOTS, SETS, emptyProcs, enhanceCost, gearScale, type GearSlot, type ProcKind, type Procs } from './data/gear';
 import { addReward, emptyReward, openChest, type ChestGrade, type Reward } from './data/items';
 import { PET_BY_ID, PET_MAX, PET_SLOTS, petValue } from './data/pets';
 import { BOX_BY_ID, FREE_BOX_MS, SHARD_COST, SHARD_GAIN, boxCost, gradeAtLeast, rollBox, type BoxId } from './data/skillbox';
@@ -265,6 +265,34 @@ export class Game {
     return id && GEAR_BY_ID[id] ? { def: GEAR_BY_ID[id], plus: this.save.gear[id] ?? 0 } : null;
   }
 
+  /** 끼고 있는 장비의 지역 세트: 몇 개 꼈는지와 켜진 세트 효과 (2개 이상인 지역만) */
+  get gearSets() {
+    const counts: Partial<Record<MatId, number>> = {};
+    for (const slot of GEAR_SLOTS) {
+      const w = this.worn(slot);
+      if (w) counts[w.def.mat] = (counts[w.def.mat] ?? 0) + 1;
+    }
+    return (Object.entries(counts) as [MatId, number][])
+      .filter(([m, n]) => SETS[m] && n >= 2)
+      .map(([m, n]) => ({ mat: m, name: SETS[m]!.name, count: n, active: SETS[m]!.bonuses.filter((b) => n >= b.need), all: SETS[m]!.bonuses }));
+  }
+
+  /** 발동 효과: 장비(강화 배율) + 세트. 확률·회복은 더하고, 시간·배율은 큰 쪽 */
+  get procs(): Procs {
+    const p = emptyProcs();
+    const add = (kind: ProcKind, v: number) => {
+      if (kind === 'frostHurt' || kind === 'critFreeze' || kind === 'hurtBlast') p[kind] = Math.max(p[kind], v);
+      else p[kind] += v;
+    };
+    for (const slot of GEAR_SLOTS) {
+      const w = this.worn(slot);
+      if (w?.def.proc) add(w.def.proc.kind, w.def.proc.v * gearScale(w.plus));
+    }
+    for (const set of this.gearSets) for (const bo of set.active) if (bo.proc) add(bo.proc.kind, bo.proc.v);
+    p.dodge = Math.min(0.5, p.dodge);
+    return p;
+  }
+
   /** 장비·도감·환생을 합친 배율. 공격력/체력 배율, 장신구 효과, 무기의 공짜 스킬 */
   get bonus() {
     const s = this.save;
@@ -283,10 +311,10 @@ export class Game {
     }
     const hat = this.worn('hat');
     if (hat) b.hp *= 1 + hat.def.hp! * gearScale(hat.plus);
-    // 장신구·등 장비 효과
+    // 장갑·신발·망토·장신구 수치 효과
     for (const slot of ['gloves', 'shoes', 'cape', 'acc'] as const) {
       const it = this.worn(slot);
-      if (!it) continue;
+      if (!it || !it.def.effect) continue;
       const v = it.def.value! * gearScale(it.plus);
       if (it.def.effect === 'magnet') b.magnet += v;
       else if (it.def.effect === 'chest') b.chest += v;
@@ -295,6 +323,16 @@ export class Game {
       else if (it.def.effect === 'gold') b.gold *= 1 + v;
       else if (it.def.effect === 'crit') b.crit += v;
       else if (it.def.effect === 'speed') b.speed += v;
+    }
+    // 지역 세트 수치 효과
+    for (const set of this.gearSets) {
+      for (const bo of set.active) {
+        if (bo.atk) b.atk *= 1 + bo.atk;
+        if (bo.hp) b.hp *= 1 + bo.hp;
+        if (bo.speed) b.speed += bo.speed;
+        if (bo.crit) b.crit += bo.crit;
+        if (bo.fever) b.fever += bo.fever;
+      }
     }
     for (const pet of this.petsInfo) {
       const v = petValue(pet.def, pet.level);

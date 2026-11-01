@@ -3035,3 +3035,38 @@ button:active:not(:disabled) {
   width: 76px;
   height: 46px;
 }
+
+/* 장비 지역 세트 */
+.gear-set-line {
+  margin-top: 2px;
+  font-size: 10px;
+  color: #b8f5c8;
+}
+
+.gear-set {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+}
+
+.gear-set .title {
+  font-weight: 900;
+  color: #b8f5c8;
+}
+
+.gear-set-row {
+  color: var(--muted);
+}
+
+.gear-set-row.on {
+  color: #7cf2a0;
+  font-weight: 800;
+}
+
+.gear-set-row.on::before {
+  content: '✓ ';
+}

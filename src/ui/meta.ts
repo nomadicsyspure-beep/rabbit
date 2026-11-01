@@ -1,5 +1,5 @@
 import { fmt } from '../core/format';
-import { GEAR, GEAR_BY_ID, GEAR_MAX, GEAR_SLOTS, SLOT_ICONS, SLOT_NAMES, enhanceCost, gearEffectText, type GearDef, type GearSlot } from '../data/gear';
+import { GEAR, GEAR_BY_ID, GEAR_MAX, GEAR_SLOTS, SETS, SLOT_ICONS, SLOT_NAMES, enhanceCost, gearEffectText, type GearDef, type GearSlot } from '../data/gear';
 import { CHEST_NAMES, MATS, MAT_BY_ID, addReward, emptyReward, rewardText, type ChestGrade } from '../data/items';
 import { sfx } from '../audio/sfx';
 import type { Game } from '../game';
@@ -90,10 +90,13 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
     }
     const bo = game.bonus;
     const st = game.stats;
+    // 켜진 세트 (같은 지역 장비 2·4·6개)
+    const sets = game.gearSets.map((set) => h('div', 'gear-set-line', `🔗 ${set.name} ${set.count}/6 · ${set.active.map((b) => b.text).join(' · ')}`));
     statLine.replaceChildren(
       h('div', '', `❤️ 체력 ${fmt(st.hp)}`),
       h('div', '', `⚔️ 공격력 ${fmt(st.atk)}`),
       h('div', '', `🎯 치명타 +${Math.round(bo.crit * 100)}% · 👟 +${Math.round(bo.speed * 100)}%`),
+      ...sets,
     );
   };
 
@@ -293,6 +296,14 @@ function showGear(game: Game, host: UIHost, def: GearDef) {
   const cost = h('div', 'modal-sub');
   info.append(name, h('div', 'modal-sub', SLOT_NAMES[def.slot] + (def.essence ? ' · 전설' : '')), eff, cost);
   head.append(ibox(def.icon, 'huge' + (def.essence ? ' legend' : '')), info);
+  // 이 장비의 지역 세트: 같은 지역 장비를 몇 개 꼈는지, 켜진 효과
+  const setInfo = h('div', 'gear-set');
+  const set = SETS[def.mat];
+  if (set) {
+    const worn = GEAR_SLOTS.filter((sl) => game.worn(sl)?.def.mat === def.mat).length;
+    setInfo.append(h('div', 'title', `🔗 ${set.name} (지금 ${worn}개)`));
+    for (const b of set.bonuses) setInfo.append(h('div', 'gear-set-row' + (worn >= b.need ? ' on' : ''), `${b.need}개: ${b.text}`));
+  }
   const main = h('button', 'buy wide');
   const mainLabel = h('span');
   const mainSmall = h('small');
@@ -340,7 +351,7 @@ function showGear(game: Game, host: UIHost, def: GearDef) {
     wear.disabled = !owned;
   };
   render();
-  host.openModal(head, main, wear, host.button('닫기', '', () => host.closeModal()));
+  host.openModal(head, setInfo, main, wear, host.button('닫기', '', () => host.closeModal()));
   host.setModalRefresh(render);
 }
 

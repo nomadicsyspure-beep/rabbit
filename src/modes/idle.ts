@@ -3,6 +3,7 @@ import type { EnemyKind } from '../battle/engine';
 import { FeatherWeapon, type WeaponStats } from '../battle/weapons';
 import { TAP_DAMAGE_MUL } from '../data/balance';
 import { fmt } from '../core/format';
+import { emptyProcs } from '../data/gear';
 import { regionOf, stageSkins } from '../data/world';
 import { SKILL_BY_ID, createSkill, emptyTree } from '../data/skills';
 import type { Game } from '../game';
@@ -32,6 +33,7 @@ export class IdleMode {
     eng.showDamageText = true;
     eng.controller = this.controller;
     eng.autoSkills = true;
+    eng.procs = emptyProcs();
     this.setWeapon();
     // 방치 수입: 한 마리 잡을 때마다 골드 (몹 위에 +골드)
     eng.onKill = (e) => {
