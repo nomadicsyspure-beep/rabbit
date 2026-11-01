@@ -403,7 +403,7 @@ const MAX_SHAKE = 7;
  * 보스(몸통·탄막·장판)는 세게, 일반 몹은 아주 가볍게
  */
 const HURT_HEAVY = { knock: 320, slowT: 0.6, slow: 0.55, shake: 6, vign: 0.6, bounce: 0 };
-const HURT_LIGHT = { knock: 5, slowT: 0, slow: 1, shake: 0.01, vign: 0.01, bounce: 40 };
+const HURT_LIGHT = { knock: 18, slowT: 0, slow: 1, shake: 0.6, vign: 0.2, bounce: 40 };
 /** 보스를 때릴 때: 효과 간격(초, 탄이 많아도 과하지 않게) / 치명타 순간 멈춤(초)과 그 간격 */
 const BOSS_HIT_GAP = 0.07;
 const BOSS_CRIT_STOP = 0.035;
