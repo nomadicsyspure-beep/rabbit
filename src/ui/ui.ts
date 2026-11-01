@@ -3,7 +3,7 @@ import { CHEST_NAMES, MAT_BY_ID, type ChestGrade } from '../data/items';
 import { regionOf } from '../data/world';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
-  STATS, STAT_ORDER, actionRatio, isBossStage, playerPower, recommendedPower, stageClearGold, xpToNext,
+  STATS, STAT_ORDER, actionRatio, isBossStage, stageClearGold, xpToNext,
   type StatId,
 } from '../data/balance';
 import {
@@ -22,6 +22,7 @@ import { skillPreview } from './preview';
 import { canPrompt, isIOS, isInstalled, onInstallChange, promptInstall } from '../core/install';
 import { ARENA_VARIANTS } from '../modes/arena';
 import { SCROLL_DEF } from '../modes/scroll';
+import type { ScoutKind } from '../data/power';
 import { Tutorial } from './tutorial';
 
 /** 매 프레임 바뀌는 화면 값: 진짜 바뀔 때만 DOM에 쓴다 (같은 값을 계속 쓰면 폰에서 스타일 계산이 쌓인다) */
@@ -107,6 +108,9 @@ export class UI implements UIHost {
   private readonly incomeEl: HTMLElement;
   private readonly challengeBtn: HTMLButtonElement;
   private readonly challengeLabel: HTMLElement;
+  private readonly scoutEl: HTMLElement;
+  private scoutAt = 0;
+  private skillHeadAt = 0;
   private readonly missionBtn: HTMLButtonElement;
 
   // 액션 HUD
@@ -188,6 +192,10 @@ export class UI implements UIHost {
     syncInstall();
     onInstallChange(syncInstall);
     this.battle.append(installBtn);
+    // 스카우터: 다음 스테이지 권장 전투력과 내 전투력 (도전 버튼 위)
+    this.scoutEl = h('button', 'scout-badge');
+    this.scoutEl.addEventListener('click', () => this.showScouter());
+    this.battle.append(this.scoutEl);
 
     // 액션 HUD: 왼쪽 위 초상화+체력+레벨, 가운데 스테이지·시간, 오른쪽 처치 수·일시정지
     this.hudAction = h('div', 'hud hud-action');
@@ -410,7 +418,9 @@ export class UI implements UIHost {
   }
 
   private buildGrowth() {
-    this.powerEl = h('div', 'summary');
+    this.powerEl = h('button', 'summary power-line');
+    this.powerEl.addEventListener('click', () => this.showScouter());
+    this.scoutAt = 0;
     this.panel.append(this.powerEl);
     // 능력치 4개를 2×2 작은 칸으로 (스크롤 없이 한 화면에)
     const grid = h('div', 'stat-grid');
@@ -448,6 +458,7 @@ export class UI implements UIHost {
     this.equipBar = h('div', 'equip-slots');
     top.append(this.skillHeader, this.equipBar);
     this.equipKey = '';
+    this.skillHeadAt = 0;
     // 위에 장착 칸 고정, 그 아래 보기 탭 (스킬 목록 / 스킬 상자): 한 번에 한 화면만
     const viewSeg = h('div', 'seg skill-view-seg');
     const body = h('div', 'skill-view-body');
@@ -518,6 +529,56 @@ export class UI implements UIHost {
     host.append(seg, desc, grid, h('div', 'hint', '스킬은 스킬 상자에서 얻어요 · 겹쳐 나오면 그 스킬 포인트 +1 · 스킬 창에서 피해·속도·개수 중 골라 찍어요'));
   }
 
+  /** 판정 칩 (여유·적정·도전·위험) */
+  private verdictChip(v: { label: string; color: string }) {
+    const c = h('span', 'verdict-chip', v.label);
+    c.style.setProperty('--vc', v.color);
+    return c;
+  }
+
+  /** 스카우터 한 줄: 권장 전투력 · 내 전투력 · 판정 · 권장 스킬 Lv */
+  private scoutLine(kind: ScoutKind, variant?: string) {
+    const sc = this.game.scout(kind, variant);
+    const line = h('div', 'scout-line');
+    line.append(
+      h('span', '', `🔍 권장 ⚔️${fmt(sc.rec)} · 내 ⚔️${fmt(sc.me.cp)}`),
+      this.verdictChip(sc.verdict),
+      h('span', 'scout-sub', `권장 스킬 Lv ${sc.recLv} (내 평균 ${sc.me.count ? sc.me.avgLv.toFixed(1) : '-'})`),
+    );
+    return line;
+  }
+
+  /** 스카우터 창: 내 전투력이 어떻게 나왔는지 + 콘텐츠별 판정 */
+  private showScouter() {
+    const g = this.game;
+    const me = g.power;
+    const st = g.stats;
+    const rows: [string, ScoutKind, string?][] = [
+      [`⚔️ 스테이지 ${g.nextStage}`, 'stage'],
+      ['📦 재료 던전', 'material'],
+      ['😈 보스 레이드 (꼬마 마왕)', 'raid', 'devil'],
+      ['♾️ 무한 모드 (1분)', 'infinite'],
+      ['🏟️ 아레나 · 일반', 'arena', 'normal'],
+      ['📜 스크롤 (B)', 'scroll'],
+    ];
+    const list = h('div', 'scout-list');
+    for (const [name, kind, v] of rows) {
+      const sc = g.scout(kind, v);
+      const row = h('div', 'scout-row');
+      row.append(h('span', 'scout-name', name), h('span', 'scout-rec', `권장 ${fmt(sc.rec)}`), this.verdictChip(sc.verdict));
+      list.append(row);
+    }
+    const sc = g.scout('stage');
+    this.openModal(
+      h('div', 'modal-title', `⚔️ 전투력 ${fmt(me.cp)}`),
+      h('div', 'modal-sub', `공격력 ${fmt(st.atk)} × 공격 속도 ${st.aps.toFixed(2)} × 스킬 배율 ${me.skill.toFixed(2)} · 체력 ${fmt(st.hp)}`),
+      h('div', 'modal-sub', `장착 스킬 ${me.count}개 · 평균 Lv ${me.count ? me.avgLv.toFixed(1) : '-'} (스테이지 ${sc.stage} 권장 Lv ${sc.recLv}) · 등급이 높고 Lv이 높을수록 배율이 커요`),
+      list,
+      h('div', 'hint', '여유(1.3배↑) · 적정 · 도전(0.7배↑) · 위험 — 레벨·능력치·유물·동료·스킬을 모두 합친 대략의 지표예요'),
+      this.button('닫기', 'primary', () => this.closeModal()),
+    );
+  }
+
   /** 아레나 테스트: 종류 고르기 (종류마다 최고 별) */
   private showArenaSelect() {
     const list = h('div', 'raid-list');
@@ -529,6 +590,7 @@ export class UI implements UIHost {
         h('div', 'title', `${v.icon} ${v.name}  ${'★'.repeat(best)}${'☆'.repeat(3 - best)}`),
         h('div', 'sub', v.desc),
         h('div', 'cost-line', `★3: ${v.star3}`),
+        this.scoutLine('arena', v.id),
       );
       const go = h('button', 'enter', '도전');
       go.addEventListener('click', () => {
@@ -556,6 +618,7 @@ export class UI implements UIHost {
         h('div', 'title', `${b.name}  ${'★'.repeat(b.stars)}${'☆'.repeat(5 - b.stars)}`),
         h('div', 'sub', b.desc),
         h('div', 'cost-line', `이기면 🔮 ${b.essence}${b.diamonds ? ` · 💎 ${b.diamonds}` : ''} · 체력 ×${b.hpMul}`),
+        this.scoutLine('raid', b.id),
       );
       const go = h('button', 'enter', '도전');
       go.disabled = this.game.entriesLeft('raid') <= 0;
@@ -849,12 +912,13 @@ export class UI implements UIHost {
       action: string;
       go: () => void;
       disabled?: () => boolean;
+      /** 스카우터: 이 콘텐츠의 권장 전투력 판정 */
+      scout?: [ScoutKind, string?];
     }
     const stageInfo = () => {
       const stage = g.nextStage;
       const r = actionRatio(g.stats, stage);
-      const worst = Math.min(r.atk, r.hp);
-      const label = worst < 0.6 ? '위험' : worst < 0.9 ? '도전' : '여유';
+      const label = g.scout('stage').verdict.label;
       return { stage, r, label };
     };
     const left = (k: 'material' | 'raid') => `오늘 ${g.entriesLeft(k)}/${DUNGEON_DAILY[k]}회`;
@@ -865,25 +929,26 @@ export class UI implements UIHost {
         status: () => stageInfo().label,
         desc: () => {
           const { stage, r, label } = stageInfo();
-          return [`${regionOf(stage).name} · 30초 버티면 ${isBossStage(stage) ? '마왕' : '정예'} 등장, 잡으면 클리어`, `권장 전투력 ${fmt(recommendedPower(stage))} · 클리어 보상 🪙 ${fmt(stageClearGold(stage))}`, `${label} · 공격 ×${r.atk.toFixed(2)} · 체력 ×${r.hp.toFixed(2)}`];
+          return [`${regionOf(stage).name} · 30초 버티면 ${isBossStage(stage) ? '마왕' : '정예'} 등장, 잡으면 클리어`, `클리어 보상 🪙 ${fmt(stageClearGold(stage))}`, `${label} · 공격 ×${r.atk.toFixed(2)} · 체력 ×${r.hp.toFixed(2)}`];
         },
         action: '도전',
         go: () => g.enterAction(),
+        scout: ['stage'],
       },
       {
         icon: '📦', title: () => '재료 던전', status: () => left('material'),
         desc: () => ['45초 동안 3초마다 보물 상자!', '지역 재료·스킬북을 쓸어 담아요', left('material')],
-        action: '입장', go: () => g.enterAction('material'), disabled: () => g.entriesLeft('material') <= 0,
+        action: '입장', go: () => g.enterAction('material'), disabled: () => g.entriesLeft('material') <= 0, scout: ['material'],
       },
       {
         icon: '😈', title: () => '보스 레이드', status: () => left('raid'),
         desc: () => ['보스 5종 중 골라서 도전', '빨간 장판을 피하고 2페이즈를 버텨요', `🔮 보스의 정수·💎 · 보유 🔮 ${g.save.essence}`, left('raid')],
-        action: '보스 고르기', go: () => this.showRaidSelect(), disabled: () => g.entriesLeft('raid') <= 0,
+        action: '보스 고르기', go: () => this.showRaidSelect(), disabled: () => g.entriesLeft('raid') <= 0, scout: ['raid', 'devil'],
       },
       {
         icon: '♾️', title: () => '무한 모드', status: () => (g.save.infiniteBest > 0 ? `최고 ${fmtTime(g.save.infiniteBest)}` : '기록 없음'),
         desc: () => ['끝없이 몰려온다 · 1분마다 다음 지역', '오래 버틸수록 기록', g.save.infiniteBest > 0 ? `최고 기록 ${fmtTime(g.save.infiniteBest)}` : '기록 없음'],
-        action: '입장', go: () => g.enterAction('infinite'),
+        action: '입장', go: () => g.enterAction('infinite'), scout: ['infinite'],
       },
       {
         icon: '🏟️', title: () => '아레나 (테스트 A)',
@@ -893,7 +958,7 @@ export class UI implements UIHost {
           '마지막 5초 러시 · 돌발 이벤트(운석·독안개·폭주 몹·대행진) · 저주 상자 · 별 3개 · 보스 분노',
           '종류: 일반 · 생존 · 섬멸 · 추격 · 수비 (처음 딴 별마다 💎10)',
         ],
-        action: '종류 고르기', go: () => this.showArenaSelect(),
+        action: '종류 고르기', go: () => this.showArenaSelect(), scout: ['arena', 'normal'],
       },
       {
         icon: SCROLL_DEF.icon, title: () => '스크롤 (테스트 B)',
@@ -904,7 +969,7 @@ export class UI implements UIHost {
           '30초 버티면 보스 · 러시·돌발 이벤트·저주 상자·별 3개는 아레나와 같아요',
           `★3: ${SCROLL_DEF.star3} (처음 딴 별마다 💎10)`,
         ],
-        action: '도전', go: () => g.enterAction('scroll', 'normal'),
+        action: '도전', go: () => g.enterAction('scroll', 'normal'), scout: ['scroll'],
       },
       {
         icon: '📖', title: () => '도감', status: () => `${g.collectionCount}개`,
@@ -923,6 +988,9 @@ export class UI implements UIHost {
       const titleEl = h('div', 'adv-title');
       const statusEl = h('div', 'adv-status');
       b.append(h('div', 'adv-icon', t.icon), titleEl, statusEl);
+      // 스카우터 판정 칩 (타일 오른쪽 위)
+      const chip = h('span', 'verdict-chip adv-verdict');
+      if (t.scout) b.append(chip);
       b.addEventListener('click', () => {
         const go = this.button(t.action, 'primary', () => {
           this.closeModal();
@@ -932,6 +1000,7 @@ export class UI implements UIHost {
         this.openModal(
           h('div', 'modal-title', `${t.icon} ${t.title()}`),
           ...t.desc().map((line) => h('div', 'modal-sub', line)),
+          ...(t.scout ? [this.scoutLine(t.scout[0], t.scout[1])] : []),
           go,
           this.button('닫기', '', () => this.closeModal()),
         );
@@ -941,6 +1010,11 @@ export class UI implements UIHost {
         setText(titleEl, t.title());
         setText(statusEl, t.status());
         b.classList.toggle('dim', t.disabled?.() ?? false);
+        if (t.scout) {
+          const v = g.scout(t.scout[0], t.scout[1]).verdict;
+          setText(chip, v.label);
+          chip.style.setProperty('--vc', v.color);
+        }
       };
     });
     this.panel.append(grid);
@@ -1005,6 +1079,23 @@ export class UI implements UIHost {
       const next = g.nextStage;
       this.challengeLabel.textContent = isBossStage(next) ? `스테이지 ${next} 마왕 도전` : `스테이지 ${next} 도전`;
       this.challengeBtn.classList.toggle('boss', isBossStage(next));
+      // 스카우터는 0.5초마다 (전투력 계산이 가볍지 않다)
+      const nowMs = performance.now();
+      if (nowMs - this.scoutAt > 500) {
+        this.scoutAt = nowMs;
+        const sc = g.scout('stage');
+        this.scoutEl.replaceChildren(
+          h('span', '', `🔍 권장 ${fmt(sc.rec)} · 내 ${fmt(sc.me.cp)}`),
+          this.verdictChip(sc.verdict),
+        );
+        if (this.powerEl) {
+          this.powerEl.replaceChildren(
+            h('span', '', `Lv ${save.level} (경험치 ${Math.floor(save.xp)}/${xpToNext(save.level)})  ·  `),
+            h('b', 'power-num', `⚔️ 전투력 ${fmt(sc.me.cp)}`),
+            h('span', '', `  ·  마왕 처치 ${save.bossKills}회`),
+          );
+        }
+      }
       this.missionBtn.classList.toggle('dot', g.hasClaimable);
       // 새 스킬이 있으면 스킬 탭에 빨간 점, 안 연 상자가 있으면 가방 탭에
       this.tabButtons.get('gear')?.classList.toggle('dot', g.chestCounts.some((n) => n > 0));
@@ -1012,10 +1103,6 @@ export class UI implements UIHost {
       if (this.currentTab === 'skill') g.seeSkillTab();
       this.tabButtons.get('skill')?.classList.toggle('dot', g.skillTabUnseen);
 
-      const st = g.stats;
-      if (this.powerEl) {
-        this.powerEl.textContent = `Lv ${save.level} (경험치 ${Math.floor(save.xp)}/${xpToNext(save.level)})  ·  전투력 ${fmt(playerPower(st))}  ·  마왕 처치 ${save.bossKills}회`;
-      }
       for (const [id, row] of this.statRows) {
         const def = STATS[id];
         const meta = STAT_META[id];
@@ -1061,7 +1148,13 @@ export class UI implements UIHost {
     if (!this.skillHeader || !this.equipBar) return;
     const g = this.game;
     const eq = g.save.equipped;
-    this.skillHeader.textContent = `장착 중 ${eq.length}/${EQUIP_SLOTS} · 형태마다 한 칸`;
+    // 전투력 계산은 가볍지 않아서 0.5초마다
+    const nowMs = performance.now();
+    if (nowMs - this.skillHeadAt > 500) {
+      this.skillHeadAt = nowMs;
+      const sc = g.scout('stage');
+      this.skillHeader.textContent = `장착 중 ${eq.length}/${EQUIP_SLOTS} · 평균 Lv ${sc.me.count ? sc.me.avgLv.toFixed(1) : '-'} (권장 Lv ${sc.recLv}) · ⚔️ ${fmt(sc.me.cp)}`;
+    }
     const key = eq.map((id) => `${id}:${Math.floor(g.save.mastery[id] ?? 0)}`).join();
     if (key !== this.equipKey) {
       this.equipKey = key;

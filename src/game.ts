@@ -7,7 +7,7 @@ import {
   OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, enemyGold, idleGoldPerSec, playerStats, xpToNext, type StatId,
 } from './data/balance';
 import {
-  BRANCHES, BRANCH_POINTS, SKILLS, SKILL_BY_ID, SKILL_GRADE, SKILL_TYPES, emptyTree, type Branch, type SkillId, type SkillType,
+  BRANCHES, BRANCH_POINTS, SKILLS, SKILL_BY_ID, SKILL_GRADE, SKILL_TYPES, emptyTree, treeLevel, type Branch, type SkillId, type SkillType,
 } from './data/skills';
 import {
   RELIC_BY_ID, RELIC_MAX, RELIC_SLOTS, SETS, SLOT_UNLOCK, emptyProcs, enhanceCost, relicScale, rollRelic, type ProcKind, type Procs, type Region, type RelicDef,
@@ -22,12 +22,16 @@ import {
   canAttend, freshDaily, passLevel, passReward, today, type DailyKey,
 } from './data/missions';
 import type { PetDef } from './data/pets';
+import { myPower, recPower, recSkillLevel, skillFactor, verdict, type ScoutKind } from './data/power';
+import { RAID_BY_ID } from './data/raids';
 import type { MatId } from './data/world';
 import { ActionMode, type RunKind } from './modes/action';
 import { IdleMode } from './modes/idle';
 import { UI } from './ui/ui';
 
 const AUTOSAVE_SEC = 10;
+/** 아레나 종류별 권장 전투력 배율 */
+const ARENA_SCOUT: Record<string, number> = { normal: 1.1, survive: 1.25, exterminate: 1.2, chase: 1, defend: 1.15 };
 /** 스킬 숙련도: 장착하고 이만큼(초) 싸우면 그 스킬 포인트 +1 (스테이지 30초 기준 4판) */
 export const MASTERY_SEC = 120;
 /** 방치 화면에서 병아리가 1초에 잡는 몹 수 (대략). 마리당 골드 = 초당 수입 ÷ 이 값 */
@@ -388,6 +392,37 @@ export class Game {
     const st = playerStats(this.save.levels, this.save.level);
     const b = this.bonus;
     return { ...st, atk: st.atk * b.atk, hp: st.hp * b.hp };
+  }
+
+  // ---- 전투력 · 스카우터 ----
+
+  /** 내 전투력과 스킬 상태 (장착 스킬 등급·Lv, 유물 공짜 스킬 포함) */
+  get power() {
+    const s = this.save;
+    const slots = s.equipped
+      .filter((id) => s.skills[id])
+      .map((id) => ({ grade: SKILL_GRADE[id], lv: treeLevel(s.skills[id]!) }));
+    const skill = skillFactor(slots, this.bonus.skills.length);
+    const avgLv = slots.length ? slots.reduce((n, x) => n + x.lv, 0) / slots.length : 0;
+    return { cp: myPower(this.stats, skill), skill, avgLv, count: slots.length };
+  }
+
+  /** 스카우터: 이 콘텐츠의 권장 전투력과 판정 (variant = 레이드 보스 id / 아레나 종류) */
+  scout(kind: ScoutKind, variant?: string) {
+    const top = Math.max(1, this.save.maxStage);
+    let stage = top;
+    let mul = 1;
+    if (kind === 'stage') stage = this.nextStage;
+    else if (kind === 'material') mul = 0.8;
+    else if (kind === 'infinite') mul = 1.15;
+    else if (kind === 'raid') {
+      const b = RAID_BY_ID[variant ?? 'devil'] ?? RAID_BY_ID.devil;
+      mul = 1.4 * Math.sqrt(b.hpMul * b.dmgMul);
+    } else if (kind === 'arena') mul = ARENA_SCOUT[variant ?? 'normal'] ?? 1.1;
+    else if (kind === 'scroll') mul = 1.1;
+    const me = this.power;
+    const rec = recPower(stage, mul, kind === 'stage' || kind === 'arena' || kind === 'scroll');
+    return { stage, rec, recLv: recSkillLevel(stage), me, verdict: verdict(me.cp, rec) };
   }
 
   // ---- 도감 ----

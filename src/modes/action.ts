@@ -5,7 +5,7 @@ import type { SkillTree, WeaponStats } from '../battle/weapons';
 import { sfx } from '../audio/sfx';
 import { fmt } from '../core/format';
 import {
-  actionRatio, enemyGold, isBossStage, stageClearGold, type ActionRatio,
+  actionRatio, enemyGold, isBossStage, stageClearGold, stageEase, type ActionRatio,
 } from '../data/balance';
 import { CHEST_COLORS, CHEST_NAMES, rollChest, type ChestGrade } from '../data/items';
 import { regionOf, stageSkins, type MatId } from '../data/world';
@@ -33,9 +33,6 @@ const MAX_ALIVE = 320;
 const ELITE_HP = 1800;
 /** 중간 보스 기본 체력 (일반 몹 배율 MOB_HP를 따로 곱한다) */
 const MID_BOSS_HP = 520;
-/** 초반 스테이지는 쉽게: 스테이지 1은 몹 체력·피해·숫자 EASY_START배, EASY_UNTIL 스테이지부터 원래대로 */
-const EASY_START = 0.5;
-const EASY_UNTIL = 12;
 const BOSS_HP = 7000;
 /** 일반 몹 난이도 배율 (체력 / 부딪힐 때 피해) */
 const MOB_HP = 1.3;
@@ -568,7 +565,7 @@ export class ActionMode {
   /** 초반 스테이지 쉬움 배율 (스테이지 판에서만, 1 = 원래 난이도) */
   private get ease() {
     if (!this.stageLike) return 1;
-    return Math.min(1, EASY_START + ((1 - EASY_START) * (this.stage - 1)) / (EASY_UNTIL - 1));
+    return stageEase(this.stage);
   }
 
   /** 몹이 짙어지는 정도 0~1 (스테이지 길이와 상관없이 RAMP_SEC초에 걸쳐) */
