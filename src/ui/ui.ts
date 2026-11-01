@@ -19,6 +19,7 @@ import { buildCraftTab, buildBagTab, showCollection, showRebirth, type UIHost } 
 import { buildShopTab, showMissions } from './shop';
 import { ICONS } from './icons';
 import { skillPreview } from './preview';
+import { canPrompt, isIOS, isInstalled, onInstallChange, promptInstall } from '../core/install';
 import { ARENA_BY_ID, ARENA_VARIANTS } from '../modes/arena';
 import { Tutorial } from './tutorial';
 
@@ -179,6 +180,13 @@ export class UI implements UIHost {
     // 미션·출석·업적·패스 (받을 게 있으면 빨간 점)
     this.missionBtn = h('button', 'mission-btn', '📋 미션');
     this.missionBtn.addEventListener('click', () => showMissions(this.game, this));
+    // 앱으로 설치 (홈 화면에서 열었으면 숨김)
+    const installBtn = h('button', 'install-btn', '📲 앱 설치');
+    installBtn.addEventListener('click', () => this.showInstall());
+    const syncInstall = () => installBtn.classList.toggle('hidden', isInstalled());
+    syncInstall();
+    onInstallChange(syncInstall);
+    this.battle.append(installBtn);
 
     // 액션 HUD: 왼쪽 위 초상화+체력+레벨, 가운데 스테이지·시간, 오른쪽 처치 수·일시정지
     this.hudAction = h('div', 'hud hud-action');
@@ -1301,12 +1309,37 @@ export class UI implements UIHost {
   }
 
   /** 설정 창. back이 있으면 (일시정지 창에서 왔으면) 닫을 때 그리로 돌아간다 */
+  /** 앱으로 설치: 바로 설치 창 / 아이폰·그 밖의 브라우저는 방법 안내 */
+  showInstall() {
+    if (isInstalled()) return this.toast('이미 앱으로 실행 중이에요');
+    if (canPrompt()) {
+      void promptInstall().then((r) => {
+        if (r === 'accepted') this.toast('설치 완료! 홈 화면에서 바로 열 수 있어요');
+        else if (r === 'dismissed') this.toast('설치를 취소했어요 (설정에서 다시 할 수 있어요)');
+      });
+      return;
+    }
+    const inApp = /KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent);
+    const steps = inApp
+      ? ['카톡·네이버 같은 앱 안의 브라우저에서는 설치가 안 돼요', '오른쪽 위(또는 아래) 메뉴 → "다른 브라우저로 열기"로 크롬·사파리에서 연 다음 다시 눌러 주세요']
+      : isIOS()
+        ? ['1. 사파리 아래쪽 가운데 공유 버튼(네모에 위 화살표)을 눌러요', '2. 목록을 내려서 "홈 화면에 추가"를 눌러요', '3. 오른쪽 위 "추가"를 누르면 홈 화면에 병아리 아이콘이 생겨요']
+        : ['1. 브라우저 오른쪽 위 메뉴(⋮)를 눌러요', '2. "앱 설치" 또는 "홈 화면에 추가"를 눌러요', '(삼성 인터넷: 메뉴 → 현재 페이지 추가 → 홈 화면)'];
+    this.openModal(
+      h('div', 'modal-title', '📲 앱으로 설치'),
+      h('div', 'modal-sub', '홈 화면에 추가하면 주소창 없이 전체 화면으로 열려요'),
+      ...steps.map((t) => h('div', 'install-step', t)),
+      this.button('닫기', 'primary', () => this.closeModal()),
+    );
+  }
+
   private showSettings(back?: () => void) {
     const g = this.game;
     const close = () => (back ? back() : this.closeModal());
     this.openModal(
       h('div', 'modal-title', '설정'),
       h('div', 'modal-sub', `프로토타입 v0.4 · 빌드 ${new Date(__BUILD_TIME__).toLocaleString('ko-KR')}`),
+      this.button(isInstalled() ? '📲 앱으로 실행 중' : '📲 앱으로 설치 (홈 화면에 추가)', isInstalled() ? '' : 'primary', () => this.showInstall()),
       this.button(document.fullscreenElement ? '전체 화면 끄기' : '전체 화면', '', () => {
         if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
         else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => this.toast('전체 화면을 켤 수 없어요'));
