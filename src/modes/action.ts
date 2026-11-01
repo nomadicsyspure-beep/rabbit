@@ -161,6 +161,9 @@ export class ActionMode {
   private bonusGold = 0;
   /** 이번 판에 주운 상자 등급들 */
   private chests: ChestGrade[] = [];
+  /** 장비 발동: 보호막·발자국 타이머 */
+  private shieldT = 0;
+  private trailT = 0;
   /** 부스터: 이번 판 골드·경험치 배율 */
   private goldMul = 1;
   private xpMul = 1;
@@ -238,6 +241,11 @@ export class ActionMode {
     this.feverMul = bonus.fever;
     this.chestBonus = bonus.chest;
     eng.critChance = CRIT_CHANCE + bonus.crit;
+    // 장비·세트 발동 효과
+    eng.procs = this.game.procs;
+    eng.procPower = this.stats.power;
+    this.shieldT = 1;
+    this.trailT = 0;
     this.game.applyPet(this.stats.power);
 
     this.time = 0;
@@ -397,6 +405,7 @@ export class ActionMode {
       if (this.kind !== 'material') this.game.ui.toast(`${CHEST_NAMES[grade]} 등장!`);
     }
 
+    this.updateGearProcs(dt);
     this.recycleFarEnemies();
   }
 
@@ -668,6 +677,31 @@ export class ActionMode {
     }
   }
 
+  /** 장비 발동 효과 (시간에 따라): 8초마다 보호막, 달리면 발자국 장판 */
+  private updateGearProcs(dt: number) {
+    const eng = this.game.engine;
+    const pr = eng.procs;
+    const p = eng.player;
+    if (pr.shield > 0) {
+      this.shieldT -= dt;
+      if (this.shieldT <= 0) {
+        this.shieldT = 8;
+        eng.addShield(p.maxHp * pr.shield, 8);
+        eng.addEffect('ring', p.x, p.y, 34, 0.4, '#9fe4ff');
+      }
+    }
+    if ((pr.trailPoison > 0 || pr.trailIce > 0 || pr.trailFire > 0) && p.moving && !p.dead) {
+      this.trailT -= dt;
+      if (this.trailT <= 0) {
+        this.trailT = 0.25;
+        const power = this.stats.power;
+        if (pr.trailFire > 0) eng.addZone(p.x, p.y + 6, 0, 0, 20, 1.6, power * pr.trailFire, 'fire-burst');
+        if (pr.trailIce > 0) eng.addZone(p.x, p.y + 6, 0, 0, 22, 2, power * pr.trailIce, 'ice-crystals@190', 0, 0, 0, 1.5);
+        if (pr.trailPoison > 0) eng.addZone(p.x, p.y + 6, 0, 0, 22, 2, power * pr.trailPoison, 'dust@100');
+      }
+    }
+  }
+
   /** 너무 멀어진 적은 플레이어 앞쪽으로 다시 데려온다 (도망쳐도 앞에서 다시 만난다) */
   private recycleFarEnemies() {
     const eng = this.game.engine;
@@ -694,6 +728,17 @@ export class ActionMode {
     sfx.kill(this.combo);
     const eng = this.game.engine;
     if (e.skin === 'firstaid') eng.spawnHeal(e.x, e.y);
+    // 장비: 처치 때 흡혈 / 폭발
+    const pr = eng.procs;
+    if (pr.lifesteal > 0) {
+      const p = eng.player;
+      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * pr.lifesteal);
+    }
+    if (pr.killBlast > 0 && Math.random() < pr.killBlast) {
+      eng.blast(e.x, e.y, 60, this.stats.power * 2, 120);
+      eng.addEffect('burst', e.x, e.y, 60, 0.35, '#9be36a');
+      eng.burst(e.x, e.y - 6, 12, ['#9be36a', '#ffe066', '#ffffff'], 200, 0.45, 0, 2.5);
+    }
     if (e.golden) {
       const gold = enemyGold(this.stage) * GOLDEN_GOLD;
       this.bonusGold += gold;
