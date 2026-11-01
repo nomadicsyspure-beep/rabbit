@@ -402,11 +402,12 @@ const MAX_SHAKE = 7;
  * 피격 패널티: 넉백 속도(px/초, 금방 줄어든다) / 느려지는 시간(초) / 그동안 이동 속도 배율 / 화면 흔들림 / 빨간 테두리 시간(초) / 부딪힌 몹 튕김.
  * 보스(몸통·탄막·장판)는 세게, 일반 몹은 아주 가볍게
  */
-const HURT_HEAVY = { knock: 430, slowT: 0.75, slow: 0.45, shake: 12, vign: 0.8, bounce: 0 };
+const HURT_HEAVY = { knock: 320, slowT: 0.6, slow: 0.55, shake: 6, vign: 0.6, bounce: 0 };
 const HURT_LIGHT = { knock: 5, slowT: 0, slow: 1, shake: 0.01, vign: 0.01, bounce: 40 };
-/** 보스에게 맞으면: 화면이 잠깐 멈춘다(초) / 화면 전체 붉은 번쩍(초) */
-const HIT_STOP = 0.09;
-const IMPACT_T = 0.16;
+/** 보스를 때릴 때: 효과 간격(초, 탄이 많아도 과하지 않게) / 치명타 순간 멈춤(초)과 그 간격 */
+const BOSS_HIT_GAP = 0.07;
+const BOSS_CRIT_STOP = 0.035;
+const BOSS_CRIT_STOP_GAP = 0.45;
 /** 황금 몹이 도망치기 시작하는 거리(px) */
 const GOLDEN_FLEE_DIST = 170;
 /** 상자를 끌어오는 거리(px). 보석 자석보다 훨씬 넓다 */
@@ -447,9 +448,10 @@ export class Engine {
   hurtSlow = 1;
   vignT = 0;
   vignMax = 1;
-  /** 보스 피격 순간 멈춤 / 붉은 번쩍 남은 시간 */
+  /** 순간 멈춤(보스 치명타) / 보스 타격 효과 쿨다운 */
   hitStop = 0;
-  impactT = 0;
+  bossHitCd = 0;
+  bossStopCd = 0;
 
   readonly player: Player = {
     x: 0, y: 0, r: 12, hp: 100, maxHp: 100, speed: 120, regen: 0, magnet: 60,
@@ -538,7 +540,8 @@ export class Engine {
     this.hurtT = 0;
     this.vignT = 0;
     this.hitStop = 0;
-    this.impactT = 0;
+    this.bossHitCd = 0;
+    this.bossStopCd = 0;
     this.fever = 0;
     const p = this.player;
     p.dead = false;
@@ -674,12 +677,14 @@ export class Engine {
     const crit = e.markT > 0 || Math.random() < this.critChance + this.buffOn('luck');
     if (crit) dmg *= CRIT_MUL;
     e.hp -= dmg;
-    e.flash = 0.1;
+    const big = e.kind === 'boss' || e.elite;
+    e.flash = big ? 0.14 : 0.1;
     if (e.kind !== 'boss') {
       e.kx += kx * (crit ? 1.6 : 1);
       e.ky += ky * (crit ? 1.6 : 1);
     }
-    if (crit) sfx.crit();
+    if (big) this.bossHitFx(e, crit);
+    else if (crit) sfx.crit();
     else sfx.hit();
     // 유물: 치명타 때 빙결 / 번개 (번개가 또 번개를 부르지 않게)
     if (crit && !this.inProc) {
@@ -701,11 +706,33 @@ export class Engine {
     // 맞은 자리에 작은 불꽃
     this.burst(e.x, e.y - e.r * 0.4, crit ? 5 : 2, crit ? ['#ffb347', '#fff3a0'] : ['#fff3a0', '#ffffff'], 120, 0.22, 0);
     if (this.showDamageText) {
-      const x = e.x + (Math.random() - 0.5) * 8;
-      if (crit) this.addText(x, e.y - e.r - 8, fmt(dmg) + '!', '#ff8a3c', 17);
-      else this.addText(x, e.y - e.r - 4, fmt(dmg), '#ffe066', 12);
+      const x = e.x + (Math.random() - 0.5) * (big ? 24 : 8);
+      if (crit) this.addText(x, e.y - e.r - 8, fmt(dmg) + '!', '#ff8a3c', big ? 22 : 17);
+      else this.addText(x, e.y - e.r - 4, fmt(dmg), '#ffe066', big ? 15 : 12);
     }
     if (e.hp <= 0) this.killEnemy(e);
+  }
+
+  /** 보스·중간 보스를 때릴 때 타격감: 몸 떨림(그리는 쪽), 화면 살짝 흔들림, 큰 불꽃·충격 고리, 묵직한 소리, 치명타면 순간 멈춤 */
+  private bossHitFx(e: Enemy, crit: boolean) {
+    if (crit && this.bossStopCd <= 0 && this.followCamera) {
+      this.bossStopCd = BOSS_CRIT_STOP_GAP;
+      this.hitStop = BOSS_CRIT_STOP;
+    }
+    if (this.bossHitCd > 0) return;
+    this.bossHitCd = BOSS_HIT_GAP;
+    const p = this.player;
+    // 맞은 쪽 (병아리 쪽 몸통)
+    const dx = p.x - e.x;
+    const dy = p.y - e.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const hx = e.x + (dx / d) * e.r * 0.6;
+    const hy = e.y - e.r * 0.3 + (dy / d) * e.r * 0.3;
+    this.addShake(crit ? 3.5 : 1.6);
+    this.burst(hx, hy, crit ? 14 : 7, crit ? ['#ffb347', '#fff3a0', '#ffffff', '#ff7a2a'] : ['#fff3a0', '#ffffff', '#ffd23f'], crit ? 280 : 200, 0.3, 200, crit ? 3.5 : 3);
+    this.addEffect('ring', hx, hy, crit ? 34 : 22, 0.18, crit ? '#ffb347' : '#ffffff');
+    if (crit) this.addSprite('sparkle', hx, hy, 34, 0.18);
+    sfx.bossHit(crit);
   }
 
   /** 파편 n개를 사방으로 튀긴다 */
@@ -782,18 +809,11 @@ export class Engine {
       }
     }
     p.hp -= dmg;
-    p.invuln = heavy ? 0.7 : 0.5;
-    p.flash = heavy ? 0.3 : 0.12;
+    p.invuln = 0.5;
+    p.flash = heavy ? 0.2 : 0.12;
     const hk = heavy ? HURT_HEAVY : HURT_LIGHT;
-    // 보스 피격은 흔들림 상한을 넘겨 크게 + 순간 멈춤 + 붉은 번쩍
-    if (heavy) {
-      this.shake = Math.max(this.shake, hk.shake);
-      this.hitStop = HIT_STOP;
-      this.impactT = IMPACT_T;
-    } else {
-      this.addShake(hk.shake);
-    }
-    this.addText(p.x, p.y - p.r - 6, '-' + fmt(dmg), '#ff6b6b', heavy ? 18 : 11);
+    this.addShake(hk.shake);
+    this.addText(p.x, p.y - p.r - 6, '-' + fmt(dmg), '#ff6b6b', heavy ? 14 : 11);
     // 피격 패널티: 반대쪽으로 넉백 + 잠깐 느려짐, 빨간 조각과 충격 고리
     if (fx !== undefined && fy !== undefined) {
       const dx = p.x - fx;
@@ -811,10 +831,8 @@ export class Engine {
       this.vignT = this.vignMax = hk.vign;
     }
     if (heavy) {
-      this.burst(p.x, p.y - 8, 22, ['#ff4d6d', '#ff8fa3', '#ffffff', '#ffd23f'], 320, 0.5, 300, 3.5);
-      this.addEffect('ring', p.x, p.y - 4, 46, 0.3, '#ffffff');
-      this.addEffect('ring', p.x, p.y - 4, 70, 0.4, '#ff4d6d');
-      this.addSprite('fire-burst', p.x, p.y - 10, 44, 0.25);
+      this.burst(p.x, p.y - 8, 10, ['#ff4d6d', '#ff8fa3', '#ffffff'], 200, 0.4, 300, 3);
+      this.addEffect('ring', p.x, p.y - 4, 30, 0.25, '#ff6b6b');
     } else {
       this.burst(p.x, p.y - 8, 3, ['#ff8fa3', '#ffffff'], 110, 0.3, 300, 2.5);
     }
@@ -1137,10 +1155,9 @@ export class Engine {
   }
 
   update(dt: number) {
-    // 보스 피격 순간 멈춤: 이 동안은 흔들림·번쩍만 줄어든다
+    // 순간 멈춤 (보스에게 치명타): 이 동안은 흔들림만 줄어든다
     if (this.hitStop > 0) {
       this.hitStop -= dt;
-      this.impactT -= dt;
       this.shake = Math.max(0, this.shake - 10 * dt);
       return;
     }
@@ -1187,7 +1204,8 @@ export class Engine {
     this.hurtCd -= dt;
     this.hurtT -= dt;
     this.vignT -= dt;
-    this.impactT -= dt;
+    this.bossHitCd -= dt;
+    this.bossStopCd -= dt;
     for (const id of BUFF_IDS) this.buffs[id].t -= dt;
     this.shieldT -= dt;
     if (this.shieldT <= 0) this.shieldHp = 0;

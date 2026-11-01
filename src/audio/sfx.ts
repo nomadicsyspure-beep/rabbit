@@ -81,13 +81,20 @@ export const sfx = {
   },
   /** 병아리가 맞았을 때: 둔탁하게 퍽 */
   hurt(heavy = false) {
-    if (!combat || !throttle('hurt', heavy ? 60 : 200)) return;
+    if (!combat || !throttle('hurt', heavy ? 150 : 200)) return;
     if (heavy) {
-      noise(0.3, 0.5, 700);
-      tone(160, 0.3, 'sawtooth', 0.22, 45);
+      noise(0.12, 0.3, 600);
+      tone(220, 0.14, 'sawtooth', 0.12, 90);
     } else {
       noise(0.05, 0.08, 500);
     }
+  },
+  /** 보스를 때릴 때: 퍽 하는 둔탁한 타격음 (치명타는 더 크게) */
+  bossHit(crit = false) {
+    if (!combat || !throttle('bossHit', 80)) return;
+    noise(crit ? 0.12 : 0.07, crit ? 0.28 : 0.16, crit ? 1400 : 900);
+    tone(crit ? 140 : 180, crit ? 0.14 : 0.08, 'triangle', crit ? 0.22 : 0.14, 60);
+    if (crit) tone(1500, 0.05, 'square', 0.06, 2200);
   },
   /** 콤보가 오를수록 음이 올라간다 (100마다 다시 낮아짐) */
   kill(combo: number) {
