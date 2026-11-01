@@ -265,11 +265,6 @@ export class Renderer {
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, hh);
     }
-    // 보스 피격: 화면 전체가 붉게 번쩍
-    if (eng.impactT > 0 && eng.followCamera) {
-      ctx.fillStyle = `rgba(255,40,50,${(0.3 * eng.impactT / 0.16).toFixed(3)})`;
-      ctx.fillRect(0, 0, eng.viewW, eng.viewH);
-    }
 
     const boss = eng.boss;
     if (boss && eng.followCamera) this.drawBossBar(eng, boss);
@@ -465,11 +460,14 @@ export class Renderer {
       const img = recolored(hue ? recolored(frame, hueRecolor(Number(hue))) : frame, e.golden ? GOLDEN_COLOR : MOB_COLOR);
       const flip = FACES_RIGHT.has(skin) && eng.player.x < e.x;
       // 맞으면 옆으로 퍼지고 납작해졌다가 돌아온다
-      const hit = Math.max(0, e.flash) / 0.1;
-      const sx = 1 + 0.18 * hit;
-      const sy = 1 - 0.15 * hit;
+      const big = e.kind === 'boss' || e.elite;
+      const hit = Math.min(1, Math.max(0, e.flash) / 0.1);
+      const sx = 1 + (big ? 0.1 : 0.18) * hit;
+      const sy = 1 - (big ? 0.09 : 0.15) * hit;
+      // 보스·중간 보스는 맞으면 몸이 부르르 떨린다
+      const jx = big && hit > 0 ? (Math.random() - 0.5) * 5 * hit : 0;
       // 칸 아래쪽에 1px 여백이 있다
-      this.drawSprite(img, e.x, e.y + e.r + 1, size * sx, size * sy, flip, e.flash);
+      this.drawSprite(img, e.x + jx, e.y + e.r + 1, size * sx, size * sy, flip, e.flash);
     }
     const top = anim && e.skin !== 'firstaid' ? e.y + e.r - size * 0.85 : e.y - e.r * 1.3;
     this.drawStatus(eng, e, top);
