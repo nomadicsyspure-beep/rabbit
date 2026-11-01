@@ -17,6 +17,7 @@ permissions:
   contents: write
   pages: write
   deployments: read
+  actions: read
 
 concurrency:
   group: pages
@@ -59,22 +60,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           want=$(git ls-remote origin refs/heads/gh-pages | cut -f1)
+          repo="${GITHUB_REPOSITORY}"
           echo "waiting for Pages to publish ${want}"
-          for i in $(seq 1 30); do
-            sleep 10
-            read -r status commit <<< "$(gh api "repos/${GITHUB_REPOSITORY}/pages/builds/latest" --jq '.status + " " + .commit' 2>/dev/null || echo 'unknown -')"
-            echo "try ${i}: ${status} ${commit}"
-            if [ "$commit" = "$want" ] && [ "$status" = "built" ]; then
+          retries=0
+          for i in $(seq 1 40); do
+            sleep 15
+            # 이 커밋을 게시하는 GitHub 쪽 실행(pages build and deployment)의 가장 최근 결과
+            read -r status conclusion <<< "$(gh api "repos/${repo}/actions/runs?branch=gh-pages&head_sha=${want}&per_page=1" \
+              --jq '.workflow_runs[0] | (.status // "none") + " " + (.conclusion // "-")' 2>/dev/null || echo 'none -')"
+            echo "try ${i}: ${status} ${conclusion}"
+            if [ "$status" = "completed" ] && [ "$conclusion" = "success" ]; then
               echo "published"; exit 0
             fi
-            # 거절됐으면(errored) 붙잡고 있는 배포를 취소하고 다시 게시 요청
-            if [ "$status" = "errored" ] || { [ $((i % 6)) -eq 0 ] && [ "$commit" != "$want" ]; }; then
-              for sha in $(gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=github-pages&per_page=5" --jq '.[].sha' 2>/dev/null); do
+            # 이 커밋의 게시가 거절됐을 때만: 붙잡힌 이전 배포를 취소하고 한 번 더 게시 요청 (최대 2번)
+            if [ "$status" = "completed" ] && [ "$conclusion" != "success" ] && [ "$conclusion" != "cancelled" ]; then
+              if [ "$retries" -ge 2 ]; then break; fi
+              retries=$((retries + 1))
+              for sha in $(gh api "repos/${repo}/deployments?environment=github-pages&per_page=5" --jq '.[].sha' 2>/dev/null); do
                 [ "$sha" = "$want" ] && continue
-                gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/deployments/${sha}/cancel" >/dev/null 2>&1 && echo "cancelled ${sha}"
+                gh api -X POST "repos/${repo}/pages/deployments/${sha}/cancel" >/dev/null 2>&1 && echo "cancelled ${sha}"
               done
-              gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/builds" >/dev/null 2>&1 && echo "requested a new Pages build"
+              sleep 5
+              gh api -X POST "repos/${repo}/pages/builds" >/dev/null 2>&1 && echo "requested a new Pages build (retry ${retries})"
+              sleep 30
             fi
           done
-          echo "::error::Pages did not publish ${want} in time"
+          echo "::error::Pages did not publish ${want}"
           exit 1
