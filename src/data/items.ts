@@ -17,6 +17,8 @@ export const MATS: MatDef[] = [
   { id: 'lava', name: '용암석', icon: '🔥' },
   { id: 'shadow', name: '어둠의 조각', icon: '🌑' },
   { id: 'skillbook', name: '스킬북', icon: '📕' },
+  { id: 'key_silver', name: '은 열쇠', icon: '🔑' },
+  { id: 'key_gold', name: '금 열쇠', icon: '🗝️' },
 ];
 
 export const MAT_BY_ID = Object.fromEntries(MATS.map((m) => [m.id, m])) as Record<MatId, MatDef>;

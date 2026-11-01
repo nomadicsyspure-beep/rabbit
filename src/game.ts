@@ -7,12 +7,13 @@ import {
   OFFLINE_CAP_SEC, OFFLINE_EFFICIENCY, STATS, enemyGold, idleGoldPerSec, playerStats, xpToNext, type StatId,
 } from './data/balance';
 import {
-  BRANCHES, BRANCH_POINTS, SKILLS, SKILL_BY_ID, SKILL_TYPES, emptyTree, type Branch, type SkillId, type SkillType,
+  BRANCHES, BRANCH_POINTS, SKILLS, SKILL_BY_ID, SKILL_GRADE, SKILL_TYPES, emptyTree, type Branch, type SkillId, type SkillType,
 } from './data/skills';
 import { GEAR_BY_ID, GEAR_MAX, enhanceCost, gearScale, type GearSlot } from './data/gear';
 import { addReward, emptyReward, openChest, type ChestGrade, type Reward } from './data/items';
 import { PET_BY_ID, PET_MAX, PET_SLOTS, petValue } from './data/pets';
-import { BOX_BY_ID, boxCost, rollBox, type BoxId } from './data/skillbox';
+import { BOX_BY_ID, FREE_BOX_MS, SHARD_COST, SHARD_GAIN, boxCost, gradeAtLeast, rollBox, type BoxId } from './data/skillbox';
+import type { BoosterId, RecipeDef } from './data/craft';
 import { CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, rollGear, rollPet, skinPrice, summonCost } from './data/shop';
 import {
   ACHIEVEMENTS, ATTEND_REWARDS, DAILY_ALL_BONUS, DAILY_MISSIONS, MISSION_PASS_XP, PASS_LEVELS, achieveReady, addDaily,
@@ -74,11 +75,7 @@ export class Game {
     // 브라우저는 첫 터치 뒤에야 소리를 낼 수 있다
     window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
     this.bindLifecycle();
-    // 예전 저장에 안 연 상자가 남아 있으면 바로 열어 준다
-    if (Object.keys(this.save.chestBag).length > 0) {
-      const n = this.openAllChests().length;
-      if (n > 0) this.ui.toast(`가방에 남아 있던 상자 ${n}개를 열었어요 (재료는 가방에)`);
-    }
+
 
     new ResizeObserver(() => this.resize()).observe(this.ui.battle);
     this.resize();
@@ -652,54 +649,124 @@ export class Game {
     return this.save.skills[id];
   }
 
-  /** 상자 n회 열 수 있나 (은 상자 1회는 스킬북으로도) */
+  /** 은 상자 무료 1회를 쓸 수 있나 (FREE_BOX_MS마다) */
+  get freeBoxReady() {
+    return Date.now() - this.save.freeBoxAt >= FREE_BOX_MS;
+  }
+
+  /** 이 상자 1회에 쓸 수 있는 열쇠 (없으면 null) */
+  boxKey(id: BoxId): MatId | null {
+    return BOX_BY_ID[id].keys?.find((k) => (this.save.mats[k] ?? 0) > 0) ?? null;
+  }
+
+  /** 천장까지 남은 횟수 (천장 없는 상자는 null) */
+  pityLeft(id: BoxId) {
+    const p = BOX_BY_ID[id].pity;
+    return p ? p.every - (this.save.boxPity[id] ?? 0) : null;
+  }
+
+  /** 상자 n회 열 수 있나 (1회는 무료·열쇠도) */
   canOpenBox(id: BoxId, n: 1 | 10) {
-    const box = BOX_BY_ID[id];
-    if (n === 1 && box.book && (this.save.mats.skillbook ?? 0) > 0) return true;
-    const c = boxCost(box, n, this.save.maxStage);
+    if (n === 1 && ((id === 'silver' && this.freeBoxReady) || this.boxKey(id))) return true;
+    const c = boxCost(BOX_BY_ID[id], n, this.save.maxStage);
     return c.gold !== undefined ? this.save.gold >= c.gold : this.save.diamonds >= c.diamonds!;
   }
 
   /**
-   * 스킬 상자 n회. 새 스킬은 배우고 (그 형태 칸이 비어 있으면 바로 장착),
-   * 이미 가진 스킬은 피해 +1 (최대면 골드). 모자라면 null
+   * 스킬 상자 n회 (형태 선택 상자는 type). 새 스킬은 배우고 (그 형태 칸이 비어 있으면 바로 장착),
+   * 이미 가진 스킬은 스킬 포인트 +1 + 조각 (다 찍을 만큼 모았으면 조각 2배). 천장이면 목표 등급 확정. 모자라면 null
    */
-  openSkillBox(id: BoxId, n: 1 | 10) {
+  openSkillBox(id: BoxId, n: 1 | 10, type?: SkillType) {
     if (!this.canOpenBox(id, n)) return null;
     const s = this.save;
     const box = BOX_BY_ID[id];
-    if (n === 1 && box.book && (s.mats.skillbook ?? 0) > 0) s.mats.skillbook!--;
+    const key = n === 1 ? this.boxKey(id) : null;
+    if (n === 1 && id === 'silver' && this.freeBoxReady) s.freeBoxAt = Date.now();
+    else if (key) s.mats[key] = (s.mats[key] ?? 0) - 1;
     else {
       const c = boxCost(box, n, s.maxStage);
       if (c.gold !== undefined) s.gold -= c.gold;
       else s.diamonds -= c.diamonds!;
     }
-    const out: { def: (typeof SKILL_BY_ID)[SkillId]; text: string; isNew: boolean }[] = [];
+    const out: { def: (typeof SKILL_BY_ID)[SkillId]; text: string; isNew: boolean; pity: boolean }[] = [];
     // 튜토리얼 상자는 무조건 공격형 (처음부터 주변을 쓸어 보게). 공격형이 이미 있으면 그 스킬이 또 나온다 (스킬 포인트 배우기)
     const tutorial = s.tutorial >= 0;
     const tutorialDup = tutorial ? SKILLS.find((d) => d.type === 'attack' && s.skills[d.id]) : undefined;
     for (let i = 0; i < n; i++) {
-      const def = tutorialDup ?? rollBox(box, tutorial ? 'attack' : undefined);
+      // 천장: 목표 등급 없이 every-1번 열었으면 이번은 확정
+      const count = s.boxPity[id] ?? 0;
+      const force = box.pity && count >= box.pity.every - 1 ? box.pity.grade : undefined;
+      const def = tutorialDup ?? rollBox(box, type ?? (tutorial ? 'attack' : undefined), force);
+      const grade = SKILL_GRADE[def.id];
+      if (box.pity) s.boxPity[id] = gradeAtLeast(grade, box.pity.grade) ? 0 : count + 1;
+      const pity = !!force;
       const tree = s.skills[def.id];
       if (!tree) {
         s.skills[def.id] = emptyTree();
         if (!this.equippedOfType(def.type)) this.toggleEquip(def.id);
         if (!s.newSkills.includes(def.id)) s.newSkills.push(def.id);
-        out.push({ def, text: 'NEW!', isNew: true });
+        out.push({ def, text: 'NEW!', isNew: true, pity });
       } else if (this.pointsToMax(def.id) > (s.skillPoints[def.id] ?? 0)) {
-        // 겹치면 그 스킬의 스킬 포인트 (스킬 창에서 가지를 골라 찍는다)
+        // 겹치면 그 스킬의 스킬 포인트 + 조각
         s.skillPoints[def.id] = (s.skillPoints[def.id] ?? 0) + 1;
-        out.push({ def, text: '포인트 +1', isNew: false });
+        s.shards += SHARD_GAIN[grade];
+        out.push({ def, text: `포인트 +1 · 🧩${SHARD_GAIN[grade]}`, isNew: false, pity });
       } else {
-        // 다 찍을 만큼 이미 모았으면 골드로
-        const gold = Math.round(this.goldPerSec * 120);
-        s.gold += gold;
-        out.push({ def, text: '골드 환급', isNew: false });
+        // 다 찍을 만큼 이미 모았으면 조각 2배
+        s.shards += SHARD_GAIN[grade] * 2;
+        out.push({ def, text: `🧩 +${SHARD_GAIN[grade] * 2}`, isNew: false, pity });
       }
     }
     addDaily(s, 'summons', n);
     this.persist();
     return out;
+  }
+
+  /** 조각 교환: 그 스킬의 등급 값만큼 조각 → 없으면 배우기, 있으면 스킬 포인트 +1 */
+  exchangeShards(id: SkillId): boolean {
+    const s = this.save;
+    const cost = SHARD_COST[SKILL_GRADE[id]];
+    if (s.shards < cost) return false;
+    s.shards -= cost;
+    if (!s.skills[id]) {
+      s.skills[id] = emptyTree();
+      if (!this.equippedOfType(SKILL_BY_ID[id].type)) this.toggleEquip(id);
+      if (!s.newSkills.includes(id)) s.newSkills.push(id);
+    } else {
+      s.skillPoints[id] = (s.skillPoints[id] ?? 0) + 1;
+    }
+    this.persist();
+    return true;
+  }
+
+  // ---- 제작 레시피 ----
+
+  canCraftRecipe(r: RecipeDef) {
+    return Object.entries(r.cost).every(([m, n]) => (this.save.mats[m as MatId] ?? 0) >= (n ?? 0));
+  }
+
+  craftRecipe(r: RecipeDef): boolean {
+    if (!this.canCraftRecipe(r)) return false;
+    const s = this.save;
+    for (const [m, n] of Object.entries(r.cost)) s.mats[m as MatId] = (s.mats[m as MatId] ?? 0) - (n ?? 0);
+    for (const [m, n] of Object.entries(r.gives.mats ?? {})) s.mats[m as MatId] = (s.mats[m as MatId] ?? 0) + (n ?? 0);
+    if (r.gives.shards) s.shards += r.gives.shards;
+    if (r.gives.booster) s.boosters[r.gives.booster] = (s.boosters[r.gives.booster] ?? 0) + 1;
+    addDaily(s, 'upgrades');
+    this.persist();
+    return true;
+  }
+
+  /** 스테이지 시작: 가진 부스터를 하나씩 꺼내 쓴다 (쓴 것 목록) */
+  takeBoosters(): BoosterId[] {
+    const used: BoosterId[] = [];
+    for (const id of Object.keys(this.save.boosters) as BoosterId[]) {
+      if ((this.save.boosters[id] ?? 0) > 0) {
+        this.save.boosters[id]!--;
+        used.push(id);
+      }
+    }
+    return used;
   }
 
   /** 스킬 창을 열어 봤다: NEW 표시 끄기 */
@@ -710,25 +777,34 @@ export class Game {
 
   // ---- 가방: 안 연 상자 ----
 
-  /** 예전 저장의 가방 속 안 연 상자를 모두 연다 (상자는 이제 주울 때 바로 열린다) */
-  openAllChests() {
+  /** 가방 속 상자 수 (등급별) */
+  get chestCounts() {
+    const c = [0, 0, 0];
+    for (const [k, n] of Object.entries(this.save.chestBag)) c[Number(k.split(':')[0])] += n;
+    return c;
+  }
+
+  /** 가방 속 그 등급 상자를 n개(있는 만큼) 연다: 상자마다 보상 (이미 저장에 넣은 상태로 돌려준다) */
+  openChests(grade: ChestGrade, n: number) {
     const s = this.save;
     const out: { grade: ChestGrade; reward: Reward }[] = [];
     const total = emptyReward();
-    for (const [k, n] of Object.entries(s.chestBag)) {
+    for (const k of Object.keys(s.chestBag)) {
       const [g, st] = k.split(':').map(Number);
-      for (let i = 0; i < n; i++) {
-        const reward = openChest(g as ChestGrade, st, enemyGold(st));
+      if (g !== grade) continue;
+      while (out.length < n && (s.chestBag[k] ?? 0) > 0) {
+        s.chestBag[k]--;
+        const reward = openChest(grade, st, enemyGold(st));
         addReward(total, reward);
-        out.push({ grade: g as ChestGrade, reward });
+        out.push({ grade, reward });
       }
+      if (!s.chestBag[k]) delete s.chestBag[k];
     }
-    s.chestBag = {};
     this.grantReward(total);
     s.stats.chests += out.length;
     addDaily(s, 'chests', out.length);
     this.persist();
-    return out.sort((a, b) => b.grade - a.grade);
+    return out;
   }
 
   /** 스킬 탭 빨간 점: 마지막으로 둘러본 뒤 새 스킬이 생겼거나 포인트가 늘었나 */

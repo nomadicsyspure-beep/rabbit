@@ -2,6 +2,8 @@ import type { SkillTree } from '../battle/weapons';
 import type { StatId } from '../data/balance';
 import { EQUIP_SLOTS, SKILL_BY_ID, emptyTree, type SkillId } from '../data/skills';
 import { OLD_GEAR_IDS, type GearSlot } from '../data/gear';
+import type { BoxId } from '../data/skillbox';
+import type { BoosterId } from '../data/craft';
 import type { MatId } from '../data/world';
 import { emptyDaily, type AttendState, type DailyState } from '../data/missions';
 
@@ -70,6 +72,14 @@ export interface SaveData {
   autoNext: boolean;
   /** 스테이지를 가로 모드로 (설정) */
   landscape: boolean;
+  /** 스킬 상자 천장: 상자마다 목표 등급 없이 연 횟수 */
+  boxPity: Partial<Record<BoxId, number>>;
+  /** 은 상자 무료 1회를 마지막으로 쓴 시각 (ms) */
+  freeBoxAt: number;
+  /** 스킬 조각 (겹친 스킬·제작에서, 원하는 스킬과 교환) */
+  shards: number;
+  /** 제작한 부스터 (다음 스테이지에 자동으로 쓴다) */
+  boosters: Partial<Record<BoosterId, number>>;
   /** 스킬 탭을 마지막으로 둘러봤을 때의 새 스킬·포인트 합 (그 뒤로 늘어야 탭에 빨간 점) */
   skillTabSeen: { skills: SkillId[]; points: number };
 }
@@ -114,6 +124,10 @@ export function newSave(): SaveData {
     skillTabSeen: { skills: [], points: 0 },
     autoNext: false,
     landscape: false,
+    boxPity: {},
+    freeBoxAt: 0,
+    shards: 0,
+    boosters: {},
   };
 }
 
@@ -188,6 +202,10 @@ export function loadSave(): SaveData {
       skillTabSeen: { skills: [...(data.skillTabSeen?.skills ?? [])], points: data.skillTabSeen?.points ?? 0 },
       autoNext: data.autoNext ?? false,
       landscape: data.landscape ?? false,
+      boxPity: { ...data.boxPity },
+      freeBoxAt: data.freeBoxAt ?? 0,
+      shards: data.shards ?? 0,
+      boosters: { ...data.boosters },
     };
   } catch {
     return newSave();

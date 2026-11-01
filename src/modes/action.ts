@@ -7,8 +7,9 @@ import { fmt } from '../core/format';
 import {
   actionRatio, enemyGold, isBossStage, stageClearGold, type ActionRatio,
 } from '../data/balance';
-import { CHEST_COLORS, CHEST_NAMES, addReward, emptyReward, openChest, rewardText, rollChest, type ChestGrade, type Reward } from '../data/items';
-import { regionOf, stageSkins } from '../data/world';
+import { CHEST_COLORS, CHEST_NAMES, rollChest, type ChestGrade } from '../data/items';
+import { regionOf, stageSkins, type MatId } from '../data/world';
+import { BOOSTERS } from '../data/craft';
 import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
 
@@ -110,8 +111,6 @@ export interface RunResult {
   best: boolean;
   /** 주운 상자 등급들 (가방에 들어갔다) */
   chests: ChestGrade[];
-  /** 이번 판 상자에서 나온 것 합계 */
-  loot: Reward;
 }
 
 export type RunState = 'playing' | 'paused' | 'ended';
@@ -162,8 +161,9 @@ export class ActionMode {
   private bonusGold = 0;
   /** 이번 판에 주운 상자 등급들 */
   private chests: ChestGrade[] = [];
-  /** 이번 판 상자에서 나온 것 합계 (결과 화면) */
-  private loot: Reward = emptyReward();
+  /** 부스터: 이번 판 골드·경험치 배율 */
+  private goldMul = 1;
+  private xpMul = 1;
   /** 장신구 효과: 콤보 유지 시간, 피버 게이지 배율, 좋은 상자 확률 */
   comboSec = COMBO_SEC;
   private feverMul = 1;
@@ -263,7 +263,6 @@ export class ActionMode {
     this.chestT = kind === 'material' ? 1 : kind === 'raid' ? Infinity : CHEST_SEC * 0.6;
     this.bonusGold = 0;
     this.chests = [];
-    this.loot = emptyReward();
 
     // 지역 바닥
     const region = regionOf(stage);
@@ -295,6 +294,16 @@ export class ActionMode {
     }
     if (kind === 'raid') this.spawnRaidBoss();
     this.state = 'playing';
+    // 제작한 부스터: 스테이지에서 하나씩 자동으로
+    this.goldMul = 1;
+    this.xpMul = 1;
+    if (kind === 'stage') {
+      const used = this.game.takeBoosters();
+      if (used.includes('gold2')) this.goldMul = 2;
+      if (used.includes('xp2')) this.xpMul = 2;
+      if (used.includes('feverStart')) this.startFever();
+      if (used.length) this.game.ui.toast(`부스터 사용: ${used.map((b) => `${BOOSTERS[b].icon} ${BOOSTERS[b].name}`).join(' · ')}`);
+    }
   }
 
   /** 레이드 보스: 처음부터 나와 있다 (체력 절반에서 2페이즈) */
@@ -732,8 +741,18 @@ export class ActionMode {
     eng.addEffect('ring', e.x, e.y, 90, 0.45, '#ffffff');
     eng.burst(e.x, e.y - 20, 40, ['#ffe066', '#ffb347', '#ffffff', '#9fe4ff'], 340, 0.9, 380, 4);
     eng.addShake(8);
+    // 열쇠: 중간 보스는 절반 확률로 은 열쇠, 스테이지 보스는 은 열쇠 + 금 열쇠 (마왕은 확정, 정예는 30%)
+    const keys: [MatId, number][] = inBag
+      ? [['key_silver', 1], ['key_gold', this.isBossStage || Math.random() < 0.3 ? 1 : 0]]
+      : [['key_silver', Math.random() < 0.5 ? 1 : 0]];
+    keys.forEach(([k, n], i) => {
+      if (!n) return;
+      this.game.save.mats[k] = (this.game.save.mats[k] ?? 0) + n;
+      eng.addText(e.x + (i ? 30 : -30), e.y - 110, `${k === 'key_gold' ? '🗝️ 금' : '🔑 은'} 열쇠!`, k === 'key_gold' ? '#ffd23f' : '#d8e4f0', 16);
+    });
     if (inBag) {
-      this.openChestNow(e.x, e.y - 20, chest);
+      this.chests.push(chest);
+      eng.addText(e.x, e.y - 86, `${CHEST_NAMES[chest]} 획득! (가방으로)`, '#ffd166', 18);
     } else {
       eng.spawnChest(e.x, e.y, chest);
     }
@@ -778,32 +797,18 @@ export class ActionMode {
   }
 
   /** 재료 상자: 결과 화면에서 연다 */
-  /** 상자를 주우면 그 자리에서 펑 열린다: 나온 재료·골드·다이아가 위로 튀어 오른다 */
+  /** 상자를 주우면 가방으로 (가방 탭에서 하나씩 연다) */
   private onChest(x: number, y: number, grade: ChestGrade) {
-    this.openChestNow(x, y, grade);
-  }
-
-  /** 상자 바로 열기 (줍기·보스 보상). 보상은 바로 저장에, 이번 판 전리품에도 더한다 */
-  private openChestNow(x: number, y: number, grade: ChestGrade) {
-    const eng = this.game.engine;
-    const reward = openChest(grade, this.stage, enemyGold(this.stage));
-    this.game.grantReward(reward);
-    addReward(this.loot, reward);
     this.chests.push(grade);
-    this.game.save.stats.chests++;
-    addDaily(this.game.save, 'chests');
-    const color = CHEST_COLORS[grade];
-    eng.addEffect('ring', x, y, 50 + grade * 20, 0.4, color);
-    eng.burst(x, y - 10, 14 + grade * 8, [color, '#ffe066', '#ffffff'], 220, 0.6, 300, 3);
-    eng.addText(x, y - 34, `${CHEST_NAMES[grade]} 열림!`, color, 15);
-    // 나온 것들이 차례로 위로 떠오른다
-    const lines = [...rewardText(reward).split(' · ').filter(Boolean), `🪙 +${fmt(reward.gold)}`];
-    lines.forEach((line, i) => eng.addText(x + (i % 2 ? 14 : -14), y - 54 - i * 16, line, '#fff6c8', 12));
+    const eng = this.game.engine;
+    eng.addText(x, y - 30, `${CHEST_NAMES[grade]} 획득!`, CHEST_COLORS[grade], 16);
+    eng.burst(x, y - 10, 10 + grade * 6, [CHEST_COLORS[grade], '#ffe066', '#ffffff'], 180, 0.5, 260, 2.5);
     sfx.chest();
   }
 
   /** 경험치 보석: 캐릭터 영구 경험치로 바로 쌓는다 */
-  private onGem(v: number) {
+  private onGem(gem: number) {
+    const v = gem * this.xpMul;
     this.xpGained += v;
     const ups = this.game.addXp(v);
     if (ups > 0) {
@@ -857,19 +862,26 @@ export class ActionMode {
       if (this.isBossStage) save.bossKills++;
       save.stats.stages++;
     }
-    gold *= this.game.goldBoost;
+    gold *= this.game.goldBoost * this.goldMul;
     // 레이드: 이기면 정수 3개(45초 안이면 +1), 져도 보스 체력을 절반 넘게 깎았으면 1개
     let essence = 0;
     if (this.kind === 'raid') {
       const boss = this.game.engine.boss;
       essence = win ? this.raidBoss.essence + (this.time < 45 ? 1 : 0) : boss && boss.hp <= boss.maxHp * 0.5 ? 1 : 0;
       save.essence += essence;
-      if (win) save.diamonds += this.raidBoss.diamonds;
+      if (win) {
+        save.diamonds += this.raidBoss.diamonds;
+        save.mats.key_gold = (save.mats.key_gold ?? 0) + 1;
+      }
     }
     const best = this.kind === 'infinite' && this.time > save.infiniteBest;
     if (best) save.infiniteBest = this.time;
-    // 상자는 주울 때 이미 열었다 (전리품은 결과 화면에 모아서 보여 준다)
+    // 주운 상자는 가방에 넣는다 (가방 탭에서 하나씩 연다)
     const chests = [...this.chests];
+    for (const grade of chests) {
+      const key = `${grade}:${this.stage}`;
+      save.chestBag[key] = (save.chestBag[key] ?? 0) + 1;
+    }
     save.gold += gold;
     save.stats.kills += this.kills;
     save.stats.bestCombo = Math.max(save.stats.bestCombo, this.bestCombo);
@@ -881,7 +893,7 @@ export class ActionMode {
     this.game.addPassXp(PLAY_PASS_XP + (win ? PLAY_PASS_XP : 0));
     const result: RunResult = {
       win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps,
-      gold, stage: this.stage, chests, loot: this.loot, kind: this.kind, essence, best,
+      gold, stage: this.stage, chests, kind: this.kind, essence, best,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }

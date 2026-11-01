@@ -3,7 +3,7 @@ import { BOSS_EVERY } from './balance';
 
 // 지역(10스테이지마다).
 
-export type MatId = 'feather' | 'spore' | 'ice' | 'lava' | 'shadow' | 'skillbook';
+export type MatId = 'feather' | 'spore' | 'ice' | 'lava' | 'shadow' | 'skillbook' | 'key_silver' | 'key_gold';
 
 export interface Region {
   name: string;

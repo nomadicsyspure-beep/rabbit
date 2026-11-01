@@ -2861,3 +2861,177 @@ button:active:not(:disabled) {
 .adv-tile.dim {
   filter: grayscale(0.7) brightness(0.8);
 }
+
+/* 성장 탭 능력치 3개: 한 줄에 셋 */
+.stat-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stat-card .title {
+  font-size: 12px;
+}
+
+.stat-card .stat-head .icon {
+  width: 24px;
+  height: 24px;
+}
+
+/* ---- 스킬 상자 개편: 픽업 띠 · 천장 · 여는 연출 ---- */
+.box-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pickup-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 2px solid #ffd23f;
+  background: linear-gradient(90deg, rgba(255, 92, 108, 0.25), rgba(255, 210, 63, 0.18), rgba(199, 139, 255, 0.25));
+  box-shadow: 0 0 10px rgba(255, 210, 63, 0.35);
+  color: var(--text);
+}
+
+.pickup-title {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+.pickup-chip {
+  position: relative;
+  display: inline-flex;
+}
+
+.pickup-chip .pickup-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.pickup-chip .tile-grade {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  font-size: 9px;
+  line-height: 13px;
+}
+
+.box-pity {
+  min-height: 14px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #ffb3c0;
+}
+
+.box-shard .btn {
+  height: 40px;
+}
+
+.box-pick .title { color: #ff9a4a; }
+
+/* 여는 연출: 상자가 흔들리며 가장 좋은 등급 색으로 빛난다 */
+.box-reveal {
+  display: grid;
+  place-items: center;
+  height: 180px;
+}
+
+.reveal-box {
+  font-size: 84px;
+  animation: revealShake 0.75s ease-in-out both;
+  filter: drop-shadow(0 0 18px var(--glow, #fff));
+}
+
+.glow-S { --glow: #ff5c6c; }
+.glow-A { --glow: #ffa04a; }
+.glow-B { --glow: #ffd23f; }
+.glow-C { --glow: #7cf2a0; }
+.glow-D { --glow: #c9b79c; }
+
+.glow-S .reveal-box {
+  animation: revealShake 0.75s ease-in-out both, rainbow 0.6s linear infinite;
+}
+
+@keyframes revealShake {
+  0% { transform: scale(0.6) rotate(0); }
+  20% { transform: scale(1) rotate(-12deg); }
+  40% { transform: scale(1.05) rotate(12deg); }
+  60% { transform: scale(1.1) rotate(-14deg); }
+  80% { transform: scale(1.2) rotate(14deg); }
+  100% { transform: scale(1.45) rotate(0); opacity: 0.2; }
+}
+
+@keyframes rainbow {
+  from { filter: drop-shadow(0 0 22px #ff5c6c) hue-rotate(0deg); }
+  to { filter: drop-shadow(0 0 22px #ff5c6c) hue-rotate(360deg); }
+}
+
+/* A급 이상 카드는 반짝, S급은 무지개 테두리 */
+.box-card.shine {
+  box-shadow: 0 0 14px var(--rar);
+}
+
+.box-card.gr-S.shine {
+  animation: flipIn 0.35s ease-out both, rainbowBorder 1.2s linear 0.35s infinite;
+}
+
+@keyframes rainbowBorder {
+  0% { border-color: #ff5c6c; box-shadow: 0 0 16px #ff5c6c; }
+  33% { border-color: #ffd23f; box-shadow: 0 0 16px #ffd23f; }
+  66% { border-color: #7ad7ff; box-shadow: 0 0 16px #7ad7ff; }
+  100% { border-color: #ff5c6c; box-shadow: 0 0 16px #ff5c6c; }
+}
+
+.shard-grid .tile-lv {
+  font-size: 10px;
+  color: #c9f0ff;
+}
+
+/* 제작 탭 레시피 */
+.recipe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recipe {
+  margin: 0;
+  gap: 8px;
+}
+
+.recipe .info {
+  min-width: 0;
+}
+
+.recipe-owned {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.recipe-desc {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.recipe-cost {
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #b8f5c8;
+}
+
+.recipe-cost.lack {
+  color: #ff9a9a;
+}
+
+.recipe .buy {
+  flex: none;
+  width: 76px;
+  height: 46px;
+}
