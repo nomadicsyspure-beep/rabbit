@@ -109,6 +109,27 @@ export class Renderer {
       }
     }
 
+    // 보스 경고선: 빨간 길이 점점 진해지고, 가운데에 흰 줄
+    for (const w of eng.warns) {
+      const k = 1 - w.t / w.maxT;
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.25 + 0.45 * k + 0.15 * Math.sin(eng.time * 40);
+      ctx.strokeStyle = w.color;
+      ctx.lineWidth = w.w * (0.6 + 0.4 * k);
+      ctx.beginPath();
+      ctx.moveTo(w.x1, w.y1);
+      ctx.lineTo(w.x2, w.y2);
+      ctx.stroke();
+      ctx.globalAlpha = 0.5 + 0.5 * k;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([12, 10]);
+      ctx.lineDashOffset = -eng.time * 200;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineCap = 'butt';
+      ctx.globalAlpha = 1;
+    }
     for (const fx of eng.effects.items) {
       if (fx.active && (fx.kind === 'telegraph' || fx.kind === 'corpse')) this.drawEffect(fx);
     }
@@ -484,7 +505,40 @@ export class Renderer {
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    if (e.skin === 'firstaid') {
+    const bossAnims = SPRITES.boss[skin];
+    if (bossAnims) {
+      // 8방향 보스 (바라보는 쪽 = dashX·dashY)
+      const d = heroDirIndex(e.dashX || 0.001, e.dashY);
+      const ba = bossAnims[d] ?? bossAnims.find((x) => x);
+      if (ba) {
+        const frame = frameAt(ba, eng.time * 1000 * (e.speed > 300 ? 2.2 : 1));
+        const bs = e.r * 3.4;
+        const hit = Math.min(1, Math.max(0, e.flash) / 0.1);
+        const jx = hit > 0 ? (Math.random() - 0.5) * 5 * hit : 0;
+        this.drawSprite(frame, e.x + jx, e.y + e.r + 6, bs * (1 + 0.08 * hit), bs * (1 - 0.07 * hit), false, e.flash);
+      }
+      if (e.dmgTaken > 1) {
+        // 약점 노출: 노란 고리 + 글자
+        const ctx = this.ctx;
+        const pulse = 0.5 + 0.5 * Math.sin(eng.time * 12);
+        ctx.strokeStyle = `rgba(255,220,60,${0.6 + 0.4 * pulse})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(e.x, e.y + e.r * 0.85, e.r * 1.6, e.r * 0.6, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (e.stunT > 0) {
+        // 기절: 머리 위로 별이 빙글
+        const ctx = this.ctx;
+        ctx.fillStyle = '#ffe066';
+        ctx.font = '900 16px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        for (let i = 0; i < 3; i++) {
+          const a = eng.time * 5 + (i / 3) * Math.PI * 2;
+          ctx.fillText('★', e.x + Math.cos(a) * e.r * 0.9, e.y - e.r * 2.1 + Math.sin(a) * 6);
+        }
+      }
+    } else if (e.skin === 'firstaid') {
       this.drawFirstAid(eng, e);
     } else if (anim) {
       const frame = frameAt(anim, eng.time * 1000 + e.id * 97);

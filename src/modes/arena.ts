@@ -2,6 +2,8 @@ import { sfx } from '../audio/sfx';
 import { fmt } from '../core/format';
 import { enemyGold } from '../data/balance';
 import { stageSkins } from '../data/world';
+import { stageEase } from '../data/balance';
+import { BoarBrain } from './boar';
 import type { Enemy, Engine } from '../battle/engine';
 import type { ActionMode } from './action';
 
@@ -12,7 +14,7 @@ import type { ActionMode } from './action';
 //  - 별 3개: 클리어 · 체력 50% 이상 유지 · 종류마다 다른 도전
 //  - 종류: 일반 · 생존 · 섬멸 · 추격 · 수비, 보스는 체력 절반에서 분노
 
-export type ArenaVariant = 'normal' | 'survive' | 'exterminate' | 'chase' | 'defend';
+export type ArenaVariant = 'normal' | 'survive' | 'exterminate' | 'chase' | 'defend' | 'boar';
 export type ArenaEvent = 'meteor' | 'poison' | 'bomb' | 'herd';
 
 export interface ArenaVariantDef {
@@ -31,6 +33,7 @@ export const ARENA_VARIANTS: ArenaVariantDef[] = [
   { id: 'survive', name: '생존', icon: '🛡️', sec: 30, desc: '보스 없이 30초 버티기. 몹이 짙고 이벤트 3번', star3: '맞은 횟수 8번 이하' },
   { id: 'exterminate', name: '섬멸', icon: '💀', sec: 40, desc: '40초 안에 120마리 처치', star3: '30초 안에 달성' },
   { id: 'chase', name: '추격', icon: '🏃', sec: 30, desc: '도망치는 황금 몹을 30초 안에 잡기 (구석으로 몰아라)', star3: '15초 안에 처치' },
+  { id: 'boar', name: '보스전: 태엽 멧돼지', icon: '🐗', sec: 60, desc: '엄청 빠른 돌진! 빨간 길을 피하고 돌기둥에 박게 하면 기절, 태엽이 풀리면 약점. 60초 안에 처치', star3: '40초 안에 처치' },
   { id: 'defend', name: '수비', icon: '🥚', sec: 30, desc: '가운데 알을 30초 동안 지키기 (몹 열에 넷은 알을 노린다, 알 곁에서 싸워라)', star3: '알 체력 60% 이상' },
 ];
 export const ARENA_BY_ID = Object.fromEntries(ARENA_VARIANTS.map((v) => [v.id, v])) as Record<ArenaVariant, ArenaVariantDef>;
@@ -45,6 +48,9 @@ const EVENT_WARN = 2;
 const RUSH_SEC = 5;
 const CURSE_SEC = 10;
 const EXTERMINATE_GOAL = 120;
+/** 태엽 멧돼지 체력·몸통 피해 (초반 쉬움 배율을 곱한다) */
+const BOAR_HP = 8000;
+const BOAR_DMG = 30;
 
 /** 아레나 크기: 화면의 몇 배 */
 export function arenaSize(viewW: number, viewH: number) {
@@ -148,7 +154,7 @@ export class ArenaDirector {
       const j = Math.floor(Math.random() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
-    const times = this.variant === 'survive' ? [5, 13, 21] : this.variant === 'exterminate' ? [8, 22] : [7, 16];
+    const times = this.variant === 'boar' ? [] : this.variant === 'survive' ? [5, 13, 21] : this.variant === 'exterminate' ? [8, 22] : [7, 16];
     this.events = times.slice(0, pool.length).map((t, i) => ({ t, kind: pool[i], warned: false, started: false }));
     this.meteorEnd = 0;
     this.landings = [];
@@ -174,12 +180,30 @@ export class ArenaDirector {
       eng.rocks = eng.rocks.filter((r) => Math.hypot(r.x - eng.lure!.x, r.y - eng.lure!.y) > r.r + 80);
     }
     if (this.variant === 'chase') this.spawnRunner();
+    this.boar = null;
+    if (this.variant === 'boar') this.spawnBoar();
     this.a.game.ui.toast(`${this.title}: ${this.def.desc}`);
+  }
+
+  /** 보스전: 태엽 멧돼지 (위쪽 울타리에서 걸어 들어온다) */
+  protected boar: BoarBrain | null = null;
+  protected spawnBoar() {
+    const eng = this.eng;
+    const ar = eng.arena!;
+    const ease = stageEase(this.a.stage);
+    const e = eng.spawnEnemy({
+      kind: 'boss', skin: 'boar', x: ar.w / 2, y: -40, hp: BOAR_HP * ease, r: 30, speed: 0, dmg: BOAR_DMG * ease, xp: 0, elite: true, scripted: true,
+    });
+    if (!e) return;
+    this.a.bossSpawned = true;
+    this.bossAt = 0;
+    this.boar = new BoarBrain(eng, e, (m) => this.a.game.ui.toast(m));
   }
 
   /** 몹 생성 배율 (저주·러시·종류) */
   get spawnMul() {
     let k = 1;
+    if (this.variant === 'boar') k *= 0.35;
     if (this.variant === 'survive') k *= 1.4;
     if (this.variant === 'exterminate') k *= 1.8;
     if (this.variant === 'chase') k *= 0.7;
@@ -239,7 +263,10 @@ export class ArenaDirector {
 
     // 끝나는 조건
     const t = a.time;
-    if (this.variant === 'survive' || this.variant === 'defend') {
+    this.boar?.update(dt);
+    if (this.variant === 'boar') {
+      if (t >= this.def.sec) return a.finish(false);
+    } else if (this.variant === 'survive' || this.variant === 'defend') {
       if (t >= this.def.sec) return a.finish(true);
     } else if (this.variant === 'exterminate') {
       if (a.kills >= EXTERMINATE_GOAL) {
@@ -531,6 +558,7 @@ export class ArenaDirector {
       case 'survive': third = win && this.hits <= 8; break;
       case 'exterminate': third = win && this.goalAt >= 0 && this.goalAt <= 30; break;
       case 'chase': third = win && this.targetKilledAt >= 0 && this.targetKilledAt <= 15; break;
+      case 'boar': third = win && this.bossKilledAt >= 0 && this.bossKilledAt <= 40; break;
       case 'defend': third = win && !!this.eng.lure && this.eng.lure.hp / this.eng.lure.maxHp >= 0.6; break;
     }
     return {

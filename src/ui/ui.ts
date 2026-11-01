@@ -1128,8 +1128,9 @@ export class UI implements UIHost {
         setText(this.plateEl, `STAGE ${a.stage}`);
         setText(this.timerEl, a.bossSpawned ? (a.isBossStage ? '마왕!' : '정예!') : fmtTime(a.duration - a.time));
       } else if (a.test) {
-        setText(this.plateEl, a.kind === 'scroll' ? '스크롤 (B)' : a.test.plate);
-        setText(this.timerEl, a.bossSpawned ? '정예!' : fmtTime(a.test.timeLeft));
+        const bossFight = a.kind === 'arena' && a.test.variant === 'boar';
+        setText(this.plateEl, a.kind === 'scroll' ? '스크롤 (B)' : bossFight ? '🐗 보스전' : a.test.plate);
+        setText(this.timerEl, a.bossSpawned && !bossFight ? '정예!' : fmtTime(a.test.timeLeft));
       } else {
         setText(this.plateEl, ({ material: '재료 던전', raid: '보스 레이드', infinite: '무한 모드' } as Record<string, string>)[a.kind] ?? '');
         setText(this.timerEl, fmtTime(a.kind === 'infinite' ? a.time : Math.max(0, a.duration - a.time)));

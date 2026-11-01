@@ -31,7 +31,7 @@ import { UI } from './ui/ui';
 
 const AUTOSAVE_SEC = 10;
 /** 아레나 종류별 권장 전투력 배율 */
-const ARENA_SCOUT: Record<string, number> = { normal: 1.1, survive: 1.25, exterminate: 1.2, chase: 1, defend: 1.15 };
+const ARENA_SCOUT: Record<string, number> = { normal: 1.1, survive: 1.25, exterminate: 1.2, chase: 1, defend: 1.15, boar: 2.2 };
 /** 스킬 숙련도: 장착하고 이만큼(초) 싸우면 그 스킬 포인트 +1 (스테이지 30초 기준 4판) */
 export const MASTERY_SEC = 120;
 /** 방치 화면에서 병아리가 1초에 잡는 몹 수 (대략). 마리당 골드 = 초당 수입 ÷ 이 값 */
