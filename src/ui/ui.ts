@@ -1,5 +1,5 @@
 import { sfx } from '../audio/sfx';
-import { CHEST_NAMES, type ChestGrade } from '../data/items';
+import { CHEST_NAMES, rewardText, type ChestGrade, type Reward } from '../data/items';
 import { regionOf } from '../data/world';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
@@ -596,7 +596,8 @@ export class UI implements UIHost {
     const summary = h('div', 'modal-sub');
     const name = h('div', 'modal-title', def.name + ' ');
     name.append(h('span', `grade-badge g-${SKILL_GRADE[def.id]}`, `${SKILL_GRADE[def.id]}등급`));
-    title.append(name, h('div', 'modal-sub', def.blurb), summary);
+    // 이름은 맨 위, 아이콘·설명 묶음은 장착 버튼 바로 위 (가지 찍기 칸이 위로 오게)
+    title.append(h('div', 'modal-sub', def.blurb), summary);
     // 아이콘을 누르면 실제 발동 미리보기 (따로 창, '돌아가기'로 이 창에 돌아온다)
     const icon = skillIcon(def, 'skill-art clickable');
     const pvHint = h('div', 'preview-hint', '▶ 아이콘을 누르면 발동 미리보기');
@@ -616,7 +617,7 @@ export class UI implements UIHost {
       }
       summary.textContent = skillSummary(def, emptyTree());
       this.treeRefresh = null;
-      this.openModal(head, pvHint, where, this.button('닫기', 'primary', () => this.closeModal()));
+      this.openModal(name, head, pvHint, where, this.button('닫기', 'primary', () => this.closeModal()));
       return;
     }
 
@@ -668,81 +669,99 @@ export class UI implements UIHost {
       }
       gold.textContent = `⭐ 스킬 포인트 ${g.save.skillPoints[def.id] ?? 0} (상자에서 겹치면 +1)`;
     };
-    this.openModal(head, pvHint, gold, ...rows.map((r) => r.row), equipBox, this.button('닫기', 'primary', () => this.closeModal()));
+    this.openModal(name, gold, ...rows.map((r) => r.row), head, pvHint, equipBox, this.button('닫기', 'primary', () => this.closeModal()));
     this.treeRefresh();
   }
 
+  /** 모험 탭: 큰 아이콘 + 제목 타일 2열 (한 화면에 6개). 누르면 설명·입장 창 */
   private buildDungeon() {
-    // 다음 스테이지 도전
-    const card = h('div', 'card dungeon');
-    const icon = svgIcon(ICONS.boss, '#d04070');
-    const title = h('div', 'title');
-    const sub = h('div', 'sub');
-    const ratio = h('div', 'ratio');
-    const info = h('div', 'info');
-    info.append(title, sub, ratio);
-    const btn = h('button', 'enter', '도전');
-    btn.addEventListener('click', () => this.game.enterAction());
-    card.append(icon, info, btn);
-    this.panel.append(card);
-
-    // 재료 던전 / 보스 레이드 / 무한 모드 (최고 스테이지 난이도)
-    const extra = ([
-      ['material', '📦', '재료 던전', '45초 동안 3초마다 보물 상자! 지역 재료·스킬북을 쓸어 담아요'],
-      ['raid', '😈', '보스 레이드', '보스 5종 중 골라서 도전 · 빨간 장판을 피하고 2페이즈를 버텨요 · 🔮 보스의 정수·💎'],
-      ['infinite', '♾️', '무한 모드', '끝없이 몰려온다 · 1분마다 다음 지역 · 오래 버틸수록 기록'],
-    ] as const).map(([kind, icon, name, desc]) => {
-      const c = h('div', 'card dungeon');
-      const info = h('div', 'info');
-      const sub = h('div', 'ratio');
-      info.append(h('div', 'title', name), h('div', 'sub', desc), sub);
-      const enter = h('button', 'enter', '입장');
-      enter.addEventListener('click', () => (kind === 'raid' ? this.showRaidSelect() : this.game.enterAction(kind)));
-      c.append(h('div', 'item-icon', icon), info, enter);
-      this.panel.append(c);
+    const g = this.game;
+    interface Tile {
+      icon: string;
+      title: () => string;
+      status: () => string;
+      /** 설명 창 내용 */
+      desc: () => string[];
+      action: string;
+      go: () => void;
+      disabled?: () => boolean;
+    }
+    const stageInfo = () => {
+      const stage = g.nextStage;
+      const r = actionRatio(g.stats, stage);
+      const worst = Math.min(r.atk, r.hp);
+      const label = worst < 0.6 ? '위험' : worst < 0.9 ? '도전' : '여유';
+      return { stage, r, label };
+    };
+    const left = (k: 'material' | 'raid') => `오늘 ${g.entriesLeft(k)}/${DUNGEON_DAILY[k]}회`;
+    const tiles: Tile[] = [
+      {
+        icon: '⚔️',
+        title: () => (isBossStage(g.nextStage) ? `스테이지 ${g.nextStage} 마왕` : `스테이지 ${g.nextStage}`),
+        status: () => stageInfo().label,
+        desc: () => {
+          const { stage, r, label } = stageInfo();
+          return [`${regionOf(stage).name} · 30초 버티면 ${isBossStage(stage) ? '마왕' : '정예'} 등장, 잡으면 클리어`, `권장 전투력 ${fmt(recommendedPower(stage))} · 클리어 보상 🪙 ${fmt(stageClearGold(stage))}`, `${label} · 공격 ×${r.atk.toFixed(2)} · 체력 ×${r.hp.toFixed(2)}`];
+        },
+        action: '도전',
+        go: () => g.enterAction(),
+      },
+      {
+        icon: '📦', title: () => '재료 던전', status: () => left('material'),
+        desc: () => ['45초 동안 3초마다 보물 상자!', '지역 재료·스킬북을 쓸어 담아요', left('material')],
+        action: '입장', go: () => g.enterAction('material'), disabled: () => g.entriesLeft('material') <= 0,
+      },
+      {
+        icon: '😈', title: () => '보스 레이드', status: () => left('raid'),
+        desc: () => ['보스 5종 중 골라서 도전', '빨간 장판을 피하고 2페이즈를 버텨요', `🔮 보스의 정수·💎 · 보유 🔮 ${g.save.essence}`, left('raid')],
+        action: '보스 고르기', go: () => this.showRaidSelect(), disabled: () => g.entriesLeft('raid') <= 0,
+      },
+      {
+        icon: '♾️', title: () => '무한 모드', status: () => (g.save.infiniteBest > 0 ? `최고 ${fmtTime(g.save.infiniteBest)}` : '기록 없음'),
+        desc: () => ['끝없이 몰려온다 · 1분마다 다음 지역', '오래 버틸수록 기록', g.save.infiniteBest > 0 ? `최고 기록 ${fmtTime(g.save.infiniteBest)}` : '기록 없음'],
+        action: '입장', go: () => g.enterAction('infinite'),
+      },
+      {
+        icon: '📖', title: () => '도감', status: () => `${g.collectionCount}개`,
+        desc: () => ['처음 잡은 몬스터·처음 만든 장비가 모여요', `하나마다 공격력·체력 +1% (지금 +${Math.round(g.collectionCount * COLLECTION_BONUS * 100)}%)`],
+        action: '보기', go: () => showCollection(g, this),
+      },
+      {
+        icon: '🪶', title: () => '환생', status: () => `${g.save.rebirth.count}번`,
+        desc: () => [`최고 스테이지 ${REBIRTH_MIN_STAGE}부터 환생 → 환생 깃털로 영구 강화`, `환생 ${g.save.rebirth.count}번 · 깃털 ${g.save.rebirth.feathers}개`],
+        action: '열기', go: () => showRebirth(g, this),
+      },
+    ];
+    const grid = h('div', 'adv-grid');
+    const refreshers = tiles.map((t) => {
+      const b = h('button', 'card adv-tile');
+      const titleEl = h('div', 'adv-title');
+      const statusEl = h('div', 'adv-status');
+      b.append(h('div', 'adv-icon', t.icon), titleEl, statusEl);
+      b.addEventListener('click', () => {
+        const go = this.button(t.action, 'primary', () => {
+          this.closeModal();
+          t.go();
+        });
+        go.disabled = t.disabled?.() ?? false;
+        this.openModal(
+          h('div', 'modal-title', `${t.icon} ${t.title()}`),
+          ...t.desc().map((line) => h('div', 'modal-sub', line)),
+          go,
+          this.button('닫기', '', () => this.closeModal()),
+        );
+      });
+      grid.append(b);
       return () => {
-        const s = this.game.save;
-        if (kind === 'infinite') {
-          sub.textContent = s.infiniteBest > 0 ? `최고 기록 ${fmtTime(s.infiniteBest)}` : '기록 없음';
-          return;
-        }
-        const left = this.game.entriesLeft(kind);
-        sub.textContent = `오늘 ${left}/${DUNGEON_DAILY[kind]}회${kind === 'raid' ? ` · 🔮 보유 ${s.essence}` : ''}`;
-        enter.disabled = left <= 0;
+        setText(titleEl, t.title());
+        setText(statusEl, t.status());
+        b.classList.toggle('dim', t.disabled?.() ?? false);
       };
     });
-
-    // 도감·환생 (성장 탭에서 옮겨 옴)
-    const g = this.game;
-    const more: [string, string, () => string, string, () => void][] = [
-      ['📖', '도감', () => `${g.collectionCount}개 모음 · 공격력·체력 +${Math.round(g.collectionCount * COLLECTION_BONUS * 100)}%`, '보기', () => showCollection(g, this)],
-      ['🪶', '환생', () => `${g.save.rebirth.count}번 · 깃털 ${g.save.rebirth.feathers}개 · 최고 스테이지 ${REBIRTH_MIN_STAGE}부터`, '열기', () => showRebirth(g, this)],
-    ];
-    const moreRefresh = more.map(([icon, title, sub, label, fn]) => {
-      const card = h('div', 'card dungeon');
-      const info = h('div', 'info');
-      const subEl = h('div', 'sub');
-      info.append(h('div', 'title', title), subEl);
-      const btn = h('button', 'enter', label);
-      btn.addEventListener('click', fn);
-      card.append(h('div', 'item-icon', icon), info, btn);
-      this.panel.append(card);
-      return () => setText(subEl, sub());
-    });
-
-    this.dungeonRefresh = () => {
-      extra.forEach((r) => r());
-      moreRefresh.forEach((r) => r());
-      const stage = this.game.nextStage;
-      title.textContent = isBossStage(stage) ? `스테이지 ${stage} · 마왕` : `스테이지 ${stage}`;
-      sub.textContent = `${regionOf(stage).name} · 권장 전투력 ${fmt(recommendedPower(stage))} · 클리어 보상 ${fmt(stageClearGold(stage))}`;
-      const r = actionRatio(this.game.stats, stage);
-      const worst = Math.min(r.atk, r.hp);
-      const [label, cls] = worst < 0.6 ? ['위험', 'bad'] : worst < 0.9 ? ['도전', 'mid'] : ['여유', 'good'];
-      ratio.className = 'ratio ' + cls;
-      ratio.textContent = `${label} · 공격 ×${r.atk.toFixed(2)} · 체력 ×${r.hp.toFixed(2)}`;
-    };
+    this.panel.append(grid);
+    this.dungeonRefresh = () => refreshers.forEach((f) => f());
   }
+
 
   // ---- 매 프레임 ----
 
@@ -806,7 +825,6 @@ export class UI implements UIHost {
       // 스킬 탭을 한 번 둘러보면 꺼진다 (NEW 배지는 스킬 창을 열 때까지 그대로). 보고 있는 동안 생긴 것도 본 것으로
       if (this.currentTab === 'skill') g.seeSkillTab();
       this.tabButtons.get('skill')?.classList.toggle('dot', g.skillTabUnseen);
-      this.tabButtons.get('gear')?.classList.toggle('dot', g.chestCounts.some((n) => n > 0));
 
       const st = g.stats;
       if (this.powerEl) {
@@ -964,7 +982,7 @@ export class UI implements UIHost {
     let sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
     if (r.kind === 'material') {
       title = r.win ? '재료 던전 완료!' : '재료 던전 끝';
-      sub = '주운 상자는 가방 탭에서 열어요';
+      sub = '상자에서 나온 재료는 가방에 들어갔어요';
     } else if (r.kind === 'raid') {
       title = r.win ? '레이드 성공!' : '레이드 실패…';
       sub = r.win ? '보스의 정수로 전설 장비를 만들어요' : '보스 체력을 절반 넘게 깎으면 정수 1개';
@@ -974,7 +992,7 @@ export class UI implements UIHost {
     }
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
     // 주운 상자: 하나씩 튀어나오는 연출만 (가방에 들어갔다)
-    if (r.chests.length > 0) parts.push(this.chestShow(r.chests));
+    if (r.chests.length > 0) parts.push(this.chestShow(r.chests, r.loot));
     // 자동 진행: 스테이지를 깼으면 몇 초 뒤 다음 스테이지 (지거나 다른 판이면 멈춘다)
     let timer = 0;
     const g = this.game;
@@ -1019,8 +1037,8 @@ export class UI implements UIHost {
     this.openModal(...parts);
   }
 
-  /** 결과 화면 상자: 먹은 상자가 하나씩 통통 튀어나와 반짝인다 (여는 건 가방 탭에서) */
-  private chestShow(chests: ChestGrade[]) {
+  /** 결과 화면 상자: 연 상자가 하나씩 통통 튀어나오고, 나온 것 합계 */
+  private chestShow(chests: ChestGrade[], loot: Reward) {
     const box = h('div', 'chests');
     const row = h('div', 'chest-row');
     // 좋은 상자부터
@@ -1034,7 +1052,8 @@ export class UI implements UIHost {
     box.append(
       h('div', 'chests-title', `🎉 상자 ${chests.length}개 획득!`),
       row,
-      h('div', 'chest-hint', `${n.map(([g, k]) => `${CHEST_NAMES[g]} ×${k}`).join(' · ')}  →  🎒 가방에 쏙! (가방 탭에서 열어요)`),
+      h('div', 'chest-hint', n.map(([g, k]) => `${CHEST_NAMES[g]} ×${k}`).join(' · ')),
+      h('div', 'chest-total', `얻은 것: ${[rewardText(loot), `🪙 ${fmt(loot.gold)}`].filter(Boolean).join(' · ')}`),
     );
     setTimeout(() => sfx.chest(), 150);
     return box;

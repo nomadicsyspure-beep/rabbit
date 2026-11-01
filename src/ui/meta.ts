@@ -1,7 +1,6 @@
 import { fmt } from '../core/format';
 import { GEAR, GEAR_BY_ID, GEAR_MAX, GEAR_SLOTS, SLOT_ICONS, SLOT_NAMES, enhanceCost, gearEffectText, type GearDef, type GearSlot } from '../data/gear';
-import { CHEST_NAMES, MATS, MAT_BY_ID, addReward, emptyReward, rewardText, type ChestGrade, type Reward } from '../data/items';
-import { sfx } from '../audio/sfx';
+import { MATS, MAT_BY_ID } from '../data/items';
 import type { Game } from '../game';
 import { COLLECTION_BONUS, REBIRTH_MIN_STAGE, REBIRTH_UPS, type RebirthUp } from '../game';
 import { chickPic, coin, h, holdRepeat, ibox } from './dom';
@@ -33,9 +32,8 @@ export function walletBar(game: Game) {
   return { el: bar, refresh };
 }
 
-type InvTab = 'all' | 'gear' | 'mat' | 'chest';
-const INV_TABS: [InvTab, string][] = [['all', '전체'], ['gear', '장비'], ['mat', '재료'], ['chest', '상자']];
-const CHEST_ICONS = ['📦', '🎁', '💛'];
+type InvTab = 'all' | 'gear' | 'mat';
+const INV_TABS: [InvTab, string][] = [['all', '전체'], ['gear', '장비'], ['mat', '재료']];
 /** 인벤토리 칸 수 (최소, 한 줄 5칸) */
 const INV_MIN_CELLS = 20;
 
@@ -51,7 +49,7 @@ interface InvItem {
 
 /**
  * 가방 탭: 위에 병아리 + 장비 6칸 고정 (왼쪽 무기·장갑·신발 / 오른쪽 모자·망토·장신구),
- * 칸을 누르면 그 장비 (빈 칸이면 고르기), 꾹 누르면 바꾸기. 아래는 인벤토리 (장비·재료·상자, 상자는 한꺼번에 열기)
+ * 칸을 누르면 그 장비 (빈 칸이면 고르기), 꾹 누르면 바꾸기. 아래는 인벤토리 (장비·재료)
  */
 export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   const top = h('div', 'skill-top gear-top');
@@ -98,14 +96,8 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   // ---- 인벤토리 ----
   const inv = h('div', 'card inventory');
   const tabs = h('div', 'seg inv-tabs');
-  const openAll = host.button('', 'primary', () => {
-    const res = game.openAllChests();
-    if (res.length === 0) return;
-    showChestOpen(host, res);
-    host.refresh();
-  });
   const grid = h('div', 'inv-grid');
-  inv.append(h('div', 'inv-title', '🎒 인벤토리'), tabs, openAll, grid);
+  inv.append(h('div', 'inv-title', '🎒 인벤토리'), tabs, grid);
   panel.append(inv);
   let tab: InvTab = 'all';
   const tabBtns = INV_TABS.map(([id, name]) => {
@@ -121,9 +113,6 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   const items = (): InvItem[] => {
     const s = game.save;
     const out: InvItem[] = [];
-    game.chestCounts.forEach((n, g) => {
-      if (n > 0) out.push({ kind: 'chest', icon: CHEST_ICONS[g], count: `×${n}`, name: CHEST_NAMES[g], cls: `chest-${g}`, onClick: () => host.toast(`${CHEST_NAMES[g]} ${n}개 · 위의 '상자 모두 열기'로 열어요`) });
-    });
     for (const def of GEAR) {
       const plus = s.gear[def.id];
       if (plus === undefined) continue;
@@ -141,9 +130,6 @@ export function buildGearTab(panel: HTMLElement, game: Game, host: UIHost) {
   let invKey = '';
   const refreshInv = () => {
     for (const t of tabBtns) t.b.classList.toggle('on', t.id === tab);
-    const n = game.chestCounts.reduce((a, b) => a + b, 0);
-    openAll.textContent = n > 0 ? `상자 모두 열기 (${n}개)` : '열 상자가 없어요';
-    openAll.disabled = n === 0;
     const list = items();
     const k = tab + '|' + list.map((it) => it.name + it.count).join();
     if (k === invKey) return;
@@ -244,29 +230,6 @@ function showSlotPicker(game: Game, host: UIHost, slot: GearSlot) {
   );
 }
 
-/** 상자 열기 연출: 상자가 흔들리다 펑 (보상은 이미 받은 상태) */
-function showChestOpen(host: UIHost, chests: { grade: ChestGrade; reward: Reward }[]) {
-  const row = h('div', 'chest-row');
-  const total = emptyReward();
-  chests.forEach((c, i) => {
-    addReward(total, c.reward);
-    const el = h('div', `chest-item grade-${c.grade}`);
-    el.append(h('span', 'chest-emoji', CHEST_ICONS[c.grade]), h('span', '', CHEST_NAMES[c.grade]));
-    el.classList.add('shake');
-    setTimeout(() => {
-      el.classList.remove('shake');
-      el.classList.add('opened');
-    }, 300 + i * 60);
-    row.append(el);
-  });
-  sfx.chest();
-  host.openModal(
-    h('div', 'modal-title win', `상자 ${chests.length}개 열기!`),
-    row,
-    h('div', 'chest-total', `얻은 것: ${rewardText(total) || '골드'}  ·  ` + `골드 +${fmt(total.gold)}`),
-    host.button('닫기', 'primary', () => host.closeModal()),
-  );
-}
 
 /** 장비 창: 효과, 제작 / 강화, 착용 / 해제 */
 function showGear(game: Game, host: UIHost, def: GearDef) {
