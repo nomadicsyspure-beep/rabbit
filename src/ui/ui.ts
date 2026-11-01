@@ -19,6 +19,7 @@ import { buildCraftTab, buildBagTab, showCollection, showRebirth, type UIHost } 
 import { buildShopTab, showMissions } from './shop';
 import { ICONS } from './icons';
 import { skillPreview } from './preview';
+import { ARENA_BY_ID, ARENA_VARIANTS } from '../modes/arena';
 import { Tutorial } from './tutorial';
 
 /** 매 프레임 바뀌는 화면 값: 진짜 바뀔 때만 DOM에 쓴다 (같은 값을 계속 쓰면 폰에서 스타일 계산이 쌓인다) */
@@ -508,6 +509,34 @@ export class UI implements UIHost {
     host.append(seg, desc, grid, h('div', 'hint', '스킬은 스킬 상자에서 얻어요 · 겹쳐 나오면 그 스킬 포인트 +1 · 스킬 창에서 피해·속도·개수 중 골라 찍어요'));
   }
 
+  /** 아레나 테스트: 종류 고르기 (종류마다 최고 별) */
+  private showArenaSelect() {
+    const list = h('div', 'raid-list');
+    for (const v of ARENA_VARIANTS) {
+      const card = h('div', 'card row raid-card');
+      const info = h('div', 'info');
+      const best = this.game.save.arenaStars[v.id] ?? 0;
+      info.append(
+        h('div', 'title', `${v.icon} ${v.name}  ${'★'.repeat(best)}${'☆'.repeat(3 - best)}`),
+        h('div', 'sub', v.desc),
+        h('div', 'cost-line', `★3: ${v.star3}`),
+      );
+      const go = h('button', 'enter', '도전');
+      go.addEventListener('click', () => {
+        this.closeModal();
+        this.game.enterAction('arena', v.id);
+      });
+      card.append(info, go);
+      list.append(card);
+    }
+    this.openModal(
+      h('div', 'modal-title', '🏟️ 아레나 (테스트)'),
+      h('div', 'modal-sub', '★ 클리어 · ★ 체력 50% 이상 유지 · ★ 종류별 도전'),
+      list,
+      this.button('닫기', 'primary', () => this.closeModal()),
+    );
+  }
+
   /** 보스 레이드: 보스 고르기 */
   private showRaidSelect() {
     const list = h('div', 'raid-list');
@@ -848,6 +877,16 @@ export class UI implements UIHost {
         action: '입장', go: () => g.enterAction('infinite'),
       },
       {
+        icon: '🏟️', title: () => '아레나 (테스트)',
+        status: () => `★ ${ARENA_VARIANTS.reduce((n, v) => n + (g.save.arenaStars[v.id] ?? 0), 0)}/${ARENA_VARIANTS.length * 3}`,
+        desc: () => [
+          '닫힌 경기장 + 판마다 다른 사건 (테스트 맵)',
+          '마지막 5초 러시 · 돌발 이벤트(운석·독안개·폭주 몹·대행진) · 저주 상자 · 별 3개 · 보스 분노',
+          '종류: 일반 · 생존 · 섬멸 · 추격 · 수비 (처음 딴 별마다 💎10)',
+        ],
+        action: '종류 고르기', go: () => this.showArenaSelect(),
+      },
+      {
         icon: '📖', title: () => '도감', status: () => `${g.collectionCount}개`,
         desc: () => ['처음 잡은 몬스터·처음 얻은 유물이 모여요', `하나마다 공격력·체력 +1% (지금 +${Math.round(g.collectionCount * COLLECTION_BONUS * 100)}%)`],
         action: '보기', go: () => showCollection(g, this),
@@ -981,11 +1020,15 @@ export class UI implements UIHost {
       if (a.kind === 'stage') {
         setText(this.plateEl, `STAGE ${a.stage}`);
         setText(this.timerEl, a.bossSpawned ? (a.isBossStage ? '마왕!' : '정예!') : fmtTime(a.duration - a.time));
+      } else if (a.kind === 'arena') {
+        setText(this.plateEl, a.arena.plate);
+        setText(this.timerEl, a.bossSpawned ? '정예!' : fmtTime(a.arena.timeLeft));
       } else {
         setText(this.plateEl, { material: '재료 던전', raid: '보스 레이드', infinite: '무한 모드' }[a.kind]);
         setText(this.timerEl, fmtTime(a.kind === 'infinite' ? a.time : Math.max(0, a.duration - a.time)));
       }
       this.timerEl.classList.toggle('boss', a.bossSpawned);
+      this.timerEl.classList.toggle('rush', a.kind === 'arena' && a.arena.rushing);
       setText(this.killsEl, String(a.kills));
     }
   }
@@ -1097,6 +1140,21 @@ export class UI implements UIHost {
     );
   }
 
+  /** 결과 창: 아레나 별 3개 (하나씩 쾅) */
+  private starShow(a: NonNullable<RunResult['arena']>) {
+    const box = h('div', 'arena-stars');
+    const row = h('div', 'arena-star-row');
+    a.stars.forEach((on, i) => {
+      const st = h('span', 'arena-star' + (on ? ' on' : ''), on ? '★' : '☆');
+      st.style.animationDelay = `${0.2 + i * 0.25}s`;
+      row.append(st);
+    });
+    box.append(row);
+    a.labels.forEach((label, i) => box.append(h('div', 'arena-star-line' + (a.stars[i] ? ' on' : ''), `${a.stars[i] ? '✓' : '·'} ${label}`)));
+    if (a.newStars > 0) box.append(h('div', 'arena-star-new', `새 별 ${a.newStars}개! 💎 +${a.diamonds}`));
+    return box;
+  }
+
   /** 결과 창: 장착 스킬 숙련도가 차오르는 막대 (다 차면 포인트 +1) */
   private masteryShow(list: RunResult['mastery']) {
     const box = h('div', 'mastery-result');
@@ -1153,10 +1211,15 @@ export class UI implements UIHost {
     } else if (r.kind === 'infinite') {
       title = r.best ? `신기록! ${fmtTime(r.time)}` : `${fmtTime(r.time)} 버텼어요`;
       sub = `최고 기록 ${fmtTime(this.game.save.infiniteBest)}`;
+    } else if (r.kind === 'arena' && r.arena) {
+      const v = ARENA_BY_ID[r.arena.variant];
+      title = `${v.icon} 아레나 · ${v.name} ${r.win ? '성공!' : '실패…'}`;
+      sub = v.desc;
     }
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
     // 주운 상자: 하나씩 튀어나오는 연출만 (가방에 들어갔다)
     if (r.chests.length > 0) parts.push(this.chestShow(r.chests));
+    if (r.arena) parts.splice(2, 0, this.starShow(r.arena));
     if (r.mastery.length > 0) parts.push(this.masteryShow(r.mastery));
     // 자동 진행: 스테이지를 깼으면 몇 초 뒤 다음 스테이지 (지거나 다른 판이면 멈춘다)
     let timer = 0;

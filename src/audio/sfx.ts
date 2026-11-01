@@ -89,6 +89,12 @@ export const sfx = {
       noise(0.05, 0.08, 500);
     }
   },
+  /** 마지막 러시: 쿵쿵 심장 소리 */
+  heartbeat() {
+    if (!combat) return;
+    tone(70, 0.12, 'sine', 0.35, 45);
+    tone(62, 0.1, 'sine', 0.25, 40, 0.16);
+  },
   /** 보스를 때릴 때: 퍽 하는 둔탁한 타격음 (치명타는 더 크게) */
   bossHit(crit = false) {
     if (!combat || !throttle('bossHit', 80)) return;

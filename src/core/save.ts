@@ -34,6 +34,8 @@ export interface SaveData {
   /** 누적 기록 (업적·미션용) */
   stats: { kills: number; bestCombo: number; fevers: number; chests: number; golden: number; stages: number };
   sound: boolean;
+  /** 아레나(테스트 맵) 종류별 최고 별 수 */
+  arenaStars: Partial<Record<string, number>>;
   /** 스킬 숙련도: 스테이지에서 장착하고 싸운 시간(초). MASTERY_SEC마다 그 스킬 포인트 +1 */
   mastery: Partial<Record<SkillId, number>>;
   /** 가진 유물 → 강화 단계 / 유물 칸 (RELIC_SLOTS칸, 빈 칸은 null) */
@@ -105,6 +107,7 @@ export function newSave(): SaveData {
     stats: { kills: 0, bestCombo: 0, fevers: 0, chests: 0, golden: 0, stages: 0 },
     sound: true,
     mastery: {},
+    arenaStars: {},
     relics: {},
     relicSlots: Array(RELIC_SLOTS).fill(null),
     seen: { monsters: [], relics: [] },
@@ -186,6 +189,7 @@ export function loadSave(): SaveData {
       stats: { ...base.stats, ...data.stats },
       sound: data.sound ?? true,
       mastery: { ...data.mastery },
+      arenaStars: { ...data.arenaStars },
       relics: Object.fromEntries(Object.entries(data.relics ?? {}).filter(([id]) => RELIC_BY_ID[id])),
       relicSlots: Array.from({ length: RELIC_SLOTS }, (_, i) => {
         const id = data.relicSlots?.[i];
