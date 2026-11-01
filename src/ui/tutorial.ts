@@ -61,6 +61,10 @@ export class Tutorial {
         text: '반짝이는 황금 몹이 나타났어! 도망 다니지만 잡으면 골드·다이아·금 상자를 줘. 화면 밖에 있으면 금색 화살표가 가리켜',
         enter: () => game.action.spawnGolden(),
       },
+      {
+        when: () => modalOpen() && game.mode === 'action', target: () => $('.modal .btn.primary:last-child'),
+        text: '스테이지 클리어! 돌아가기를 눌러서 받은 걸로 강해지자',
+      },
       { when: idle, target: tab('스킬'), text: '잘했어! 이제 스킬을 얻으러 가자. 스킬 탭을 눌러 봐' },
       {
         when: idle, target: () => $('.box-wood .box-btns .buy'), text: '스킬은 상자를 까서 얻어! 나무 상자를 열어 보자 (이번엔 골드를 채워 줄게)',
@@ -78,6 +82,7 @@ export class Tutorial {
       },
       { when: () => modalOpen(), target: () => $('.modal .tree-row .buy'), text: '피해·발동 속도·개수 중 골라서 포인트를 찍어 (개수는 2점). 피해를 올려 보자!' },
       { when: () => modalOpen(), target: () => $('.modal .skill-art'), text: '스킬 아이콘을 누르면 어떻게 나가는지 미리 볼 수 있어' },
+      { when: () => modalOpen(), target: () => $('.modal .btn.primary:last-child'), text: '이렇게 나가! 돌아가기를 누르면 스킬 창으로 돌아가' },
       { when: () => modalOpen(), target: () => $('.modal .btn.primary:last-child'), text: '스킬은 골드로 못 올려. 상자를 많이 까서 포인트를 모으자! 이제 닫아 보자' },
       { when: idle, target: tab('성장'), text: '성장 탭에서는 병아리 능력치를 올려' },
       {

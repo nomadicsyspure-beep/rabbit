@@ -25,11 +25,11 @@ const BASE_HP = 150;
 const BASE_SPEED = 165;
 const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
-const ELITE_HP = 4500;
+const ELITE_HP = 1200;
 /** 초반 스테이지는 쉽게: 스테이지 1은 몹 체력·피해·숫자 EASY_START배, EASY_UNTIL 스테이지부터 원래대로 */
 const EASY_START = 0.5;
 const EASY_UNTIL = 12;
-const BOSS_HP = 14000;
+const BOSS_HP = 5000;
 /** 일반 몹 난이도 배율 (체력 / 부딪힐 때 피해) */
 const MOB_HP = 1.8;
 const MOB_DMG = 1.5;
@@ -66,9 +66,15 @@ const FIRSTAID_RATE = 0.004;
 const CHARGE_DMG = 4;
 const RING_DMG = 3.5;
 const WALL_DMG = 1.5;
-/** 몹 무리: 한 덩어리로 우르르 몰려오는 무리 간격(초) / 도망 다니는 무리(쫓아가서 잡는 맛) 간격(초) */
+/** 몹 무리: 가끔 한꺼번에 몰려오는 무리 간격(초). 모양은 덩어리 · 부채꼴 줄 · 여러 방향 작은 무리 중 하나 */
 const PACK_SEC = 4;
-const HERD_SEC = 9;
+/** 중간 보스·스테이지 보스를 잡으면: 골드 (몹 골드 × 이 값), 다이아 */
+const MIDBOSS_GOLD = 60;
+const MIDBOSS_DIAMONDS = 2;
+const STAGE_BOSS_GOLD = 150;
+const STAGE_BOSS_DIAMONDS = 5;
+/** 스테이지 보스를 잡고 결과 화면까지 기다리는 시간(초): 보상이 펑 터지는 걸 보게 */
+const WIN_DELAY = 1.3;
 /** 따로따로 하나씩 나오는 몹은 이만큼만 (나머지는 무리로) */
 const TRICKLE = 0.55;
 /** 몇 콤보마다 보석 싹쓸이 */
@@ -142,7 +148,8 @@ export class ActionMode {
   /** 다음 패턴 웨이브까지 남은 시간 / 몇 번째 패턴인지 */
   private waveT = 0;
   private packT = 0;
-  private herdT = 0;
+  /** 0 이상이면 보스를 잡았다: 이 시간 뒤 결과 화면 */
+  private winT = -1;
   /** 아직 안 나온 중간 보스 시각들 */
   private midBosses: number[] = [];
   private waveIdx = 0;
@@ -245,7 +252,7 @@ export class ActionMode {
     this.spawnAcc = 0;
     this.waveT = WAVE_FIRST;
     this.packT = 1.5;
-    this.herdT = 4;
+    this.winT = -1;
     this.midBosses = kind === 'stage' && stage > 1 ? [...MID_BOSS_AT] : [];
     this.waveIdx = Math.floor(Math.random() * WAVES.length);
     this.endT = -1;
@@ -305,6 +312,11 @@ export class ActionMode {
       if (this.endT < 0) this.finish(false);
       return;
     }
+    if (this.winT >= 0) {
+      this.winT -= dt;
+      if (this.winT < 0) this.finish(true);
+      return;
+    }
 
     this.time += dt;
 
@@ -345,11 +357,6 @@ export class ActionMode {
         this.packT = PACK_SEC * (0.7 + Math.random() * 0.6) * (this.firstStage ? 1.6 : 1);
         this.spawnPack();
       }
-      this.herdT -= dt;
-      if (this.herdT <= 0) {
-        this.herdT = HERD_SEC * (0.8 + Math.random() * 0.4);
-        this.spawnHerd();
-      }
       if (this.midBosses.length > 0 && this.time >= this.midBosses[0]) {
         this.midBosses.shift();
         this.spawnMidBoss();
@@ -384,40 +391,53 @@ export class ActionMode {
     return this.kind === 'stage' && this.stage === 1;
   }
 
-  /** 몹 덩어리: 화면 밖 한 곳에서 한꺼번에 우르르 몰려온다 */
+  /**
+   * 몹 무리: 가끔 한꺼번에 몰려온다 (모두 병아리 쪽으로). 모양은 셋 중 하나:
+   * 덩어리(한 곳에 뭉쳐서) · 부채꼴 줄(한쪽에서 넓게) · 여러 방향 작은 무리(동시에 2~3곳)
+   */
   private spawnPack() {
-    const { x, y } = this.spawnPos();
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.skinStage);
-    const n = Math.round((8 + 10 * this.ramp) * (this.firstStage ? 0.5 : 1));
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const d = Math.sqrt(Math.random()) * 45;
+    const total = Math.round((8 + 10 * this.ramp) * (this.firstStage ? 0.5 : 1));
+    const p = this.game.engine.player;
+    const mob = (x: number, y: number, i: number) => {
       const fast = i % 4 === 3;
       this.spawnMob({
-        kind: fast ? 'fast' : 'normal', skin: fast ? skins.fast : skins.normal, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d,
+        kind: fast ? 'fast' : 'normal', skin: fast ? skins.fast : skins.normal, x, y,
         hp: (fast ? 4 : 5) * s, r: fast ? 10 : 11, speed: fast ? 100 : 66, dmg: 3 * s, xp: 1,
       });
+    };
+    const style = Math.random();
+    if (style < 0.45) {
+      // 덩어리
+      const { x, y } = this.spawnPos();
+      for (let i = 0; i < total; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.sqrt(Math.random()) * 45;
+        mob(x + Math.cos(a) * d, y + Math.sin(a) * d, i);
+      }
+    } else if (style < 0.75) {
+      // 부채꼴 줄: 한쪽에서 넓게 퍼져 몰려온다
+      const base = Math.random() * Math.PI * 2;
+      const d = this.diag / 2 + 30;
+      for (let i = 0; i < total; i++) {
+        const a = base + (i / Math.max(1, total - 1) - 0.5) * 1.3;
+        mob(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, i);
+      }
+    } else {
+      // 여러 방향 작은 무리
+      const groups = 2 + Math.floor(Math.random() * 2);
+      const base = Math.random() * Math.PI * 2;
+      for (let g = 0; g < groups; g++) {
+        const { x, y } = this.spawnPos(base + (g / groups) * Math.PI * 2);
+        const n = Math.ceil(total / groups);
+        for (let i = 0; i < n; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const r = Math.sqrt(Math.random()) * 30;
+          mob(x + Math.cos(a) * r, y + Math.sin(a) * r, i);
+        }
+      }
     }
-  }
-
-  /** 도망 다니는 몹 무리: 가까이 가면 우르르 도망 (병아리보다 느리다). 쫓아가서 쓸어 담으면 경험치 3배 */
-  private spawnHerd() {
-    const eng = this.game.engine;
-    const p = eng.player;
-    const s = 1 + (this.time / 60) * 0.6;
-    const skins = stageSkins(this.skinStage);
-    const a = Math.random() * Math.PI * 2;
-    const d = this.diag / 2 - 30;
-    const cx = p.x + Math.cos(a) * d;
-    const cy = p.y + Math.sin(a) * d * 0.8;
-    const n = 10 + Math.floor(Math.random() * 6);
-    for (let i = 0; i < n; i++) {
-      const b = Math.random() * Math.PI * 2;
-      const r = Math.sqrt(Math.random()) * 40;
-      this.spawnMob({ kind: 'normal', skin: skins.normal, x: cx + Math.cos(b) * r, y: cy + Math.sin(b) * r, hp: 5 * s, r: 11, speed: 72, dmg: 1 * s, xp: 3, move: 'herd' });
-    }
-    this.game.ui.toast('도망가는 몹 무리! 쫓아가서 잡자');
   }
 
   /** 중간 보스: 크고 단단한 정예 (바닥에 붉은 오라) */
@@ -684,7 +704,38 @@ export class ActionMode {
     }
     // 피버 게이지: 다 차면 피버, 끝나면 다시 0부터
     if (this.fever <= 0 && (this.feverGauge += this.feverMul) >= FEVER_NEED) this.startFever();
-    if (e.kind === 'boss') this.finish(true);
+    // 중간 보스: 보상이 펑 (골드·다이아·은/금 상자)
+    if (e.elite && e.kind !== 'boss') this.bossReward(e, MIDBOSS_GOLD, MIDBOSS_DIAMONDS, Math.random() < 0.3 ? 2 : 1, false);
+    if (e.kind === 'boss') {
+      if (this.kind !== 'stage') return this.finish(true);
+      // 스테이지 보스: 크게 펑 (마왕 스테이지는 2배) + 금 상자는 바로 가방으로, 잠깐 보여 주고 결과 화면
+      const k = this.isBossStage ? 2 : 1;
+      this.bossReward(e, STAGE_BOSS_GOLD * k, STAGE_BOSS_DIAMONDS * k, 2, true);
+      this.winT = WIN_DELAY;
+    }
+  }
+
+  /** 보스 보상 연출: 골드·다이아 글자, 폭죽, 상자 (inBag이면 줍지 않아도 가방으로) */
+  private bossReward(e: Enemy, goldMul: number, diamonds: number, chest: ChestGrade, inBag: boolean) {
+    const eng = this.game.engine;
+    const gold = enemyGold(this.stage) * goldMul;
+    this.bonusGold += gold;
+    this.game.save.diamonds += diamonds;
+    eng.addText(e.x, e.y - 60, `+${fmt(gold)} G`, '#ffe066', 28);
+    eng.addText(e.x, e.y - 32, `💎 +${diamonds}`, '#9fe4ff', 20);
+    eng.addEffect('ring', e.x, e.y, 160, 0.6, '#ffe066');
+    eng.addEffect('ring', e.x, e.y, 90, 0.45, '#ffffff');
+    eng.burst(e.x, e.y - 20, 40, ['#ffe066', '#ffb347', '#ffffff', '#9fe4ff'], 340, 0.9, 380, 4);
+    eng.addShake(8);
+    if (inBag) {
+      this.chests.push(chest);
+      eng.addText(e.x, e.y - 86, `${CHEST_NAMES[chest]} 획득!`, '#ffd166', 18);
+    } else {
+      eng.spawnChest(e.x, e.y, chest);
+    }
+    eng.vacuumGems();
+    sfx.coin();
+    sfx.chest();
   }
 
   /** 피버: 장착 스킬의 모든 가지 +FEVER_BONUS, 쿨다운 즉시 충전, 몹 더 많이 */

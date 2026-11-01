@@ -26,6 +26,8 @@ import { IdleMode } from './modes/idle';
 import { UI } from './ui/ui';
 
 const AUTOSAVE_SEC = 10;
+/** 방치 화면에서 병아리가 1초에 잡는 몹 수 (대략). 마리당 골드 = 초당 수입 ÷ 이 값 */
+export const IDLE_KILLS_PER_SEC = 2.3;
 /** 도감 하나당 공격력·체력 +1% */
 export const COLLECTION_BONUS = 0.01;
 /** 환생 가능한 최고 스테이지 */
@@ -98,16 +100,20 @@ export class Game {
     return this.save.maxStage + 1;
   }
 
+  /** 방치 수입의 기준 (초당). 방치 화면에선 마리당으로 받고, 자리를 비운 동안(오프라인)은 이 값 × 시간 */
   get goldPerSec() {
     return idleGoldPerSec(this.save.maxStage) * this.bonus.gold;
+  }
+
+  /** 방치 화면에서 몹 한 마리 잡을 때 골드 (초당 수입 ÷ 방치 화면 초당 처치 수 → 전체 수입은 예전과 같다) */
+  get goldPerKill() {
+    return this.goldPerSec / IDLE_KILLS_PER_SEC;
   }
 
   private frame(t: number) {
     const dt = this.last ? Math.min((t - this.last) / 1000, 0.05) : 0;
     this.last = t;
 
-    // 방치 수입은 어느 화면에 있든 최고 스테이지 기준으로 계속 쌓인다
-    this.save.gold += this.goldPerSec * dt;
 
     if (this.mode === 'idle') {
       this.idle.update(dt);

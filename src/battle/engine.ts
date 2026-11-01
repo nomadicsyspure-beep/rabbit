@@ -10,7 +10,7 @@ export type EnemyKind = 'normal' | 'fast' | 'tank' | 'boss';
  * charge = 정한 방향으로 곧장 돌진하고 사라짐 (dashX·dashY 방향, t1초 뒤) /
  * flee = 플레이어에게서 도망치다 t1초 뒤 사라짐 (황금 몹)
  */
-export type EnemyMove = 'chase' | 'lead' | 'charge' | 'flee' | 'herd';
+export type EnemyMove = 'chase' | 'lead' | 'charge' | 'flee';
 
 /** 그릴 때 쓰는 외형(src/assets/monsters). 행동(kind)과 따로 둔다. */
 /** firstaid = 구급상자 몹 (그림 없이 코드로 그린다. 잡으면 체력 회복템) */
@@ -399,8 +399,6 @@ const ACCEL = 6;
 const MAX_SHAKE = 7;
 /** 황금 몹이 도망치기 시작하는 거리(px) */
 const GOLDEN_FLEE_DIST = 170;
-/** 도망 다니는 몹 무리가 도망치기 시작하는 거리 */
-const HERD_FLEE_DIST = 230;
 /** 상자를 끌어오는 거리(px). 보석 자석보다 훨씬 넓다 */
 const CHEST_MAGNET = 240;
 
@@ -1165,13 +1163,13 @@ export class Engine {
       } else if (e.kind === 'boss') {
         this.updateBoss(e, dx / d, dy / d, dt);
       } else if (e.move === 'charge') {
-        // 돌진: 플레이어와 상관없이 곧장 지나가고 시간이 다 되면 사라진다
+        // 돌진: 플레이어와 상관없이 곧장 지나가고, 다 지나가면 사라지지 않고 병아리를 쫓아온다
         e.x += e.dashX * e.speed * slow * dt;
         e.y += e.dashY * e.speed * slow * dt;
         e.t1 -= dt;
         if (e.t1 <= 0) {
-          e.active = false;
-          continue;
+          e.move = 'chase';
+          e.speed = Math.min(e.speed, 120);
         }
       } else if (e.move === 'flee') {
         // 황금 몹: 가까이 오면 도망치고, 멀면 느릿느릿 어슬렁거린다. 시간이 지나면 사라진다
@@ -1192,16 +1190,6 @@ export class Engine {
         if (e.t1 <= 0) {
           e.active = false;
           continue;
-        }
-      } else if (e.move === 'herd') {
-        // 도망 다니는 무리: 가까이 오면 다 같이 반대쪽으로 (병아리보다 느리다), 멀면 어슬렁
-        if (d < HERD_FLEE_DIST) {
-          e.x -= (dx / d) * e.speed * slow * dt;
-          e.y -= (dy / d) * e.speed * slow * dt;
-        } else {
-          const a = e.phase + this.time * 0.5;
-          e.x += Math.cos(a) * e.speed * 0.25 * dt;
-          e.y += Math.sin(a) * e.speed * 0.25 * dt;
         }
       } else if (!p.dead) {
         let tx = dx;

@@ -2,6 +2,7 @@ import { AutoController } from '../battle/controllers';
 import type { EnemyKind } from '../battle/engine';
 import { FeatherWeapon, type WeaponStats } from '../battle/weapons';
 import { TAP_DAMAGE_MUL } from '../data/balance';
+import { fmt } from '../core/format';
 import { regionOf, stageSkins } from '../data/world';
 import { SKILL_BY_ID, createSkill, emptyTree } from '../data/skills';
 import type { Game } from '../game';
@@ -32,7 +33,12 @@ export class IdleMode {
     eng.controller = this.controller;
     eng.autoSkills = true;
     this.setWeapon();
-    eng.onKill = null;
+    // 방치 수입: 한 마리 잡을 때마다 골드 (몹 위에 +골드)
+    eng.onKill = (e) => {
+      const gold = this.game.goldPerKill;
+      this.game.save.gold += gold;
+      eng.addText(e.x, e.y - 18, `+${fmt(gold)}`, '#ffd166', 13);
+    };
     eng.onGem = null;
     eng.onChest = null;
     // 다음에 도전할 스테이지 지역의 바닥
@@ -51,13 +57,15 @@ export class IdleMode {
     this.spawnT = 0.3;
   }
 
-  /** 방치 화면 스킬 = 착용한 무기의 스킬 (없으면 깃털). 보여주기용 */
+  /**
+   * 방치 화면 스킬 = 기본 깃털 + 착용한 무기의 스킬 (보여주기용).
+   * 깃털은 늘 있어서 잡는 속도(= 마리당 수입이 쌓이는 속도)가 무기에 따라 크게 달라지지 않는다
+   */
   setWeapon() {
     const skill = this.game.worn('weapon')?.def.bonusSkill;
     const eng = this.game.engine;
-    eng.weapons = [!skill || skill === 'feather'
-      ? new FeatherWeapon(this.stats, SKILL_BY_ID.feather, emptyTree(), FEATHER_RANGE)
-      : createSkill(SKILL_BY_ID[skill], this.stats, emptyTree())];
+    eng.weapons = [new FeatherWeapon(this.stats, SKILL_BY_ID.feather, emptyTree(), FEATHER_RANGE)];
+    if (skill && skill !== 'feather') eng.weapons.push(createSkill(SKILL_BY_ID[skill], this.stats, emptyTree()));
   }
 
   resize(w: number, h: number) {
