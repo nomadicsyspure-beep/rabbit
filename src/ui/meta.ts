@@ -1,7 +1,7 @@
 import { fmt } from '../core/format';
 import {
   REGIONS, REGION_NAMES, RELICS, RELIC_BY_ID, RELIC_MAX, RELIC_RARITY_COLORS, RELIC_RARITY_NAMES, RELIC_SLOTS, SETS, SLOT_UNLOCK, enhanceCost, relicEffectText,
-  type RelicDef,
+  type Region, type RelicDef,
 } from '../data/relics';
 import { CHEST_NAMES, MATS, MAT_BY_ID, addReward, emptyReward, rewardText, type ChestGrade } from '../data/items';
 import { sfx } from '../audio/sfx';
@@ -189,15 +189,51 @@ export function buildBagTab(panel: HTMLElement, game: Game, host: UIHost) {
   };
 }
 
-/** 제작 탭: 위에 재료, 레시피, 아래 지역(세트)별 유물 격자 (누르면 만들기·강화·끼우기 창). 초록 점 = 지금 만들 수 있음 */
+/** 제작 탭 보기: 유물 제작 / 레시피, 유물은 지역 하나씩 (마지막으로 본 쪽을 기억) */
+let craftView: 'relic' | 'recipe' = 'relic';
+let craftRegion: Region = 'feather';
+
+/** 제작 탭: 위에 재료 고정, 아래는 보기 탭 (유물 제작 = 지역 탭 · 세트 효과 · 유물 격자 / 레시피). 초록 점 = 지금 만들 수 있음 */
 export function buildCraftTab(panel: HTMLElement, game: Game, host: UIHost) {
   const wallet = walletBar(game);
-  panel.append(wallet.el);
-  const tiles: (() => void)[] = [wallet.refresh];
-  // 레시피: 재료 → 열쇠 · 스킬 조각 · 부스터 (부스터는 다음 스테이지에 자동으로)
-  const rhead = h('div', 'skill-type-head');
-  rhead.style.setProperty('--type', '#7cf2a0');
-  rhead.append(h('span', 'type-name', '🧪 레시피'), h('span', 'type-desc', '재료로 열쇠·조각·부스터 만들기'));
+  const viewSeg = h('div', 'seg craft-view-seg');
+  const body = h('div', 'craft-view-body');
+  panel.append(wallet.el, viewSeg, body);
+  let tiles: (() => void)[] = [];
+  const views = [
+    { id: 'relic' as const, name: '🔮 유물 제작' },
+    { id: 'recipe' as const, name: '🧪 레시피' },
+  ].map((v) => {
+    const b = h('button', 'seg-btn', v.name);
+    b.addEventListener('click', () => {
+      if (craftView === v.id) return;
+      craftView = v.id;
+      render();
+    });
+    viewSeg.append(b);
+    return { id: v.id, b };
+  });
+  const render = () => {
+    for (const v of views) v.b.classList.toggle('on', v.id === craftView);
+    body.replaceChildren();
+    tiles = craftView === 'relic' ? buildRelicCraft(body, game, host) : buildRecipes(body, game, host);
+    panel.scrollTop = 0;
+    refresh();
+  };
+  const refresh = () => {
+    wallet.refresh();
+    // 다른 보기에 만들 수 있는 게 있으면 그 탭에 점
+    views.find((v) => v.id === 'relic')!.b.classList.toggle('dot', craftView !== 'relic' && RELICS.some((r) => game.canCraftRelic(r.id)));
+    views.find((v) => v.id === 'recipe')!.b.classList.toggle('dot', craftView !== 'recipe' && RECIPES.some((r) => game.canCraftRecipe(r)));
+    tiles.forEach((f) => f());
+  };
+  render();
+  return refresh;
+}
+
+/** 레시피: 재료 → 열쇠 · 스킬 조각 · 부스터 (부스터는 다음 스테이지에 자동으로) */
+function buildRecipes(body: HTMLElement, game: Game, host: UIHost) {
+  const tiles: (() => void)[] = [];
   const rlist = h('div', 'recipe-list');
   for (const r of RECIPES) {
     const card = h('div', 'card recipe');
@@ -230,26 +266,53 @@ export function buildCraftTab(panel: HTMLElement, game: Game, host: UIHost) {
       btn.disabled = !game.canCraftRecipe(r);
     });
   }
-  panel.append(rhead, rlist);
-  const ghead = h('div', 'skill-type-head');
-  ghead.style.setProperty('--type', '#c78bff');
-  ghead.append(h('span', 'type-name', '🔮 유물 제작'), h('span', 'type-desc', '지역 재료로 · 같은 지역 2·4·6개 = 세트'));
-  panel.append(ghead);
-  for (const region of REGIONS) {
+  body.append(rlist, h('div', 'hint', '재료로 열쇠·스킬 조각·부스터 만들기 · 부스터는 다음 스테이지에 자동으로 하나씩'));
+  return tiles;
+}
+
+/** 유물 제작: 지역 탭 (초록 점 = 그 지역에 지금 만들 수 있는 유물), 고른 지역의 세트 효과와 유물 6개 */
+function buildRelicCraft(body: HTMLElement, game: Game, host: UIHost) {
+  const tiles: (() => void)[] = [];
+  const seg = h('div', 'seg region-seg');
+  const area = h('div', 'region-area');
+  body.append(seg, area);
+  const btns = REGIONS.map((region) => {
+    const b = h('button', 'seg-btn', `${MAT_BY_ID[region].icon} ${REGION_NAMES[region]}`);
+    b.addEventListener('click', () => {
+      if (craftRegion === region) return;
+      craftRegion = region;
+      renderRegion();
+      host.refresh();
+    });
+    seg.append(b);
+    return { region, b };
+  });
+  tiles.push(() => {
+    for (const x of btns) {
+      x.b.classList.toggle('on', x.region === craftRegion);
+      x.b.classList.toggle('dot', RELICS.some((r) => r.region === x.region && game.canCraftRelic(r.id)));
+    }
+  });
+  let regionTiles: (() => void)[] = [];
+  const renderRegion = () => {
+    const region = craftRegion;
     const mat = MAT_BY_ID[region];
     const relics = RELICS.filter((r) => r.region === region);
     const head = h('div', 'skill-type-head');
     head.style.setProperty('--type', RELIC_RARITY_COLORS[relics[0].rarity]);
-    const setCount = h('span', 'type-desc');
-    head.append(h('span', 'type-name', `${mat.icon} ${SETS[region].name}`), setCount);
+    const count = h('span', 'type-desc');
+    head.append(h('span', 'type-name', `${mat.icon} ${SETS[region].name}`), count);
+    // 세트 효과 (지금 낀 수 기준으로 켜짐 표시)
+    const setInfo = h('div', 'gear-set');
     const grid = h('div', 'skill-grid');
+    regionTiles = [];
     for (const def of relics) {
       const t = h('button', 'skill-tile');
       const lv = h('span', 'tile-lv');
       t.append(relicBox(def), lv, h('span', 'tile-name', def.name));
       t.addEventListener('click', () => showRelic(game, host, def));
       grid.append(t);
-      tiles.push(() => {
+      regionTiles.push(() => {
         const plus = game.save.relics[def.id];
         const owned = plus !== undefined;
         t.classList.toggle('unlearned', !owned);
@@ -258,14 +321,19 @@ export function buildCraftTab(panel: HTMLElement, game: Game, host: UIHost) {
         lv.textContent = owned ? `+${plus}` : '';
       });
     }
-    tiles.push(() => {
+    regionTiles.push(() => {
       const have = relics.filter((r) => game.save.relics[r.id] !== undefined).length;
-      setCount.textContent = `${REGION_NAMES[region]} 유물 ${have}/6 · ${mat.icon} ${fmt(game.save.mats[region] ?? 0)}`;
+      count.textContent = `${RELIC_RARITY_NAMES[relics[0].rarity]} · 보유 ${have}/6 · ${mat.icon} ${fmt(game.save.mats[region] ?? 0)}`;
+      const on = game.equippedRelics.filter((r) => r.def.region === region).length;
+      setInfo.replaceChildren(h('div', 'title', `🔗 세트 효과 (지금 ${on}개 낌)`));
+      for (const b of SETS[region].bonuses) setInfo.append(h('div', 'gear-set-row' + (on >= b.need ? ' on' : ''), `${b.need}개: ${b.text}`));
     });
-    panel.append(head, grid);
-  }
-  panel.append(h('div', 'hint', '재료는 스테이지 보물 상자·재료 던전에서 · 초록 점 = 지금 만들 수 있음 · 끼우기는 가방 탭에서도'));
-  return () => tiles.forEach((f) => f());
+    area.replaceChildren(head, grid, setInfo, h('div', 'hint', '재료는 스테이지 보물 상자·재료 던전에서 · 초록 점 = 지금 만들 수 있음 · 끼우기는 가방 탭에서도'));
+    regionTiles.forEach((f) => f());
+  };
+  tiles.push(() => regionTiles.forEach((f) => f()));
+  renderRegion();
+  return tiles;
 }
 
 /** 꾹 누르면 long, 짧게 누르면 tap */

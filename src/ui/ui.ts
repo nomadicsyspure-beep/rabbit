@@ -36,6 +36,8 @@ function setText(el: HTMLElement, v: string) {
 
 /** 스킬 탭에서 보고 있는 형태 (탭을 옮겨 다녀도 기억) */
 let skillTypeView: SkillDef['type'] = 'attack';
+/** 스킬 탭 안 보기: 스킬 목록 / 스킬 상자 (마지막으로 본 쪽을 기억) */
+let skillView: 'list' | 'box' = 'list';
 
 /** 자동 진행: 결과 화면에서 이만큼(초) 기다린 뒤 다음 스테이지 */
 const AUTO_NEXT_SEC = 3;
@@ -133,6 +135,8 @@ export class UI implements UIHost {
   private equipBar: HTMLElement | null = null;
   private equipKey = '';
   private boxRefresh: (() => void) | null = null;
+  /** 스킬 탭 보기 버튼 (상자 쪽 빨간 점) */
+  private skillViewBtns: { id: 'list' | 'box'; b: HTMLElement }[] = [];
   private currentTab: TabId = 'growth';
   private powerEl: HTMLElement | null = null;
   private dungeonRefresh: (() => void) | null = null;
@@ -372,6 +376,7 @@ export class UI implements UIHost {
     this.skillHeader = null;
     this.equipBar = null;
     this.boxRefresh = null;
+    this.skillViewBtns = [];
     this.powerEl = null;
     this.dungeonRefresh = null;
     this.metaRefresh = null;
@@ -433,8 +438,40 @@ export class UI implements UIHost {
     this.equipBar = h('div', 'equip-slots');
     top.append(this.skillHeader, this.equipBar);
     this.equipKey = '';
-    this.panel.append(top, this.buildBoxes());
-    // 형태별 탭 (공격형 · 보조형 · 디버프형 · 버프형): 한 번에 한 형태만
+    // 위에 장착 칸 고정, 그 아래 보기 탭 (스킬 목록 / 스킬 상자): 한 번에 한 화면만
+    const viewSeg = h('div', 'seg skill-view-seg');
+    const body = h('div', 'skill-view-body');
+    const views = [
+      { id: 'list' as const, name: '📘 스킬 목록' },
+      { id: 'box' as const, name: '🎁 스킬 상자' },
+    ].map((v) => {
+      const b = h('button', 'seg-btn skill-view-btn', v.name);
+      b.dataset.view = v.id;
+      b.addEventListener('click', () => {
+        if (skillView === v.id) return;
+        skillView = v.id;
+        renderView();
+        this.refresh();
+      });
+      viewSeg.append(b);
+      return { id: v.id, b };
+    });
+    this.skillViewBtns = views;
+    const renderView = () => {
+      for (const v of views) v.b.classList.toggle('on', v.id === skillView);
+      body.replaceChildren();
+      this.skillTiles = [];
+      this.boxRefresh = null;
+      if (skillView === 'box') body.append(this.buildBoxes());
+      else this.buildSkillList(body);
+      this.panel.scrollTop = 0;
+    };
+    this.panel.append(top, viewSeg, body);
+    renderView();
+  }
+
+  /** 스킬 목록: 형태별 탭 (공격형 · 보조형 · 디버프형 · 버프형), 한 번에 한 형태만 */
+  private buildSkillList(host: HTMLElement) {
     const seg = h('div', 'seg skill-type-seg');
     const desc = h('div', 'skill-type-desc');
     const grid = h('div', 'skill-grid');
@@ -468,8 +505,7 @@ export class UI implements UIHost {
       }
     };
     render();
-    this.panel.append(seg, desc, grid);
-    this.panel.append(h('div', 'hint', '스킬은 상자에서 얻어요 · 겹쳐 나오면 그 스킬 포인트 +1 · 스킬 창에서 피해·속도·개수 중 골라 찍어요'));
+    host.append(seg, desc, grid, h('div', 'hint', '스킬은 스킬 상자에서 얻어요 · 겹쳐 나오면 그 스킬 포인트 +1 · 스킬 창에서 피해·속도·개수 중 골라 찍어요'));
   }
 
   /** 보스 레이드: 보스 고르기 */
@@ -966,6 +1002,8 @@ export class UI implements UIHost {
   private refreshSkills() {
     this.treeRefresh?.();
     this.boxRefresh?.();
+    // 상자 보기 버튼: 무료 상자가 있으면 빨간 점
+    for (const v of this.skillViewBtns) if (v.id === 'box') v.b.classList.toggle('dot', this.game.freeBoxReady);
     if (!this.skillHeader || !this.equipBar) return;
     const g = this.game;
     const eq = g.save.equipped;
