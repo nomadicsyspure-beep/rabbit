@@ -2883,43 +2883,6 @@ button:active:not(:disabled) {
   gap: 6px;
 }
 
-.pickup-banner {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 12px;
-  border: 2px solid #ffd23f;
-  background: linear-gradient(90deg, rgba(255, 92, 108, 0.25), rgba(255, 210, 63, 0.18), rgba(199, 139, 255, 0.25));
-  box-shadow: 0 0 10px rgba(255, 210, 63, 0.35);
-  color: var(--text);
-}
-
-.pickup-title {
-  font-size: 12px;
-  font-weight: 900;
-  color: var(--gold);
-  white-space: nowrap;
-}
-
-.pickup-chip {
-  position: relative;
-  display: inline-flex;
-}
-
-.pickup-chip .pickup-icon {
-  width: 34px;
-  height: 34px;
-}
-
-.pickup-chip .tile-grade {
-  position: absolute;
-  left: -4px;
-  top: -4px;
-  font-size: 9px;
-  line-height: 13px;
-}
-
 .box-pity {
   min-height: 14px;
   font-size: 10px;
