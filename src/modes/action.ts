@@ -10,7 +10,7 @@ import {
 import { CHEST_COLORS, CHEST_NAMES, rollChest, type ChestGrade } from '../data/items';
 import { regionOf, stageSkins, type MatId } from '../data/world';
 import { BOOSTERS } from '../data/craft';
-import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
+import { SKILL_BY_ID, createSkill, type SkillDef, type SkillId } from '../data/skills';
 import type { Game } from '../game';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
@@ -113,6 +113,8 @@ export interface RunResult {
   best: boolean;
   /** 주운 상자 등급들 (가방에 들어갔다) */
   chests: ChestGrade[];
+  /** 장착 스킬 숙련도 변화 */
+  mastery: { id: SkillId; before: number; after: number; points: number }[];
 }
 
 export type RunState = 'playing' | 'paused' | 'ended';
@@ -939,9 +941,11 @@ export class ActionMode {
     addDaily(save, 'plays');
     addDaily(save, 'fevers', this.fevers);
     this.game.addPassXp(PLAY_PASS_XP + (win ? PLAY_PASS_XP : 0));
+    // 숙련도: 장착하고 싸운 시간만큼 (유물 공짜 스킬은 빼고)
+    const mastery = this.game.gainMastery(this.equipped.map((e) => e.def.id), Math.min(this.time, 180));
     const result: RunResult = {
       win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps,
-      gold, stage: this.stage, chests, kind: this.kind, essence, best,
+      gold, stage: this.stage, chests, kind: this.kind, essence, best, mastery,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }

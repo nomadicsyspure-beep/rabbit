@@ -1,4 +1,4 @@
-import { type Effect, type Engine, type Enemy, type Projectile, type Zone } from './engine';
+import { type Effect, type Engine, type Enemy, type Projectile, type Trap, type Zone } from './engine';
 import type { Joystick } from './controllers';
 import { frameAt } from './anim';
 import { CHEST_COLORS } from '../data/items';
@@ -176,6 +176,7 @@ export class Renderer {
     ctx.fill();
 
     for (const z of eng.zones.items) if (z.active) this.drawZone(eng, z);
+    for (const tr of eng.traps.items) if (tr.active) this.drawTrap(eng, tr);
     for (const e of eng.enemies.items) if (e.active) this.drawEnemy(eng, e);
 
     const flame = SPRITES.fx['purple-flame'];
@@ -797,9 +798,116 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawZone(eng: Engine, z: Zone) {
-    const img = this.fx(z.sprite);
+  /** 설치형: 벼락 막대 / 지뢰 / 알 함정 */
+  private drawTrap(eng: Engine, tr: Trap) {
     const ctx = this.ctx;
+    const fadeOut = tr.kind === 'rod' ? 1 : Math.min(1, tr.life / 0.6);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, fadeOut);
+    if (tr.kind === 'rod') {
+      // 벼락 범위 표시 (곧 칠수록 진하게) + 막대 + 끝에서 찌릿
+      const k = 1 - Math.max(0, tr.t) / tr.maxT;
+      ctx.globalAlpha = 0.25 + 0.45 * k;
+      ctx.strokeStyle = '#fff27a';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.ellipse(tr.x, tr.y, tr.r, tr.r * 0.55, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.12 + 0.18 * k;
+      ctx.fillStyle = '#fff27a';
+      ctx.beginPath();
+      ctx.ellipse(tr.x, tr.y, tr.r * k, tr.r * 0.55 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#3a1d0b';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(tr.x, tr.y + 2);
+      ctx.lineTo(tr.x, tr.y - 26);
+      ctx.stroke();
+      ctx.strokeStyle = '#c8a46a';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      const pulse = 0.5 + 0.5 * Math.sin(eng.time * (10 + 30 * k));
+      const g = ctx.createRadialGradient(tr.x, tr.y - 28, 1, tr.x, tr.y - 28, 10 + 6 * k);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.4, `rgba(255,242,122,${0.6 + 0.4 * pulse})`);
+      g.addColorStop(1, 'rgba(255,242,122,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(tr.x, tr.y - 28, 10 + 6 * k, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (tr.kind === 'mine') {
+      // 깃털 지뢰: 둥근 몸통 + 깃털 꽂힘, 준비되면 빨간 불이 깜빡
+      const armed = tr.t <= 0;
+      if (!armed) ctx.globalAlpha *= 0.6;
+      ctx.fillStyle = '#4a3a2c';
+      ctx.strokeStyle = '#1e140b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(tr.x, tr.y, 8, 5.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      const feather = this.fx('feather');
+      if (feather) {
+        ctx.save();
+        ctx.translate(tr.x + 2, tr.y - 6);
+        ctx.rotate(0.5);
+        ctx.drawImage(feather, -4, -9, 8, 16);
+        ctx.restore();
+      }
+      if (armed && Math.floor(eng.time * 4 + tr.x) % 2 === 0) {
+        ctx.fillStyle = '#ff4d5e';
+        ctx.beginPath();
+        ctx.arc(tr.x - 3, tr.y - 2, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      // 알 함정: 떨어지는 동안은 위에서 내려오고, 준비되면 살짝 들썩
+      const drop = Math.max(0, tr.t) / tr.maxT;
+      const y = tr.y - drop * 60 + (tr.t <= 0 ? Math.sin(eng.time * 8 + tr.x) * 0.8 : 0);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(tr.x, tr.y + 5, 7 * (1 - drop * 0.5), 2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff6e4';
+      ctx.strokeStyle = '#5a3a20';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(tr.x, y - 3, 6.5, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#f2c14e';
+      ctx.beginPath();
+      ctx.arc(tr.x - 2, y - 5, 1.6, 0, Math.PI * 2);
+      ctx.arc(tr.x + 2.5, y - 1, 1.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private drawZone(eng: Engine, z: Zone) {
+    const ctx = this.ctx;
+    if (z.oil) {
+      // 기름 웅덩이: 검고 반들반들한 얼룩 (불이 닿으면 불바다)
+      const fade = Math.max(0, Math.min(1, z.life / 0.4, (z.maxLife - z.life) / 0.15));
+      ctx.globalAlpha = 0.75 * fade;
+      ctx.fillStyle = '#1d1712';
+      ctx.beginPath();
+      ctx.ellipse(z.x, z.y, z.r, z.r * 0.55, 0, 0, Math.PI * 2);
+      ctx.ellipse(z.x + z.r * 0.45, z.y + z.r * 0.15, z.r * 0.5, z.r * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.35 * fade;
+      ctx.fillStyle = '#8a7cff';
+      ctx.beginPath();
+      ctx.ellipse(z.x - z.r * 0.3, z.y - z.r * 0.15, z.r * 0.35, z.r * 0.1, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    const img = this.fx(z.sprite);
     const fade = Math.min(1, z.life / 0.3, (z.maxLife - z.life) / 0.15);
     // 독안개 구름은 반투명 (화면을 덜 가리게)
     ctx.globalAlpha = Math.max(0, fade) * (z.sprite === 'dust' ? 0.5 : 1);
