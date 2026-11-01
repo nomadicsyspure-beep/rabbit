@@ -13,7 +13,7 @@ import type { ActionMode } from './action';
 //  - 종류: 일반 · 생존 · 섬멸 · 추격 · 수비, 보스는 체력 절반에서 분노
 
 export type ArenaVariant = 'normal' | 'survive' | 'exterminate' | 'chase' | 'defend';
-type ArenaEvent = 'meteor' | 'poison' | 'bomb' | 'herd';
+export type ArenaEvent = 'meteor' | 'poison' | 'bomb' | 'herd';
 
 export interface ArenaVariantDef {
   id: ArenaVariant;
@@ -52,7 +52,11 @@ export function arenaSize(viewW: number, viewH: number) {
 }
 
 export interface ArenaResult {
-  variant: ArenaVariant;
+  /** 별 기록 열쇠 (아레나는 종류 id, 스크롤은 'scroll') */
+  key: string;
+  name: string;
+  icon: string;
+  desc: string;
   stars: boolean[];
   labels: string[];
   newStars: number;
@@ -61,55 +65,91 @@ export interface ArenaResult {
 
 export class ArenaDirector {
   variant: ArenaVariant = 'normal';
-  private events: { t: number; kind: ArenaEvent; warned: boolean; started: boolean }[] = [];
-  private meteorT = 0;
-  private meteorEnd = 0;
-  private landings: { x: number; y: number; t: number; r: number }[] = [];
-  private poisonT = -1;
-  private poisonTick = 0;
-  private rushOn = false;
-  private beatT = 0;
+  protected events: { t: number; kind: ArenaEvent; warned: boolean; started: boolean }[] = [];
+  protected meteorT = 0;
+  protected meteorEnd = 0;
+  protected landings: { x: number; y: number; t: number; r: number }[] = [];
+  protected poisonT = -1;
+  protected poisonTick = 0;
+  protected rushOn = false;
+  protected beatT = 0;
   /** 저주 상자: 0 = 아직 / 1 = 놓임 / 2 = 저주 중 / 3 = 끝 */
-  private curseState = 0;
-  private curseAt = 0;
-  private curseT = 0;
-  private bombs = new Set<Enemy>();
-  private target: Enemy | null = null;
-  private targetKilledAt = -1;
-  private bossAt = -1;
-  private bossKilledAt = -1;
-  private enraged = false;
-  private goalAt = -1;
+  protected curseState = 0;
+  protected curseAt = 0;
+  protected curseT = 0;
+  protected bombs = new Set<Enemy>();
+  protected target: Enemy | null = null;
+  protected targetKilledAt = -1;
+  protected bossAt = -1;
+  protected bossKilledAt = -1;
+  protected enraged = false;
+  protected goalAt = -1;
   /** 별 기록: 가장 낮았던 체력 비율, 맞은 횟수 */
   minHp = 1;
   hits = 0;
 
-  constructor(private readonly a: ActionMode) {}
+  constructor(protected readonly a: ActionMode) {}
 
-  private get eng(): Engine {
+  protected get eng(): Engine {
     return this.a.engine;
   }
 
-  get def() {
+  get def(): ArenaVariantDef {
     return ARENA_BY_ID[this.variant];
   }
 
-  start(variant: ArenaVariant) {
-    this.variant = ARENA_BY_ID[variant] ? variant : 'normal';
+  /** 별 기록 열쇠 */
+  get key(): string {
+    return this.variant;
+  }
+
+  /** 시작 알림 */
+  protected get title() {
+    return `아레나 · ${this.def.name}`;
+  }
+
+  /** 싸우는 영역 (이벤트 위치 기준): 아레나는 경기장 */
+  protected area() {
+    const a = this.eng.arena!;
+    return { x: 0, y: 0, w: a.w, h: a.h };
+  }
+
+  /** 나올 수 있는 돌발 이벤트 */
+  protected eventPool(): ArenaEvent[] {
+    return ['meteor', 'poison', 'bomb', 'herd'];
+  }
+
+  /** 경기장 만들기 (병아리 위치·장애물) */
+  protected setupField() {
     const eng = this.eng;
     const size = arenaSize(eng.viewW, eng.viewH);
     eng.arena = size;
     const p = eng.player;
     p.x = size.w / 2;
     p.y = size.h / 2 + (this.variant === 'defend' ? 90 : 0);
+    // 돌기둥: 막혀서 돌아가야 하고, 몹을 끼고 싸울 수 있다 (배치 셋 중 하나)
+    const { w, h } = size;
+    const layouts: [number, number][][] = [
+      [[0.25, 0.3], [0.75, 0.3], [0.25, 0.72], [0.75, 0.72]],
+      [[0.5, 0.22], [0.2, 0.5], [0.8, 0.5], [0.5, 0.8]],
+      [[0.3, 0.25], [0.7, 0.4], [0.3, 0.62], [0.7, 0.8]],
+    ];
+    const lay = layouts[Math.floor(Math.random() * layouts.length)];
+    eng.rocks = lay.map(([fx, fy]) => ({ x: fx * w, y: fy * h, r: 24 + Math.random() * 8 }));
+  }
+
+  start(variant: ArenaVariant) {
+    this.variant = ARENA_BY_ID[variant] ? variant : 'normal';
+    const eng = this.eng;
+    this.setupField();
     // 돌발 이벤트: 판마다 무작위 (같은 건 두 번 안 나온다)
-    const pool: ArenaEvent[] = ['meteor', 'poison', 'bomb', 'herd'];
+    const pool = this.eventPool();
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
     const times = this.variant === 'survive' ? [5, 13, 21] : this.variant === 'exterminate' ? [8, 22] : [7, 16];
-    this.events = times.map((t, i) => ({ t, kind: pool[i], warned: false, started: false }));
+    this.events = times.slice(0, pool.length).map((t, i) => ({ t, kind: pool[i], warned: false, started: false }));
     this.meteorEnd = 0;
     this.landings = [];
     this.poisonT = -1;
@@ -128,10 +168,13 @@ export class ArenaDirector {
     this.hits = 0;
     if (this.variant === 'defend') {
       const hp = eng.player.maxHp * 2;
-      eng.lure = { x: size.w / 2, y: size.h / 2 - 10, r: 26, hp, maxHp: hp };
+      const ar = this.area();
+      eng.lure = { x: ar.x + ar.w / 2, y: ar.y + ar.h / 2 - 10, r: 26, hp, maxHp: hp };
+      // 알 자리에 돌기둥이 겹치지 않게
+      eng.rocks = eng.rocks.filter((r) => Math.hypot(r.x - eng.lure!.x, r.y - eng.lure!.y) > r.r + 80);
     }
     if (this.variant === 'chase') this.spawnRunner();
-    this.a.game.ui.toast(`아레나 · ${this.def.name}: ${this.def.desc}`);
+    this.a.game.ui.toast(`${this.title}: ${this.def.desc}`);
   }
 
   /** 몹 생성 배율 (저주·러시·종류) */
@@ -143,6 +186,11 @@ export class ArenaDirector {
     if (this.curseState === 2) k *= 2.2;
     if (this.rushOn) k *= this.variant === 'normal' ? 2.6 : 1.6;
     return k;
+  }
+
+  /** 몹 나오는 자리 */
+  spawnPos() {
+    return this.edgePos();
   }
 
   /** 경기장 가장자리 바로 바깥 (몹이 울타리를 넘어 들어온다) */
@@ -246,20 +294,20 @@ export class ArenaDirector {
     this.updateEnrage();
   }
 
-  private startEvent(kind: ArenaEvent) {
+  protected startEvent(kind: ArenaEvent) {
     const eng = this.eng;
-    const ar = eng.arena!;
+    const ar = this.area();
     if (kind === 'meteor') {
       this.meteorEnd = this.a.time + 5;
       this.meteorT = 0;
     } else if (kind === 'poison') {
       this.poisonT = 0;
       this.poisonTick = 0;
-      eng.safe = { x: ar.w / 2 + (Math.random() - 0.5) * ar.w * 0.3, y: ar.h / 2 + (Math.random() - 0.5) * ar.h * 0.3, r: Math.hypot(ar.w, ar.h) };
+      eng.safe = { x: ar.x + ar.w / 2 + (Math.random() - 0.5) * ar.w * 0.3, y: ar.y + ar.h / 2 + (Math.random() - 0.5) * ar.h * 0.3, r: Math.hypot(ar.w, ar.h) };
     } else if (kind === 'bomb') {
       const s = 1 + (this.a.time / 60) * 0.6;
       for (let i = 0; i < 4; i++) {
-        const pos = this.edgePos();
+        const pos = this.spawnPos();
         const e = this.a.spawnMob({ kind: 'fast', skin: stageSkins(this.a.stage).fast, x: pos.x, y: pos.y, hp: 14 * s, r: 13, speed: 108, dmg: 4 * s, xp: 5, tint: 'bomb' });
         if (e) this.bombs.add(e);
       }
@@ -270,8 +318,8 @@ export class ArenaDirector {
       const fromLeft = Math.random() < 0.5;
       const n = 36;
       for (let i = 0; i < n; i++) {
-        const y = ((i + 0.5) / n) * ar.h;
-        const x = fromLeft ? -30 - (i % 3) * 22 : ar.w + 30 + (i % 3) * 22;
+        const y = ar.y + ((i + 0.5) / n) * ar.h;
+        const x = fromLeft ? ar.x - 30 - (i % 3) * 22 : ar.x + ar.w + 30 + (i % 3) * 22;
         this.a.spawnMob({
           kind: i % 6 === 0 ? 'tank' : 'normal', skin: i % 6 === 0 ? skins.tank : skins.normal, x, y,
           hp: (i % 6 === 0 ? 24 : 5) * s, r: i % 6 === 0 ? 14 : 11, speed: 150, dmg: 5 * s, xp: 1, tint: 'charge',
@@ -281,9 +329,9 @@ export class ArenaDirector {
     }
   }
 
-  private updateMeteors(dt: number) {
+  protected updateMeteors(dt: number) {
     const eng = this.eng;
-    const ar = eng.arena!;
+    const ar = this.area();
     const p = eng.player;
     if (this.a.time < this.meteorEnd) {
       this.meteorT -= dt;
@@ -291,8 +339,8 @@ export class ArenaDirector {
         this.meteorT = 0.32;
         // 절반은 병아리 근처, 절반은 경기장 아무 데나
         const near = Math.random() < 0.5;
-        const x = near ? p.x + (Math.random() - 0.5) * 220 : Math.random() * ar.w;
-        const y = near ? p.y + (Math.random() - 0.5) * 220 : Math.random() * ar.h;
+        const x = near ? p.x + (Math.random() - 0.5) * 220 : ar.x + Math.random() * ar.w;
+        const y = near ? p.y + (Math.random() - 0.5) * 220 : ar.y + Math.random() * ar.h;
         const r = 44;
         eng.addHazard(x, y, r, 1.1, p.maxHp * 0.14);
         this.landings.push({ x, y, t: 1.1, r });
@@ -308,11 +356,11 @@ export class ArenaDirector {
     }
   }
 
-  private updatePoison(dt: number) {
+  protected updatePoison(dt: number) {
     const eng = this.eng;
     if (this.poisonT < 0 || !eng.safe) return;
     this.poisonT += dt;
-    const ar = eng.arena!;
+    const ar = this.area();
     const big = Math.hypot(ar.w, ar.h) * 0.6;
     const small = 150;
     const t = this.poisonT;
@@ -336,7 +384,7 @@ export class ArenaDirector {
   }
 
   /** 폭주 몹: 병아리에게 닿으면 자폭 (크게 아프다), 먼저 잡으면 주변 몹까지 펑 + 보너스 */
-  private updateBombs() {
+  protected updateBombs() {
     const eng = this.eng;
     const p = eng.player;
     for (const e of this.bombs) {
@@ -356,18 +404,18 @@ export class ArenaDirector {
     }
   }
 
-  private updateCurse(dt: number) {
+  protected updateCurse(dt: number) {
     const a = this.a;
     const eng = this.eng;
-    const ar = eng.arena!;
+    const ar = this.area();
     const p = eng.player;
     if (this.curseState === 0 && a.time >= this.curseAt && !a.bossSpawned) {
       // 병아리에서 떨어진 곳에 놓는다
       let x = 0;
       let y = 0;
       for (let i = 0; i < 10; i++) {
-        x = 60 + Math.random() * (ar.w - 120);
-        y = 60 + Math.random() * (ar.h - 120);
+        x = ar.x + 60 + Math.random() * (ar.w - 120);
+        y = ar.y + 60 + Math.random() * (ar.h - 120);
         if (Math.hypot(x - p.x, y - p.y) > 140) break;
       }
       eng.curse = { x, y };
@@ -400,7 +448,7 @@ export class ArenaDirector {
   }
 
   /** 추격: 도망치는 황금 몹 (경기장 밖으로는 못 나간다, 구석에 몰면 잡힌다) */
-  private spawnRunner() {
+  protected spawnRunner() {
     const ar = this.eng.arena!;
     const s = 1 + 0.6 * 0.3;
     const e = this.a.spawnMob({
@@ -410,7 +458,7 @@ export class ArenaDirector {
     this.target = e;
   }
 
-  private updateRunner() {
+  protected updateRunner() {
     const e = this.target;
     const ar = this.eng.arena;
     if (!e || !ar) return;
@@ -419,7 +467,7 @@ export class ArenaDirector {
     e.y = Math.max(e.r, Math.min(ar.h - e.r, e.y));
   }
 
-  private updateLure(dt: number) {
+  protected updateLure(dt: number) {
     const eng = this.eng;
     const l = eng.lure;
     if (!l) return;
@@ -438,7 +486,7 @@ export class ArenaDirector {
   }
 
   /** 보스가 체력 절반 아래로: 분노 (더 빠르게, 알림) */
-  private updateEnrage() {
+  protected updateEnrage() {
     if (this.enraged) return;
     const boss = this.eng.boss;
     if (!boss || boss.hp > boss.maxHp * 0.5) return;

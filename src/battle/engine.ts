@@ -481,6 +481,13 @@ export class Engine {
   rush = 0;
   /** 아레나 저주 상자 (밟으면 저주 발동) */
   curse: { x: number; y: number } | null = null;
+  /** 돌기둥: 병아리·몹 모두 못 지나간다 (아레나) */
+  rocks: { x: number; y: number; r: number }[] = [];
+  /** 가시덤불: 그리기만 (닿으면 아픈 건 스크롤 테스트가 처리) */
+  thorns: { x: number; y: number; r: number }[] = [];
+  /** 카메라를 밖에서 움직인다 (스크롤 테스트) / 병아리를 화면 안에 가둔다 (위·아래 HUD 여백) */
+  fixedCam = false;
+  viewClamp = false;
   /** 피격: 병아리가 밀려나는 속도 / 남은 느려짐 시간과 배율 / 화면 테두리 빨갛게 남은 시간과 처음 길이 */
   hurtKX = 0;
   hurtKY = 0;
@@ -590,6 +597,10 @@ export class Engine {
     this.lure = null;
     this.rush = 0;
     this.curse = null;
+    this.rocks = [];
+    this.thorns = [];
+    this.fixedCam = false;
+    this.viewClamp = false;
     this.hitStop = 0;
     this.bossHitCd = 0;
     this.bossStopCd = 0;
@@ -1341,6 +1352,21 @@ export class Engine {
         p.x = Math.max(p.r, Math.min(this.arena.w - p.r, p.x));
         p.y = Math.max(p.r, Math.min(this.arena.h - p.r, p.y));
       }
+      // 돌기둥에 막힌다
+      for (const rk of this.rocks) {
+        const dx = p.x - rk.x;
+        const dy = p.y - rk.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const min = rk.r + p.r;
+        if (d < min) {
+          p.x = rk.x + (dx / d) * min;
+          p.y = rk.y + (dy / d) * min;
+        }
+      }
+      if (this.viewClamp) {
+        p.x = Math.max(this.camX + p.r + 4, Math.min(this.camX + this.viewW - p.r - 4, p.x));
+        p.y = Math.max(this.camY + 110, Math.min(this.camY + this.viewH - 130, p.y));
+      }
       p.hp = Math.min(p.maxHp, p.hp + (p.regen + this.buffOn('regen')) * p.maxHp * dt);
     }
     p.invuln -= dt;
@@ -1356,7 +1382,9 @@ export class Engine {
     if (this.shieldT <= 0) this.shieldHp = 0;
     this.shake = Math.max(0, this.shake - 30 * dt);
 
-    if (this.followCamera) {
+    if (this.fixedCam) {
+      // 스크롤 테스트: 카메라는 밖에서 움직인다
+    } else if (this.followCamera) {
       this.camX = p.x - this.viewW / 2;
       this.camY = p.y - this.viewH / 2;
       // 아레나: 벽 너머가 조금만 보이게 카메라를 묶는다 (경기장이 화면보다 작으면 가운데)
@@ -1515,6 +1543,18 @@ export class Engine {
         e.y += (uy / ul) * e.speed * slow * dt;
       }
       e.slowT -= dt;
+
+      // 돌기둥에 막힌다
+      for (const rk of this.rocks) {
+        const rx = e.x - rk.x;
+        const ry = e.y - rk.y;
+        const rd = Math.hypot(rx, ry) || 1;
+        const rmin = rk.r + e.r * 0.8;
+        if (rd < rmin) {
+          e.x = rk.x + (rx / rd) * rmin;
+          e.y = rk.y + (ry / rd) * rmin;
+        }
+      }
 
       // 넉백
       e.x += e.kx * dt;

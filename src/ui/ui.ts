@@ -20,7 +20,8 @@ import { buildShopTab, showMissions } from './shop';
 import { ICONS } from './icons';
 import { skillPreview } from './preview';
 import { canPrompt, isIOS, isInstalled, onInstallChange, promptInstall } from '../core/install';
-import { ARENA_BY_ID, ARENA_VARIANTS } from '../modes/arena';
+import { ARENA_VARIANTS } from '../modes/arena';
+import { SCROLL_DEF } from '../modes/scroll';
 import { Tutorial } from './tutorial';
 
 /** 매 프레임 바뀌는 화면 값: 진짜 바뀔 때만 DOM에 쓴다 (같은 값을 계속 쓰면 폰에서 스타일 계산이 쌓인다) */
@@ -885,7 +886,7 @@ export class UI implements UIHost {
         action: '입장', go: () => g.enterAction('infinite'),
       },
       {
-        icon: '🏟️', title: () => '아레나 (테스트)',
+        icon: '🏟️', title: () => '아레나 (테스트 A)',
         status: () => `★ ${ARENA_VARIANTS.reduce((n, v) => n + (g.save.arenaStars[v.id] ?? 0), 0)}/${ARENA_VARIANTS.length * 3}`,
         desc: () => [
           '닫힌 경기장 + 판마다 다른 사건 (테스트 맵)',
@@ -893,6 +894,17 @@ export class UI implements UIHost {
           '종류: 일반 · 생존 · 섬멸 · 추격 · 수비 (처음 딴 별마다 💎10)',
         ],
         action: '종류 고르기', go: () => this.showArenaSelect(),
+      },
+      {
+        icon: SCROLL_DEF.icon, title: () => '스크롤 (테스트 B)',
+        status: () => `★ ${g.save.arenaStars.scroll ?? 0}/3`,
+        desc: () => [
+          '화면이 천천히 위로 흘러가요. 병아리는 화면 안에서만 움직여요',
+          '몹은 주로 위에서 내려오고, 길목에 가시덤불이 나와요 (닿으면 따끔)',
+          '30초 버티면 보스 · 러시·돌발 이벤트·저주 상자·별 3개는 아레나와 같아요',
+          `★3: ${SCROLL_DEF.star3} (처음 딴 별마다 💎10)`,
+        ],
+        action: '도전', go: () => g.enterAction('scroll', 'normal'),
       },
       {
         icon: '📖', title: () => '도감', status: () => `${g.collectionCount}개`,
@@ -1028,15 +1040,15 @@ export class UI implements UIHost {
       if (a.kind === 'stage') {
         setText(this.plateEl, `STAGE ${a.stage}`);
         setText(this.timerEl, a.bossSpawned ? (a.isBossStage ? '마왕!' : '정예!') : fmtTime(a.duration - a.time));
-      } else if (a.kind === 'arena') {
-        setText(this.plateEl, a.arena.plate);
-        setText(this.timerEl, a.bossSpawned ? '정예!' : fmtTime(a.arena.timeLeft));
+      } else if (a.test) {
+        setText(this.plateEl, a.kind === 'scroll' ? '스크롤 (B)' : a.test.plate);
+        setText(this.timerEl, a.bossSpawned ? '정예!' : fmtTime(a.test.timeLeft));
       } else {
-        setText(this.plateEl, { material: '재료 던전', raid: '보스 레이드', infinite: '무한 모드' }[a.kind]);
+        setText(this.plateEl, ({ material: '재료 던전', raid: '보스 레이드', infinite: '무한 모드' } as Record<string, string>)[a.kind] ?? '');
         setText(this.timerEl, fmtTime(a.kind === 'infinite' ? a.time : Math.max(0, a.duration - a.time)));
       }
       this.timerEl.classList.toggle('boss', a.bossSpawned);
-      this.timerEl.classList.toggle('rush', a.kind === 'arena' && a.arena.rushing);
+      this.timerEl.classList.toggle('rush', !!a.test?.rushing);
       setText(this.killsEl, String(a.kills));
     }
   }
@@ -1219,10 +1231,9 @@ export class UI implements UIHost {
     } else if (r.kind === 'infinite') {
       title = r.best ? `신기록! ${fmtTime(r.time)}` : `${fmtTime(r.time)} 버텼어요`;
       sub = `최고 기록 ${fmtTime(this.game.save.infiniteBest)}`;
-    } else if (r.kind === 'arena' && r.arena) {
-      const v = ARENA_BY_ID[r.arena.variant];
-      title = `${v.icon} 아레나 · ${v.name} ${r.win ? '성공!' : '실패…'}`;
-      sub = v.desc;
+    } else if (r.arena) {
+      title = `${r.arena.icon} ${r.arena.name} ${r.win ? '성공!' : '실패…'}`;
+      sub = r.arena.desc;
     }
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
     // 주운 상자: 하나씩 튀어나오는 연출만 (가방에 들어갔다)
