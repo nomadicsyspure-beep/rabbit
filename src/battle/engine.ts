@@ -402,8 +402,11 @@ const MAX_SHAKE = 7;
  * 피격 패널티: 넉백 속도(px/초, 금방 줄어든다) / 느려지는 시간(초) / 그동안 이동 속도 배율 / 화면 흔들림 / 빨간 테두리 시간(초) / 부딪힌 몹 튕김.
  * 보스(몸통·탄막·장판)는 세게, 일반 몹은 아주 가볍게
  */
-const HURT_HEAVY = { knock: 320, slowT: 0.6, slow: 0.55, shake: 6, vign: 0.6, bounce: 0 };
-const HURT_LIGHT = { knock: 70, slowT: 0.15, slow: 0.9, shake: 2, vign: 0.35, bounce: 60 };
+const HURT_HEAVY = { knock: 430, slowT: 0.75, slow: 0.45, shake: 12, vign: 0.8, bounce: 0 };
+const HURT_LIGHT = { knock: 18, slowT: 0, slow: 1, shake: 0.6, vign: 0.2, bounce: 40 };
+/** 보스에게 맞으면: 화면이 잠깐 멈춘다(초) / 화면 전체 붉은 번쩍(초) */
+const HIT_STOP = 0.09;
+const IMPACT_T = 0.16;
 /** 황금 몹이 도망치기 시작하는 거리(px) */
 const GOLDEN_FLEE_DIST = 170;
 /** 상자를 끌어오는 거리(px). 보석 자석보다 훨씬 넓다 */
@@ -444,6 +447,9 @@ export class Engine {
   hurtSlow = 1;
   vignT = 0;
   vignMax = 1;
+  /** 보스 피격 순간 멈춤 / 붉은 번쩍 남은 시간 */
+  hitStop = 0;
+  impactT = 0;
 
   readonly player: Player = {
     x: 0, y: 0, r: 12, hp: 100, maxHp: 100, speed: 120, regen: 0, magnet: 60,
@@ -498,7 +504,7 @@ export class Engine {
 
   onKill: ((e: Enemy) => void) | null = null;
   /** 병아리가 맞았을 때 (소리 등) */
-  onHurt: (() => void) | null = null;
+  onHurt: ((heavy: boolean) => void) | null = null;
   onGem: ((value: number) => void) | null = null;
   onChest: ((x: number, y: number, grade: 0 | 1 | 2) => void) | null = null;
   onPlayerDead: (() => void) | null = null;
@@ -531,6 +537,8 @@ export class Engine {
     this.hurtKY = 0;
     this.hurtT = 0;
     this.vignT = 0;
+    this.hitStop = 0;
+    this.impactT = 0;
     this.fever = 0;
     const p = this.player;
     p.dead = false;
@@ -774,11 +782,18 @@ export class Engine {
       }
     }
     p.hp -= dmg;
-    p.invuln = 0.5;
-    p.flash = 0.2;
+    p.invuln = heavy ? 0.7 : 0.5;
+    p.flash = heavy ? 0.3 : 0.12;
     const hk = heavy ? HURT_HEAVY : HURT_LIGHT;
-    this.addShake(hk.shake);
-    this.addText(p.x, p.y - p.r - 6, '-' + fmt(dmg), '#ff6b6b', heavy ? 14 : 12);
+    // 보스 피격은 흔들림 상한을 넘겨 크게 + 순간 멈춤 + 붉은 번쩍
+    if (heavy) {
+      this.shake = Math.max(this.shake, hk.shake);
+      this.hitStop = HIT_STOP;
+      this.impactT = IMPACT_T;
+    } else {
+      this.addShake(hk.shake);
+    }
+    this.addText(p.x, p.y - p.r - 6, '-' + fmt(dmg), '#ff6b6b', heavy ? 18 : 11);
     // 피격 패널티: 반대쪽으로 넉백 + 잠깐 느려짐, 빨간 조각과 충격 고리
     if (fx !== undefined && fy !== undefined) {
       const dx = p.x - fx;
@@ -788,16 +803,22 @@ export class Engine {
       this.hurtKY = (dy / d) * hk.knock;
     }
     // 약한 피격이 센 피격의 느려짐을 덮어쓰지 않게
-    if (heavy || this.hurtT <= 0) {
+    if (heavy) {
       this.hurtT = hk.slowT;
       this.hurtSlow = hk.slow;
     }
     if (heavy || this.vignT <= this.vignMax * 0.5) {
       this.vignT = this.vignMax = hk.vign;
     }
-    this.burst(p.x, p.y - 8, heavy ? 10 : 5, ['#ff4d6d', '#ff8fa3', '#ffffff'], heavy ? 200 : 140, 0.4, 300, 3);
-    this.addEffect('ring', p.x, p.y - 4, heavy ? 30 : 20, 0.25, '#ff6b6b');
-    this.onHurt?.();
+    if (heavy) {
+      this.burst(p.x, p.y - 8, 22, ['#ff4d6d', '#ff8fa3', '#ffffff', '#ffd23f'], 320, 0.5, 300, 3.5);
+      this.addEffect('ring', p.x, p.y - 4, 46, 0.3, '#ffffff');
+      this.addEffect('ring', p.x, p.y - 4, 70, 0.4, '#ff4d6d');
+      this.addSprite('fire-burst', p.x, p.y - 10, 44, 0.25);
+    } else {
+      this.burst(p.x, p.y - 8, 3, ['#ff8fa3', '#ffffff'], 110, 0.3, 300, 2.5);
+    }
+    this.onHurt?.(heavy);
     // 유물: 맞으면 냉기 (주변 적 느리게) / 반격 폭발
     if (this.procs.frostHurt > 0 && this.frostCd <= 0) {
       this.frostCd = 2;
@@ -1116,6 +1137,13 @@ export class Engine {
   }
 
   update(dt: number) {
+    // 보스 피격 순간 멈춤: 이 동안은 흔들림·번쩍만 줄어든다
+    if (this.hitStop > 0) {
+      this.hitStop -= dt;
+      this.impactT -= dt;
+      this.shake = Math.max(0, this.shake - 10 * dt);
+      return;
+    }
     this.time += dt;
     const p = this.player;
 
@@ -1159,6 +1187,7 @@ export class Engine {
     this.hurtCd -= dt;
     this.hurtT -= dt;
     this.vignT -= dt;
+    this.impactT -= dt;
     for (const id of BUFF_IDS) this.buffs[id].t -= dt;
     this.shieldT -= dt;
     if (this.shieldT <= 0) this.shieldHp = 0;

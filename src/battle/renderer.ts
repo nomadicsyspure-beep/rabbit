@@ -265,6 +265,11 @@ export class Renderer {
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, hh);
     }
+    // 보스 피격: 화면 전체가 붉게 번쩍
+    if (eng.impactT > 0 && eng.followCamera) {
+      ctx.fillStyle = `rgba(255,40,50,${(0.3 * eng.impactT / 0.16).toFixed(3)})`;
+      ctx.fillRect(0, 0, eng.viewW, eng.viewH);
+    }
 
     const boss = eng.boss;
     if (boss && eng.followCamera) this.drawBossBar(eng, boss);

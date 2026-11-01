@@ -211,7 +211,7 @@ export class ActionMode {
     eng.controller = this.game.pilot;
     this.game.applyControls();
     eng.onKill = (e) => this.onKill(e);
-    eng.onHurt = () => sfx.hurt();
+    eng.onHurt = (heavy) => sfx.hurt(heavy);
     eng.onGem = (v) => this.onGem(v);
     eng.onChest = (x, y, grade) => this.onChest(x, y, grade);
     eng.onPlayerDead = () => {
