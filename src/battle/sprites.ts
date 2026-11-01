@@ -16,6 +16,8 @@ const monsterFiles = import.meta.glob<string>('../assets/monsters/*.png', { eage
 const fxFiles = import.meta.glob<string>('../assets/fx/*.png', { eager: true, query: '?url', import: 'default' });
 const groundFiles = import.meta.glob<string>('../assets/ground/*.png', { eager: true, query: '?url', import: 'default' });
 const uiFiles = import.meta.glob<string>('../assets/ui/*.png', { eager: true, query: '?url', import: 'default' });
+// 보스 8방향 띠 (256×256 프레임 8장): <보스>-<방향>.png (예: boar-south-west.png)
+const bossFiles = import.meta.glob<string>('../assets/boss/*.png', { eager: true, query: '?url', import: 'default' });
 // 장비 겉모습 (src/assets/gear/README.md 참고): <장비id>-<방향>.png (모자·등) / <장비id>.png (무기)
 const gearFiles = import.meta.glob<string>('../assets/gear/*.png', { eager: true, query: '?url', import: 'default' });
 
@@ -77,7 +79,24 @@ export const SPRITES = {
   ui: {} as Record<string, HTMLImageElement>,
   /** 장비 겉모습 그림 (파일 이름 → 그림) */
   gear: {} as Record<string, HTMLImageElement>,
+  /** 보스 8방향 애니메이션 (보스 이름 → 방향별) */
+  boss: {} as Record<string, (Anim | null)[]>,
 };
+
+for (const [path, url] of Object.entries(bossFiles)) {
+  const name = baseName(path);
+  const boss = name.split('-')[0];
+  const d = dirOf(name);
+  if (d < 0) continue;
+  SPRITES.boss[boss] ??= DIRS.map(() => null);
+  loadStrip(url, 110)
+    .then((anim) => {
+      SPRITES.boss[boss][d] = anim;
+    })
+    .catch(() => {
+      // 못 불러오면 그 방향은 다른 방향 그림으로
+    });
+}
 
 for (const [path, url] of Object.entries(monsterFiles)) {
   const name = baseName(path);

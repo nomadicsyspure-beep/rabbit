@@ -15,7 +15,7 @@ export type EnemyMove = 'chase' | 'lead' | 'charge' | 'flee';
 
 /** 그릴 때 쓰는 외형(src/assets/monsters). 행동(kind)과 따로 둔다. */
 /** firstaid = 구급상자 몹 (그림 없이 코드로 그린다. 잡으면 체력 회복템) */
-export type EnemySkin = 'slime' | 'mushroom' | 'sprout' | 'bat' | 'angel' | 'golem' | 'snail' | 'rabbit' | 'devil' | 'firstaid';
+export type EnemySkin = 'slime' | 'mushroom' | 'sprout' | 'bat' | 'angel' | 'golem' | 'snail' | 'rabbit' | 'devil' | 'firstaid' | 'boar';
 /** 몹 그림: 이름, 또는 이름@색상 (색 바꾼 몹) */
 export type EnemyLook = EnemySkin | `${EnemySkin}@${number}`;
 
@@ -54,6 +54,10 @@ export interface Enemy {
   tint: EnemyTint;
   /** 아레나 수비: 병아리 대신 지킬 알(lure)로 간다 */
   toLure: boolean;
+  /** 엔진이 안 움직이고 밖(아레나 보스 스크립트)에서 움직인다. 바라보는 방향은 dashX·dashY */
+  scripted: boolean;
+  /** 받는 피해 배율 (약점 노출 때 2배 등) */
+  dmgTaken: number;
   /** 정예·마왕 (화면 밖에 있으면 빨간 화살표로 알려 준다) */
   elite: boolean;
   /** 디버프 남은 시간: 기절(멈춤) / 공포(도망) / 혼란(갈팡질팡) / 취약(받는 피해 ×1.5) / 표식(치명타 확정) */
@@ -410,6 +414,7 @@ export const CRIT_CHANCE = 0.15;
 const CRIT_MUL = 2;
 /** 몬스터 외형별 쓰러질 때 튀는 조각 색 */
 const BURST_COLOR: Record<EnemySkin, string[]> = {
+  boar: ['#8a4a2a', '#ffd23f', '#c9a46a'],
   slime: ['#8bd34b', '#c8f07a', '#5aa62e'],
   mushroom: ['#e8743b', '#ffd0a8', '#b84a22'],
   sprout: ['#c9a46a', '#7cc35a', '#f2d69a'],
@@ -481,6 +486,8 @@ export class Engine {
   rush = 0;
   /** 아레나 저주 상자 (밟으면 저주 발동) */
   curse: { x: number; y: number } | null = null;
+  /** 보스 경고선 (효과 풀이 가득 차도 꼭 보이게 따로 둔다) */
+  warns: { x1: number; y1: number; x2: number; y2: number; w: number; t: number; maxT: number; color: string }[] = [];
   /** 돌기둥: 병아리·몹 모두 못 지나간다 (아레나) */
   rocks: { x: number; y: number; r: number }[] = [];
   /** 가시덤불: 그리기만 (닿으면 아픈 건 스크롤 테스트가 처리) */
@@ -509,7 +516,7 @@ export class Engine {
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
     gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false,
     stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
-    t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0, toLure: false,
+    t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0, toLure: false, scripted: false, dmgTaken: 1,
   }), 500);
   readonly projectiles = new Pool<Projectile>(() => ({
     active: false, kind: 'feather', x: 0, y: 0, vx: 0, vy: 0, r: 4, dmg: 1, life: 1, pierce: 0, hit: [], blast: 0, flight: 0,
@@ -599,6 +606,7 @@ export class Engine {
     this.curse = null;
     this.rocks = [];
     this.thorns = [];
+    this.warns = [];
     this.fixedCam = false;
     this.viewClamp = false;
     this.hitStop = 0;
@@ -620,7 +628,7 @@ export class Engine {
     Object.assign(e, {
       skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, move: 'chase',
       phase: Math.random() * Math.PI * 2, golden: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false, stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
-      t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0, toLure: false,
+      t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0, toLure: false, scripted: false, dmgTaken: 1,
     }, init);
     e.id = this.nextId++;
     e.active = true;
@@ -749,6 +757,7 @@ export class Engine {
     // 분노 버프, 취약 디버프
     dmg *= 1 + this.buffOn('rage');
     if (e.weakT > 0) dmg *= 1.5;
+    dmg *= e.dmgTaken;
     const crit = e.markT > 0 || Math.random() < this.critChance + this.buffOn('luck');
     if (crit) dmg *= CRIT_MUL;
     e.hp -= dmg;
@@ -1375,6 +1384,10 @@ export class Engine {
     this.hurtCd -= dt;
     this.hurtT -= dt;
     this.vignT -= dt;
+    for (let i = this.warns.length - 1; i >= 0; i--) {
+      this.warns[i].t -= dt;
+      if (this.warns[i].t <= 0) this.warns.splice(i, 1);
+    }
     this.bossHitCd -= dt;
     this.bossStopCd -= dt;
     for (const id of BUFF_IDS) this.buffs[id].t -= dt;
@@ -1483,6 +1496,8 @@ export class Engine {
         const a = feared ? Math.atan2(-dy, -dx) : e.phase + this.time * 3;
         e.x += Math.cos(a) * e.speed * slow * (feared ? 1.1 : 0.7) * dt;
         e.y += Math.sin(a) * e.speed * slow * (feared ? 1.1 : 0.7) * dt;
+      } else if (e.scripted) {
+        // 밖에서 움직인다 (아레나 보스)
       } else if (e.kind === 'boss') {
         this.updateBoss(e, dx / d, dy / d, dt);
       } else if (e.move === 'charge') {
