@@ -3357,3 +3357,109 @@ button:active:not(:disabled) {
   font-size: 13px;
   line-height: 1.45;
 }
+
+/* 전투력 · 스카우터 */
+.power-line {
+  display: block;
+  width: 100%;
+  text-align: center;
+  cursor: pointer;
+}
+
+.power-num {
+  color: #ffd23f;
+  font-weight: 900;
+}
+
+.verdict-chip {
+  --vc: #ffd23f;
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1.5px solid var(--vc);
+  color: var(--vc);
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.scout-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(20, 12, 6, 0.8);
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.scout-badge:active {
+  transform: translate(-50%, 2px);
+}
+
+.mode-action .scout-badge {
+  display: none;
+}
+
+.scout-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scout-sub {
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.scout-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scout-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 13px;
+}
+
+.scout-rec {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.adv-tile {
+  position: relative;
+}
+
+.adv-verdict {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}

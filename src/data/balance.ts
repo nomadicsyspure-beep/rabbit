@@ -18,6 +18,11 @@ export const idleGoldPerSec = (maxStage: number) => enemyGold(Math.max(1, maxSta
 /** 스테이지 첫 클리어 보상 */
 export const stageClearGold = (stage: number) => enemyGold(stage) * (isBossStage(stage) ? 120 : 40);
 
+/** 초반 스테이지는 쉽게: 스테이지 1은 몹 체력·피해·숫자 EASY_START배, EASY_UNTIL 스테이지부터 원래대로 */
+export const EASY_START = 0.5;
+export const EASY_UNTIL = 12;
+export const stageEase = (stage: number) => Math.min(1, EASY_START + ((1 - EASY_START) * (stage - 1)) / (EASY_UNTIL - 1));
+
 // 액션 모드 진입 시 "권장 전투력" 기준. 내 수치 ÷ 권장 수치 = 비율로 액션 밸런스를 맞춘다.
 export const recommendedPower = (stage: number) => enemyHp(stage);
 export const recommendedHp = (stage: number) => enemyDmg(stage) * 15;
