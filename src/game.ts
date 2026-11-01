@@ -9,18 +9,19 @@ import {
 import {
   BRANCHES, BRANCH_POINTS, SKILLS, SKILL_BY_ID, SKILL_GRADE, SKILL_TYPES, emptyTree, type Branch, type SkillId, type SkillType,
 } from './data/skills';
-import { GEAR_BY_ID, GEAR_MAX, GEAR_SLOTS, SETS, emptyProcs, enhanceCost, gearScale, type GearSlot, type ProcKind, type Procs } from './data/gear';
+import {
+  RELIC_BY_ID, RELIC_MAX, RELIC_SLOTS, SETS, SLOT_UNLOCK, emptyProcs, enhanceCost, relicScale, rollRelic, type ProcKind, type Procs, type Region, type RelicDef,
+} from './data/relics';
 import { addReward, emptyReward, openChest, type ChestGrade, type Reward } from './data/items';
 import { PET_BY_ID, PET_MAX, PET_SLOTS, petValue } from './data/pets';
 import { BOX_BY_ID, FREE_BOX_MS, SHARD_COST, SHARD_GAIN, boxCost, gradeAtLeast, rollBox, type BoxId } from './data/skillbox';
 import type { BoosterId, RecipeDef } from './data/craft';
-import { CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, rollGear, rollPet, skinPrice, summonCost } from './data/shop';
+import { CHICK_SKIN_BY_ID, FX_SKIN_BY_ID, rollPet, skinPrice, summonCost } from './data/shop';
 import {
   ACHIEVEMENTS, ATTEND_REWARDS, DAILY_ALL_BONUS, DAILY_MISSIONS, MISSION_PASS_XP, PASS_LEVELS, achieveReady, addDaily,
   canAttend, freshDaily, passLevel, passReward, today, type DailyKey,
 } from './data/missions';
 import type { PetDef } from './data/pets';
-import type { GearDef } from './data/gear';
 import type { MatId } from './data/world';
 import { ActionMode, type RunKind } from './modes/action';
 import { IdleMode } from './modes/idle';
@@ -202,98 +203,134 @@ export class Game {
     return true;
   }
 
-  // ---- 장비 ----
+  // ---- 유물 ----
 
-  canCraft(id: string) {
-    const def = GEAR_BY_ID[id];
-    const s = this.save;
-    return s.gear[id] === undefined && (s.mats[def.mat] ?? 0) >= def.matCost && s.gold >= def.goldCost && s.essence >= (def.essence ?? 0);
+  /** 이 칸이 열렸나 (역대 최고 스테이지: 환생해도 안 닫힌다) */
+  slotUnlocked(i: number) {
+    return Math.max(this.save.maxStage, this.save.bestStageEver) >= SLOT_UNLOCK[i];
   }
 
-  /** 만들기. 빈 부위면 바로 착용, 도감에 등록 */
-  craftGear(id: string): boolean {
-    if (!this.canCraft(id)) return false;
-    const def = GEAR_BY_ID[id];
+  /** 열린 칸 수 */
+  get openSlots() {
+    let n = 0;
+    for (let i = 0; i < RELIC_SLOTS; i++) if (this.slotUnlocked(i)) n++;
+    return n;
+  }
+
+  canCraftRelic(id: string) {
+    const def = RELIC_BY_ID[id];
     const s = this.save;
-    s.mats[def.mat] = (s.mats[def.mat] ?? 0) - def.matCost;
+    return s.relics[id] === undefined && (s.mats[def.region] ?? 0) >= def.matCost && s.gold >= def.goldCost && s.essence >= (def.essence ?? 0);
+  }
+
+  /** 만들기. 빈 칸이 있으면 바로 끼운다, 도감에 등록 */
+  craftRelic(id: string): boolean {
+    if (!this.canCraftRelic(id)) return false;
+    const def = RELIC_BY_ID[id];
+    const s = this.save;
+    s.mats[def.region] = (s.mats[def.region] ?? 0) - def.matCost;
     s.gold -= def.goldCost;
     s.essence -= def.essence ?? 0;
-    s.gear[id] = 0;
-    if (!s.wear[def.slot]) s.wear[def.slot] = id;
-    if (!s.seen.gear.includes(id)) s.seen.gear.push(id);
-    this.applyLook();
-    this.idle.refreshStats();
+    this.addRelic(id);
+    this.relicChanged();
     return true;
   }
 
-  canEnhance(id: string) {
-    const plus = this.save.gear[id];
-    if (plus === undefined || plus >= GEAR_MAX) return false;
-    const def = GEAR_BY_ID[id];
-    const c = enhanceCost(def, plus);
+  /** 새 유물을 가방에 (빈 칸이 있으면 끼우고 도감 등록) */
+  private addRelic(id: string) {
     const s = this.save;
-    return (s.mats[def.mat] ?? 0) >= c.mat && s.gold >= c.gold && s.essence >= c.essence;
+    s.relics[id] = 0;
+    const free = s.relicSlots.findIndex((x, i) => !x && this.slotUnlocked(i));
+    if (free >= 0) s.relicSlots[free] = id;
+    if (!s.seen.relics.includes(id)) s.seen.relics.push(id);
   }
 
-  enhanceGear(id: string): boolean {
-    if (!this.canEnhance(id)) return false;
-    const def = GEAR_BY_ID[id];
+  canEnhanceRelic(id: string) {
+    const plus = this.save.relics[id];
+    if (plus === undefined || plus >= RELIC_MAX) return false;
+    const def = RELIC_BY_ID[id];
+    const c = enhanceCost(def, plus);
     const s = this.save;
-    const c = enhanceCost(def, s.gear[id]);
-    s.mats[def.mat] = (s.mats[def.mat] ?? 0) - c.mat;
+    return (s.mats[def.region] ?? 0) >= c.mat && s.gold >= c.gold && s.essence >= c.essence;
+  }
+
+  enhanceRelic(id: string): boolean {
+    if (!this.canEnhanceRelic(id)) return false;
+    const def = RELIC_BY_ID[id];
+    const s = this.save;
+    const c = enhanceCost(def, s.relics[id]);
+    s.mats[def.region] = (s.mats[def.region] ?? 0) - c.mat;
     s.gold -= c.gold;
     s.essence -= c.essence;
-    s.gear[id]++;
+    s.relics[id]++;
     addDaily(s, 'upgrades');
     this.idle.refreshStats();
     return true;
   }
 
-  /** 착용 / 같은 걸 다시 누르면 해제 */
-  toggleWear(id: string) {
-    const def = GEAR_BY_ID[id];
-    if (this.save.gear[id] === undefined) return;
-    this.save.wear[def.slot] = this.save.wear[def.slot] === id ? undefined : id;
+  /** 끼우기: slot을 주면 그 칸에 (있던 건 빠진다), 안 주면 빈 칸에. 다른 칸에 있었으면 옮긴다 */
+  equipRelic(id: string, slot?: number): boolean {
+    const s = this.save;
+    if (s.relics[id] === undefined) return false;
+    if (slot === undefined) slot = s.relicSlots.findIndex((x, i) => !x && this.slotUnlocked(i));
+    if (slot < 0 || !this.slotUnlocked(slot)) return false;
+    const was = s.relicSlots.indexOf(id);
+    if (was >= 0) s.relicSlots[was] = was === slot ? id : s.relicSlots[slot];
+    s.relicSlots[slot] = id;
+    this.relicChanged();
+    return true;
+  }
+
+  unequipRelic(id: string) {
+    const s = this.save;
+    const i = s.relicSlots.indexOf(id);
+    if (i < 0) return;
+    s.relicSlots[i] = null;
+    this.relicChanged();
+  }
+
+  isRelicOn(id: string) {
+    return this.save.relicSlots.includes(id);
+  }
+
+  private relicChanged() {
     this.applyLook();
     this.idle.refreshStats();
-    if (this.mode === 'idle' && def.slot === 'weapon') this.idle.setWeapon();
+    if (this.mode === 'idle') this.idle.setWeapon();
   }
 
-  /** 착용한 부위의 장비와 강화 단계 */
-  worn(slot: GearSlot) {
-    const id = this.save.wear[slot];
-    return id && GEAR_BY_ID[id] ? { def: GEAR_BY_ID[id], plus: this.save.gear[id] ?? 0 } : null;
+  /** 끼고 있는 유물 (열린 칸만) */
+  get equippedRelics(): { def: RelicDef; plus: number; slot: number }[] {
+    const out: { def: RelicDef; plus: number; slot: number }[] = [];
+    this.save.relicSlots.forEach((id, i) => {
+      if (id && RELIC_BY_ID[id] && this.slotUnlocked(i)) out.push({ def: RELIC_BY_ID[id], plus: this.save.relics[id] ?? 0, slot: i });
+    });
+    return out;
   }
 
-  /** 끼고 있는 장비의 지역 세트: 몇 개 꼈는지와 켜진 세트 효과 (2개 이상인 지역만) */
-  get gearSets() {
-    const counts: Partial<Record<MatId, number>> = {};
-    for (const slot of GEAR_SLOTS) {
-      const w = this.worn(slot);
-      if (w) counts[w.def.mat] = (counts[w.def.mat] ?? 0) + 1;
-    }
-    return (Object.entries(counts) as [MatId, number][])
-      .filter(([m, n]) => SETS[m] && n >= 2)
-      .map(([m, n]) => ({ mat: m, name: SETS[m]!.name, count: n, active: SETS[m]!.bonuses.filter((b) => n >= b.need), all: SETS[m]!.bonuses }));
+  /** 끼고 있는 유물의 지역 세트: 몇 개 꼈는지와 켜진 세트 효과 (2개 이상인 지역만) */
+  get relicSets() {
+    const counts: Partial<Record<Region, number>> = {};
+    for (const r of this.equippedRelics) counts[r.def.region] = (counts[r.def.region] ?? 0) + 1;
+    return (Object.entries(counts) as [Region, number][])
+      .filter(([, n]) => n >= 2)
+      .map(([m, n]) => ({ region: m, name: SETS[m].name, count: n, active: SETS[m].bonuses.filter((b) => n >= b.need), all: SETS[m].bonuses }));
   }
 
-  /** 발동 효과: 장비(강화 배율) + 세트. 확률·회복은 더하고, 시간·배율은 큰 쪽 */
+  /** 발동 효과: 유물(강화 배율) + 세트. 확률·회복은 더하고, 시간·배율은 큰 쪽 */
   get procs(): Procs {
     const p = emptyProcs();
     const add = (kind: ProcKind, v: number) => {
       if (kind === 'frostHurt' || kind === 'critFreeze' || kind === 'hurtBlast') p[kind] = Math.max(p[kind], v);
       else p[kind] += v;
     };
-    for (const slot of GEAR_SLOTS) {
-      const w = this.worn(slot);
-      if (w?.def.proc) add(w.def.proc.kind, w.def.proc.v * gearScale(w.plus));
-    }
-    for (const set of this.gearSets) for (const bo of set.active) if (bo.proc) add(bo.proc.kind, bo.proc.v);
+    for (const r of this.equippedRelics) if (r.def.proc) add(r.def.proc.kind, r.def.proc.v * relicScale(r.plus));
+    for (const set of this.relicSets) for (const bo of set.active) if (bo.proc) add(bo.proc.kind, bo.proc.v);
     p.dodge = Math.min(0.5, p.dodge);
     return p;
   }
 
-  /** 장비·도감·환생을 합친 배율. 공격력/체력 배율, 장신구 효과, 무기의 공짜 스킬 */
+  /** 유물·도감·환생·동료를 합친 배율. 공격력/체력 배율, 수치 효과, 유물의 공짜 스킬 */
   get bonus() {
     const s = this.save;
     const col = 1 + COLLECTION_BONUS * this.collectionCount;
@@ -302,30 +339,26 @@ export class Game {
       hp: col,
       gold: 1 + REBIRTH_UPS.gold.per * s.rebirth.ups.gold,
       magnet: 1, chest: 0, combo: 0, fever: 1, crit: 0, speed: 0,
-      weapon: null as { skill: SkillId; plus: number } | null,
+      skills: [] as { skill: SkillId; plus: number }[],
     };
-    const w = this.worn('weapon');
-    if (w) {
-      b.atk *= 1 + w.def.atk! * gearScale(w.plus);
-      if (w.def.bonusSkill) b.weapon = { skill: w.def.bonusSkill, plus: w.plus };
-    }
-    const hat = this.worn('hat');
-    if (hat) b.hp *= 1 + hat.def.hp! * gearScale(hat.plus);
-    // 장갑·신발·망토·장신구 수치 효과
-    for (const slot of ['gloves', 'shoes', 'cape', 'acc'] as const) {
-      const it = this.worn(slot);
-      if (!it || !it.def.effect) continue;
-      const v = it.def.value! * gearScale(it.plus);
-      if (it.def.effect === 'magnet') b.magnet += v;
-      else if (it.def.effect === 'chest') b.chest += v;
-      else if (it.def.effect === 'combo') b.combo += v;
-      else if (it.def.effect === 'fever') b.fever += v;
-      else if (it.def.effect === 'gold') b.gold *= 1 + v;
-      else if (it.def.effect === 'crit') b.crit += v;
-      else if (it.def.effect === 'speed') b.speed += v;
+    for (const r of this.equippedRelics) {
+      const k = relicScale(r.plus);
+      if (r.def.atk) b.atk *= 1 + r.def.atk * k;
+      if (r.def.hp) b.hp *= 1 + r.def.hp * k;
+      if (r.def.bonusSkill) b.skills.push({ skill: r.def.bonusSkill, plus: r.plus });
+      const st = r.def.stat;
+      if (!st) continue;
+      const v = st.v * k;
+      if (st.kind === 'magnet') b.magnet += v;
+      else if (st.kind === 'chest') b.chest += v;
+      else if (st.kind === 'combo') b.combo += v;
+      else if (st.kind === 'fever') b.fever += v;
+      else if (st.kind === 'gold') b.gold *= 1 + v;
+      else if (st.kind === 'crit') b.crit += v;
+      else if (st.kind === 'speed') b.speed += v;
     }
     // 지역 세트 수치 효과
-    for (const set of this.gearSets) {
+    for (const set of this.relicSets) {
       for (const bo of set.active) {
         if (bo.atk) b.atk *= 1 + bo.atk;
         if (bo.hp) b.hp *= 1 + bo.hp;
@@ -348,7 +381,7 @@ export class Game {
     return b;
   }
 
-  /** 능력치 (강화 + 레벨 + 장비·도감·환생) */
+  /** 능력치 (강화 + 레벨 + 유물·도감·환생) */
   get stats() {
     const st = playerStats(this.save.levels, this.save.level);
     const b = this.bonus;
@@ -358,7 +391,7 @@ export class Game {
   // ---- 도감 ----
 
   get collectionCount() {
-    return this.save.seen.monsters.length + this.save.seen.gear.length;
+    return this.save.seen.monsters.length + this.save.seen.relics.length;
   }
 
   /** 처음 잡은 몹 등록 */
@@ -379,7 +412,7 @@ export class Game {
     return m < REBIRTH_MIN_STAGE ? 0 : Math.floor(m / 5 + (m * m) / 200);
   }
 
-  /** 환생: 골드·최고 스테이지·능력치 강화가 처음으로. 스킬·장비·재료·다이아·레벨은 남는다 */
+  /** 환생: 골드·최고 스테이지·능력치 강화가 처음으로. 스킬·유물·재료·다이아·레벨은 남는다 */
   rebirth() {
     const gain = this.rebirthGain;
     if (gain <= 0) return false;
@@ -444,26 +477,24 @@ export class Game {
     return { def, text: '💎 +10', isNew: false };
   }
 
-  /** 장비 하나 얻기: 새로 얻으면 +0, 가지고 있으면 +1 (최대면 재료로) */
-  private gainGear(def: GearDef) {
+  /** 유물 하나 얻기: 새로 얻으면 +0, 가지고 있으면 +1 (최대면 재료로) */
+  private gainRelic(def: RelicDef) {
     const s = this.save;
-    const plus = s.gear[def.id];
+    const plus = s.relics[def.id];
     if (plus === undefined) {
-      s.gear[def.id] = 0;
-      if (!s.wear[def.slot]) s.wear[def.slot] = def.id;
-      if (!s.seen.gear.includes(def.id)) s.seen.gear.push(def.id);
+      this.addRelic(def.id);
       return { def, text: 'NEW!', isNew: true };
     }
-    if (plus < GEAR_MAX) {
-      s.gear[def.id] = plus + 1;
+    if (plus < RELIC_MAX) {
+      s.relics[def.id] = plus + 1;
       return { def, text: `+${plus + 1}`, isNew: false };
     }
-    s.mats[def.mat] = (s.mats[def.mat] ?? 0) + def.matCost;
+    s.mats[def.region] = (s.mats[def.region] ?? 0) + def.matCost;
     return { def, text: `재료 +${def.matCost}`, isNew: false };
   }
 
   /** 소환 n번. 소환권이 있으면 먼저 쓰고, 없으면 다이아. 모자라면 null */
-  summon(kind: 'pet' | 'gear', n: 1 | 10) {
+  summon(kind: 'pet' | 'relic', n: 1 | 10) {
     const s = this.save;
     const useTicket = n === 1 && s.tickets[kind] > 0;
     const cost = summonCost(n);
@@ -471,9 +502,10 @@ export class Game {
     if (useTicket) s.tickets[kind]--;
     else s.diamonds -= cost;
     const out = [];
-    for (let i = 0; i < n; i++) out.push(kind === 'pet' ? this.gainPet(rollPet()) : this.gainGear(rollGear()));
+    for (let i = 0; i < n; i++) out.push(kind === 'pet' ? this.gainPet(rollPet()) : this.gainRelic(rollRelic()));
     addDaily(s, 'summons', n);
     this.applyLook();
+    this.idle.refreshStats();
     if (this.mode === 'idle') this.idle.enter();
     this.persist();
     return out;
@@ -498,10 +530,11 @@ export class Game {
     this.applySkins();
   }
 
-  /** 엔진에 몸에 보이는 장비를 알려 준다 */
+  /** 엔진에 몸에 보이는 유물을 알려 준다 */
   applyLook() {
-    const w = this.save.wear;
-    this.engine.look = { hat: w.hat ?? '', back: '', hand: w.weapon ?? '' };
+    // 공짜 스킬을 주는 첫 유물이 옆에 둥둥
+    const hand = this.equippedRelics.find((r) => r.def.bonusSkill);
+    this.engine.look = { hat: '', back: '', hand: hand?.def.id ?? '' };
   }
 
   /** 엔진에 지금 색을 알려 준다 (그리는 쪽이 읽는다) */

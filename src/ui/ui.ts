@@ -15,7 +15,7 @@ import { COLLECTION_BONUS, DUNGEON_DAILY, REBIRTH_MIN_STAGE, type Game, type Mod
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
 import { art, chickPic, coin, h, holdRepeat, ibox, monsterPic, skillIcon, svgIcon } from './dom';
-import { buildCraftTab, buildGearTab, showCollection, showRebirth, type UIHost } from './meta';
+import { buildCraftTab, buildBagTab, showCollection, showRebirth, type UIHost } from './meta';
 import { buildShopTab, showMissions } from './shop';
 import { ICONS } from './icons';
 import { skillPreview } from './preview';
@@ -136,7 +136,7 @@ export class UI implements UIHost {
   private currentTab: TabId = 'growth';
   private powerEl: HTMLElement | null = null;
   private dungeonRefresh: (() => void) | null = null;
-  /** 장비 탭 같은 추가 화면 갱신 */
+  /** 가방 탭 같은 추가 화면 갱신 */
   private metaRefresh: (() => void) | null = null;
   /** 열려 있는 스킬 트리 창 갱신 */
   private treeRefresh: (() => void) | null = null;
@@ -378,7 +378,7 @@ export class UI implements UIHost {
     else if (id === 'growth') this.buildGrowth();
     else if (id === 'skill') this.buildSkills();
     else if (id === 'dungeon') this.buildDungeon();
-    else if (id === 'gear') this.metaRefresh = buildGearTab(this.panel, this.game, this);
+    else if (id === 'gear') this.metaRefresh = buildBagTab(this.panel, this.game, this);
     else if (id === 'craft') this.metaRefresh = buildCraftTab(this.panel, this.game, this);
     else if (id === 'shop') this.metaRefresh = buildShopTab(this.panel, this.game, this);
     this.refresh();
@@ -817,7 +817,7 @@ export class UI implements UIHost {
       },
       {
         icon: '📖', title: () => '도감', status: () => `${g.collectionCount}개`,
-        desc: () => ['처음 잡은 몬스터·처음 만든 장비가 모여요', `하나마다 공격력·체력 +1% (지금 +${Math.round(g.collectionCount * COLLECTION_BONUS * 100)}%)`],
+        desc: () => ['처음 잡은 몬스터·처음 얻은 유물이 모여요', `하나마다 공격력·체력 +1% (지금 +${Math.round(g.collectionCount * COLLECTION_BONUS * 100)}%)`],
         action: '보기', go: () => showCollection(g, this),
       },
       {
@@ -1080,7 +1080,7 @@ export class UI implements UIHost {
       sub = '주운 상자는 가방 탭에서 열어요';
     } else if (r.kind === 'raid') {
       title = r.win ? '레이드 성공!' : '레이드 실패…';
-      sub = r.win ? '보스의 정수로 전설 장비를 만들어요' : '보스 체력을 절반 넘게 깎으면 정수 1개';
+      sub = r.win ? '보스의 정수로 전설 유물을 만들어요' : '보스 체력을 절반 넘게 깎으면 정수 1개';
     } else if (r.kind === 'infinite') {
       title = r.best ? `신기록! ${fmtTime(r.time)}` : `${fmtTime(r.time)} 버텼어요`;
       sub = `최고 기록 ${fmtTime(this.game.save.infiniteBest)}`;

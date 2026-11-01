@@ -3,7 +3,7 @@ import type { EnemyKind } from '../battle/engine';
 import { FeatherWeapon, type WeaponStats } from '../battle/weapons';
 import { TAP_DAMAGE_MUL } from '../data/balance';
 import { fmt } from '../core/format';
-import { emptyProcs } from '../data/gear';
+import { emptyProcs } from '../data/relics';
 import { regionOf, stageSkins } from '../data/world';
 import { SKILL_BY_ID, createSkill, emptyTree } from '../data/skills';
 import type { Game } from '../game';
@@ -60,11 +60,11 @@ export class IdleMode {
   }
 
   /**
-   * 방치 화면 스킬 = 기본 깃털 + 착용한 무기의 스킬 (보여주기용).
-   * 깃털은 늘 있어서 잡는 속도(= 마리당 수입이 쌓이는 속도)가 무기에 따라 크게 달라지지 않는다
+   * 방치 화면 스킬 = 기본 깃털 + 끼운 유물의 첫 공짜 스킬 (보여주기용).
+   * 깃털은 늘 있어서 잡는 속도(= 마리당 수입이 쌓이는 속도)가 유물에 따라 크게 달라지지 않는다
    */
   setWeapon() {
-    const skill = this.game.worn('weapon')?.def.bonusSkill;
+    const skill = this.game.bonus.skills.find((x) => x.skill !== 'feather')?.skill;
     const eng = this.game.engine;
     eng.weapons = [new FeatherWeapon(this.stats, SKILL_BY_ID.feather, emptyTree(), FEATHER_RANGE)];
     if (skill && skill !== 'feather') eng.weapons.push(createSkill(SKILL_BY_ID[skill], this.stats, emptyTree()));

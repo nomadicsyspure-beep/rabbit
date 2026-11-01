@@ -1,8 +1,7 @@
 import type { Recolor } from '../battle/tint';
-import { GEAR, type GearDef } from './gear';
 import { PETS, type PetDef } from './pets';
 
-// 상점: 다이아 소환(동료·장비), 병아리 색, 스킬 색.
+// 상점: 다이아 소환(동료·유물), 병아리 색, 스킬 색.
 
 /** 테스트 중: 다이아 값은 전부 이 값 (null로 바꾸면 원래 값) */
 export const DIAMOND_OVERRIDE: number | null = null;
@@ -17,18 +16,6 @@ export function rollPet(): PetDef {
   const rarity = r < 0.04 ? 2 : r < 0.3 ? 1 : 0;
   const pool = PETS.filter((p) => p.rarity === rarity);
   return pool[Math.floor(Math.random() * pool.length)];
-}
-
-/** 장비 소환: 전설(정수 필요한 것) 빼고, 비싼 장비일수록 드물게 */
-export function rollGear(): GearDef {
-  const pool = GEAR.filter((g) => !g.essence);
-  const weights = pool.map((g) => 1 / Math.sqrt(g.goldCost));
-  let r = Math.random() * weights.reduce((a, b) => a + b, 0);
-  for (let i = 0; i < pool.length; i++) {
-    r -= weights[i];
-    if (r <= 0) return pool[i];
-  }
-  return pool[0];
 }
 
 export interface SkinDef {

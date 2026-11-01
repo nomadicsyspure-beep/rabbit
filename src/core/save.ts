@@ -1,7 +1,7 @@
 import type { SkillTree } from '../battle/weapons';
 import type { StatId } from '../data/balance';
 import { EQUIP_SLOTS, SKILL_BY_ID, emptyTree, type SkillId } from '../data/skills';
-import { OLD_GEAR_IDS, type GearSlot } from '../data/gear';
+import { OLD_GEAR_REFUND, RELIC_BY_ID, RELIC_SLOTS } from '../data/relics';
 import type { BoxId } from '../data/skillbox';
 import type { BoosterId } from '../data/craft';
 import type { MatId } from '../data/world';
@@ -34,11 +34,11 @@ export interface SaveData {
   /** 누적 기록 (업적·미션용) */
   stats: { kills: number; bestCombo: number; fevers: number; chests: number; golden: number; stages: number };
   sound: boolean;
-  /** 가진 장비 → 강화 단계 / 착용 중인 장비 */
-  gear: Record<string, number>;
-  wear: Partial<Record<GearSlot, string>>;
-  /** 도감: 처음 잡은 몹 외형, 처음 만든 장비 */
-  seen: { monsters: string[]; gear: string[] };
+  /** 가진 유물 → 강화 단계 / 유물 칸 (RELIC_SLOTS칸, 빈 칸은 null) */
+  relics: Record<string, number>;
+  relicSlots: (string | null)[];
+  /** 도감: 처음 잡은 몹 외형, 처음 얻은 유물 */
+  seen: { monsters: string[]; relics: string[] };
   /** 환생: 횟수, 남은 환생 깃털, 깃털로 올린 영구 강화 */
   rebirth: { count: number; feathers: number; ups: { atk: number; gold: number; xp: number } };
   /** 보스의 정수 (보스 레이드) */
@@ -49,7 +49,7 @@ export interface SaveData {
   pets: Record<string, number>;
   petsOn: string[];
   /** 소환권 (출석 보상) */
-  tickets: { pet: number; gear: number };
+  tickets: { pet: number; relic: number };
   /** 꾸미기: 가진 색과 쓰는 색 */
   skins: { chick: string[]; fx: string[]; chickOn: string; fxOn: string };
   daily: DailyState;
@@ -102,15 +102,15 @@ export function newSave(): SaveData {
     diamonds: 0,
     stats: { kills: 0, bestCombo: 0, fevers: 0, chests: 0, golden: 0, stages: 0 },
     sound: true,
-    gear: {},
-    wear: {},
-    seen: { monsters: [], gear: [] },
+    relics: {},
+    relicSlots: Array(RELIC_SLOTS).fill(null),
+    seen: { monsters: [], relics: [] },
     rebirth: { count: 0, feathers: 0, ups: { atk: 0, gold: 0, xp: 0 } },
     essence: 0,
     bestStageEver: 0,
     pets: {},
     petsOn: [],
-    tickets: { pet: 0, gear: 0 },
+    tickets: { pet: 0, relic: 0 },
     skins: { chick: ['basic'], fx: ['basic'], chickOn: 'basic', fxOn: 'basic' },
     daily: emptyDaily(),
     attend: { last: '', days: 0 },
@@ -135,10 +135,14 @@ export function loadSave(): SaveData {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return newSave();
-    const data = JSON.parse(raw) as Partial<Omit<SaveData, 'v' | 'skills'>> & {
+    const data = JSON.parse(raw) as Partial<Omit<SaveData, 'v' | 'skills' | 'seen' | 'tickets'>> & {
       v?: number;
       stage?: number;
       skills?: Record<string, SkillTree | number>;
+      /** 예전 장비 (유물로 바뀌면서 재료·골드로 돌려준다) */
+      gear?: Record<string, number>;
+      seen?: { monsters?: string[]; relics?: string[] };
+      tickets?: { pet?: number; relic?: number; gear?: number };
     };
     // v1은 방치 모드가 스테이지를 올렸다. 현재 스테이지 바로 전까지 깬 것으로 본다.
     if (data.v === 1) data.maxStage = Math.max(0, (data.stage ?? 1) - 1);
@@ -174,18 +178,22 @@ export function loadSave(): SaveData {
       autoMove: data.autoMove ?? base.autoMove,
       autoSkills: data.autoSkills ?? base.autoSkills,
       mats: { ...data.mats },
+      ...refundOldGear(data.gear, data.mats ?? {}, data.gold ?? 0),
       diamonds: data.diamonds ?? 0,
       stats: { ...base.stats, ...data.stats },
       sound: data.sound ?? true,
-      gear: renameKeys(data.gear ?? {}),
-      wear: migrateWear(data.wear ?? {}),
-      seen: { monsters: [...(data.seen?.monsters ?? [])], gear: (data.seen?.gear ?? []).map((id) => OLD_GEAR_IDS[id] ?? id) },
+      relics: Object.fromEntries(Object.entries(data.relics ?? {}).filter(([id]) => RELIC_BY_ID[id])),
+      relicSlots: Array.from({ length: RELIC_SLOTS }, (_, i) => {
+        const id = data.relicSlots?.[i];
+        return id && RELIC_BY_ID[id] && data.relics?.[id] !== undefined ? id : null;
+      }),
+      seen: { monsters: [...(data.seen?.monsters ?? [])], relics: (data.seen?.relics ?? []).filter((id) => RELIC_BY_ID[id]) },
       rebirth: { ...base.rebirth, ...data.rebirth, ups: { ...base.rebirth.ups, ...data.rebirth?.ups } },
       essence: data.essence ?? 0,
       bestStageEver: Math.max(data.bestStageEver ?? 0, data.maxStage ?? 0),
       pets: { ...data.pets },
       petsOn: [...(data.petsOn ?? ((data as { pet?: string }).pet ? [(data as { pet?: string }).pet!] : []))],
-      tickets: { ...base.tickets, ...data.tickets },
+      tickets: { pet: data.tickets?.pet ?? 0, relic: (data.tickets?.relic ?? 0) + (data.tickets?.gear ?? 0) },
       skins: { ...base.skins, ...data.skins },
       daily: data.daily
         ? { ...base.daily, ...data.daily, counts: { ...base.daily.counts, ...data.daily.counts }, entries: { ...base.daily.entries, ...data.daily.entries } }
@@ -212,20 +220,18 @@ export function loadSave(): SaveData {
   }
 }
 
-/** 옛 장비 id(가방 → 망토)를 새 id로 */
-function renameKeys(gear: Record<string, number>) {
-  return Object.fromEntries(Object.entries(gear).map(([id, v]) => [OLD_GEAR_IDS[id] ?? id, v]));
-}
-
-/** 옛 착용(가방 칸)을 망토 칸으로 */
-function migrateWear(wear: Record<string, string | undefined>): SaveData['wear'] {
-  const out: SaveData['wear'] = {};
-  for (const [slot, id] of Object.entries(wear)) {
-    if (!id) continue;
-    const s = (slot === 'bag' ? 'cape' : slot) as GearSlot;
-    out[s] = OLD_GEAR_IDS[id] ?? id;
+/** 예전 장비를 재료·골드로 돌려준다 (만든 값 + 강화한 만큼 절반씩) */
+function refundOldGear(gear: Record<string, number> | undefined, mats: SaveData['mats'], gold: number) {
+  if (!gear) return {};
+  const out = { ...mats };
+  for (const [id, plus] of Object.entries(gear)) {
+    const r = OLD_GEAR_REFUND[id];
+    if (!r) continue;
+    const k = 1 + plus * 0.5;
+    out[r[0]] = (out[r[0]] ?? 0) + Math.round(r[1] * k);
+    gold += r[2] * k;
   }
-  return out;
+  return { mats: out, gold };
 }
 
 export function writeSave(save: SaveData) {

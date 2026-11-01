@@ -1,6 +1,6 @@
 import { sfx } from '../audio/sfx';
 import { fmt } from '../core/format';
-import { emptyProcs, type Procs } from '../data/gear';
+import { emptyProcs, type Procs } from '../data/relics';
 
 // 방치 모드와 액션 모드가 같이 쓰는 전투 엔진.
 // 엔진은 "누가 조종하는지"(Controller)와 "적을 어떻게 내보내는지"(모드)를 모른다.
@@ -570,7 +570,7 @@ export class Engine {
     return out;
   }
 
-  /** 장비·세트 발동 효과 (스테이지가 넣어 준다) / 그 효과의 공격력 기준 / 쿨다운 */
+  /** 유물·세트 발동 효과 (스테이지가 넣어 준다) / 그 효과의 공격력 기준 / 쿨다운 */
   procs: Procs = emptyProcs();
   procPower = 0;
   private frostCd = 0;
@@ -654,7 +654,7 @@ export class Engine {
     }
     if (crit) sfx.crit();
     else sfx.hit();
-    // 장비: 치명타 때 빙결 / 번개 (번개가 또 번개를 부르지 않게)
+    // 유물: 치명타 때 빙결 / 번개 (번개가 또 번개를 부르지 않게)
     if (crit && !this.inProc) {
       if (this.procs.critFreeze > 0 && e.kind !== 'boss') e.stunT = Math.max(e.stunT, this.procs.critFreeze);
       if (this.procs.critBolt > 0 && Math.random() < this.procs.critBolt) {
@@ -736,7 +736,7 @@ export class Engine {
   damagePlayer(dmg: number) {
     const p = this.player;
     if (p.dead || p.invuln > 0 || dmg <= 0 || this.buffOn('invuln') > 0) return;
-    // 장비 회피
+    // 유물 회피
     if (this.procs.dodge > 0 && Math.random() < this.procs.dodge) {
       p.invuln = 0.3;
       this.addText(p.x, p.y - p.r - 10, '회피!', '#9fe4ff', 14);
@@ -758,7 +758,7 @@ export class Engine {
     p.flash = 0.2;
     this.addShake(4);
     this.addText(p.x, p.y - p.r - 6, '-' + fmt(dmg), '#ff6b6b', 12);
-    // 장비: 맞으면 냉기 (주변 적 느리게) / 반격 폭발
+    // 유물: 맞으면 냉기 (주변 적 느리게) / 반격 폭발
     if (this.procs.frostHurt > 0 && this.frostCd <= 0) {
       this.frostCd = 2;
       for (const e of this.nearestEnemies(p.x, p.y, 60, 120)) e.slowT = Math.max(e.slowT, this.procs.frostHurt);

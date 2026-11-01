@@ -112,7 +112,7 @@ function retryDraw(draw: () => boolean, tries = 40) {
   setTimeout(() => retryDraw(draw, tries - 1), 250);
 }
 
-/** 병아리 정면 그림 (장비 탭 가운데) */
+/** 병아리 정면 그림 (가방 탭 가운데) */
 export function chickPic(size = 96, walk = false) {
   const c = h('canvas', 'chick-pic');
   c.width = c.height = size * 2;

@@ -1,4 +1,4 @@
-import { GEAR_BY_ID } from '../data/gear';
+import { RELIC_BY_ID } from '../data/relics';
 import type { Engine } from './engine';
 import { HERO_FOOT, HERO_SIZE, SPRITES, isReady } from './sprites';
 
@@ -117,7 +117,7 @@ function drawIcon(ctx: CanvasRenderingContext2D, icon: string, x: number, bottom
 /** 모자: 머리 꼭대기에 */
 function drawHat(ctx: CanvasRenderingContext2D, id: string, at: HeroPlace) {
   if (drawLayer(ctx, id, at)) return;
-  const def = GEAR_BY_ID[id];
+  const def = RELIC_BY_ID[id];
   if (!def) return;
   const k = HERO_SIZE / at.frame.width;
   const a = anchorOf(at.frame);
@@ -125,74 +125,15 @@ function drawHat(ctx: CanvasRenderingContext2D, id: string, at: HeroPlace) {
   drawIcon(ctx, def.icon, at.left + a.cx * k, at.top + (a.top + (a.bottom - a.top) * 0.42) * k, HERO_SIZE * 0.55);
 }
 
-/** 등: 그림이 없으면 날개·망토·가방 모양을 코드로 */
-function drawBack(ctx: CanvasRenderingContext2D, eng: Engine, id: string, at: HeroPlace) {
-  if (drawLayer(ctx, id, at)) return;
-  const def = GEAR_BY_ID[id];
-  if (!def?.shape) return;
-  const k = HERO_SIZE / at.frame.width;
-  const a = anchorOf(at.frame);
-  const fx = Math.cos((at.dir * Math.PI) / 4);
-  // 몸통 높이쯤, 바라보는 쪽 반대로 조금
-  const bx = at.left + a.cx * k - fx * HERO_SIZE * 0.16;
-  const by = at.top + (a.top + (a.bottom - a.top) * 0.66) * k;
-  const s = HERO_SIZE / 46;
-  ctx.save();
-  ctx.translate(bx, by);
-  ctx.scale(s, s);
-  ctx.fillStyle = def.color ?? '#ffffff';
-  ctx.strokeStyle = '#3a1d0b';
-  ctx.lineWidth = 1.5;
-  ctx.lineJoin = 'round';
-  if (def.shape === 'wings') {
-    // 날개: 양쪽으로 펄럭 (움직이면 더 빨리)
-    const flap = Math.sin(eng.time * (eng.player.moving ? 14 : 5)) * 0.25;
-    for (const side of [-1, 1]) {
-      ctx.save();
-      ctx.scale(side, 1);
-      ctx.rotate(-0.5 - flap);
-      ctx.beginPath();
-      ctx.ellipse(12, -4, 13, 6.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(4, -2);
-      ctx.lineTo(18, -6);
-      ctx.moveTo(6, 1);
-      ctx.lineTo(19, -1);
-      ctx.stroke();
-      ctx.restore();
-    }
-  } else if (def.shape === 'cape') {
-    // 망토: 어깨에서 아래로 퍼지고 끝자락이 펄럭
-    const wave = Math.sin(eng.time * 8) * 2;
-    ctx.beginPath();
-    ctx.moveTo(-8, -10);
-    ctx.lineTo(8, -10);
-    ctx.lineTo(13 + wave, 12);
-    ctx.quadraticCurveTo(0, 16 - wave, -13 + wave, 12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  } else {
-    // 가방: 네모 + 덮개
-    ctx.beginPath();
-    ctx.roundRect(-8, -9, 16, 15, 4);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.beginPath();
-    ctx.roundRect(-8, -9, 16, 6, 3);
-    ctx.fill();
-    ctx.stroke();
-  }
-  ctx.restore();
+/** 등: 그림이 있을 때만 */
+function drawBack(ctx: CanvasRenderingContext2D, id: string, at: HeroPlace) {
+  drawLayer(ctx, id, at);
 }
 
-/** 무기: 병아리 옆(바라보는 쪽)에 둥둥 떠서 살랑살랑 */
+/** 공짜 스킬 유물: 병아리 옆(바라보는 쪽)에 둥둥 떠서 살랑살랑 */
 let handSide = 1;
 function drawHand(ctx: CanvasRenderingContext2D, eng: Engine, id: string, footY: number) {
-  const def = GEAR_BY_ID[id];
+  const def = RELIC_BY_ID[id];
   if (!def) return;
   const p = eng.player;
   // 좌우를 바꿀 때 순간이동하지 않게 천천히 옮긴다
@@ -223,14 +164,14 @@ function drawHand(ctx: CanvasRenderingContext2D, eng: Engine, id: string, footY:
 /** 병아리 뒤에 그릴 것 (등 장비, 위를 볼 땐 무기) */
 export function drawOutfitBehind(ctx: CanvasRenderingContext2D, eng: Engine, at: HeroPlace) {
   const { back, hand } = eng.look;
-  if (SHOW_BODY_GEAR && back && !facingUp(at.dir)) drawBack(ctx, eng, back, at);
+  if (SHOW_BODY_GEAR && back && !facingUp(at.dir)) drawBack(ctx, back, at);
   if (hand && facingUp(at.dir)) drawHand(ctx, eng, hand, at.top + HERO_SIZE * HERO_FOOT);
 }
 
 /** 병아리 앞에 그릴 것 (모자, 위를 볼 땐 등 장비, 무기) */
 export function drawOutfitFront(ctx: CanvasRenderingContext2D, eng: Engine, at: HeroPlace) {
   const { hat, back, hand } = eng.look;
-  if (SHOW_BODY_GEAR && back && facingUp(at.dir)) drawBack(ctx, eng, back, at);
+  if (SHOW_BODY_GEAR && back && facingUp(at.dir)) drawBack(ctx, back, at);
   if (SHOW_BODY_GEAR && hat) drawHat(ctx, hat, at);
   if (hand && !facingUp(at.dir)) drawHand(ctx, eng, hand, at.top + HERO_SIZE * HERO_FOOT);
 }

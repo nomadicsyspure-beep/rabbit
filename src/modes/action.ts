@@ -161,7 +161,7 @@ export class ActionMode {
   private bonusGold = 0;
   /** 이번 판에 주운 상자 등급들 */
   private chests: ChestGrade[] = [];
-  /** 장비 발동: 보호막·발자국 타이머 */
+  /** 유물 발동: 보호막·발자국 타이머 */
   private shieldT = 0;
   private trailT = 0;
   /** 부스터: 이번 판 골드·경험치 배율 */
@@ -241,7 +241,7 @@ export class ActionMode {
     this.feverMul = bonus.fever;
     this.chestBonus = bonus.chest;
     eng.critChance = CRIT_CHANCE + bonus.crit;
-    // 장비·세트 발동 효과
+    // 유물·세트 발동 효과
     eng.procs = this.game.procs;
     eng.procPower = this.stats.power;
     this.shieldT = 1;
@@ -294,11 +294,11 @@ export class ActionMode {
       eng.weapons.push(weapon);
       this.equipped.push({ def, weapon, tree: runTree });
     }
-    // 무기가 주는 공짜 스킬 (장착 칸을 안 쓴다, 무기 강화 단계만큼 세다)
-    if (bonus.weapon) {
-      const plus = bonus.weapon.plus;
+    // 유물이 주는 공짜 스킬 (장착 칸을 안 쓴다, 유물 강화 단계만큼 세다)
+    for (const fr of bonus.skills) {
+      const plus = fr.plus;
       const tree = { dmg: plus, spd: Math.floor(plus / 3), cnt: Math.floor(plus / 5) };
-      eng.weapons.push(createSkill(SKILL_BY_ID[bonus.weapon.skill], this.stats, tree));
+      eng.weapons.push(createSkill(SKILL_BY_ID[fr.skill], this.stats, tree));
     }
     if (kind === 'raid') this.spawnRaidBoss();
     this.state = 'playing';
@@ -677,7 +677,7 @@ export class ActionMode {
     }
   }
 
-  /** 장비 발동 효과 (시간에 따라): 8초마다 보호막, 달리면 발자국 장판 */
+  /** 유물 발동 효과 (시간에 따라): 8초마다 보호막, 달리면 발자국 장판 */
   private updateGearProcs(dt: number) {
     const eng = this.game.engine;
     const pr = eng.procs;
@@ -728,7 +728,7 @@ export class ActionMode {
     sfx.kill(this.combo);
     const eng = this.game.engine;
     if (e.skin === 'firstaid') eng.spawnHeal(e.x, e.y);
-    // 장비: 처치 때 흡혈 / 폭발
+    // 유물: 처치 때 흡혈 / 폭발
     const pr = eng.procs;
     if (pr.lifesteal > 0) {
       const p = eng.player;
