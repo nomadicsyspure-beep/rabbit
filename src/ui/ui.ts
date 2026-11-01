@@ -577,6 +577,16 @@ export class UI implements UIHost {
     this.refresh();
   }
 
+  /** 스킬 발동 미리보기 창: 돌아가기 = 그 스킬 창으로 */
+  private showSkillPreview(def: SkillDef) {
+    this.openModal(
+      h('div', 'modal-title', `${def.name} 미리보기`),
+      h('div', 'modal-sub', def.blurb),
+      skillPreview(def, this.game.skillTree(def.id) ?? emptyTree()),
+      this.button('돌아가기', 'primary', () => this.showSkill(def)),
+    );
+  }
+
   /** 스킬 창: 설명, 배우기 또는 가지 강화, 장착·교체 */
   private showSkill(def: SkillDef) {
     const g = this.game;
@@ -587,19 +597,10 @@ export class UI implements UIHost {
     const name = h('div', 'modal-title', def.name + ' ');
     name.append(h('span', `grade-badge g-${SKILL_GRADE[def.id]}`, `${SKILL_GRADE[def.id]}등급`));
     title.append(name, h('div', 'modal-sub', def.blurb), summary);
-    // 아이콘을 누르면 실제 발동 미리보기
+    // 아이콘을 누르면 실제 발동 미리보기 (따로 창, '돌아가기'로 이 창에 돌아온다)
     const icon = skillIcon(def, 'skill-art clickable');
-    const pvBox = h('div', 'preview-box');
     const pvHint = h('div', 'preview-hint', '▶ 아이콘을 누르면 발동 미리보기');
-    icon.addEventListener('click', () => {
-      if (pvBox.firstChild) {
-        pvBox.replaceChildren();
-        pvHint.textContent = '▶ 아이콘을 누르면 발동 미리보기';
-      } else {
-        pvBox.append(skillPreview(def, g.skillTree(def.id) ?? emptyTree()));
-        pvHint.textContent = '■ 아이콘을 다시 누르면 닫기';
-      }
-    });
+    icon.addEventListener('click', () => this.showSkillPreview(def));
     head.append(icon, title);
     const gold = h('div', 'tree-gold');
 
@@ -615,7 +616,7 @@ export class UI implements UIHost {
       }
       summary.textContent = skillSummary(def, emptyTree());
       this.treeRefresh = null;
-      this.openModal(head, pvHint, pvBox, where, this.button('닫기', 'primary', () => this.closeModal()));
+      this.openModal(head, pvHint, where, this.button('닫기', 'primary', () => this.closeModal()));
       return;
     }
 
@@ -667,7 +668,7 @@ export class UI implements UIHost {
       }
       gold.textContent = `⭐ 스킬 포인트 ${g.save.skillPoints[def.id] ?? 0} (상자에서 겹치면 +1)`;
     };
-    this.openModal(head, pvHint, pvBox, gold, ...rows.map((r) => r.row), equipBox, this.button('닫기', 'primary', () => this.closeModal()));
+    this.openModal(head, pvHint, gold, ...rows.map((r) => r.row), equipBox, this.button('닫기', 'primary', () => this.closeModal()));
     this.treeRefresh();
   }
 
@@ -796,7 +797,7 @@ export class UI implements UIHost {
       this.miniGold.replaceChildren(coin(fmt(save.gold)));
       this.miniDia.textContent = `💎 ${fmt(save.diamonds)}`;
       this.stageEl.textContent = save.maxStage > 0 ? `최고 스테이지 ${save.maxStage}` : '스테이지 기록 없음';
-      this.incomeEl.textContent = `초당 +${fmt(g.goldPerSec)}`;
+      setText(this.incomeEl, `마리당 +${fmt(g.goldPerKill)}`);
       const next = g.nextStage;
       this.challengeLabel.textContent = isBossStage(next) ? `스테이지 ${next} 마왕 도전` : `스테이지 ${next} 도전`;
       this.challengeBtn.classList.toggle('boss', isBossStage(next));
