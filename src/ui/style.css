@@ -3121,3 +3121,66 @@ button:active:not(:disabled) {
 .relic-tag {
   font-weight: 800;
 }
+
+/* 스킬 탭·제작 탭 보기 탭 (큰 두 칸) */
+.skill-view-seg,
+.craft-view-seg {
+  grid-template-columns: repeat(2, 1fr);
+  margin: 6px 0 4px;
+}
+
+.skill-view-seg .seg-btn,
+.craft-view-seg .seg-btn {
+  position: relative;
+  padding: 10px 0;
+  font-size: 15px;
+}
+
+.skill-view-btn.dot::after,
+.craft-view-seg .seg-btn.dot::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff4d5e;
+  border: 2px solid #fff;
+}
+
+/* 유물 제작: 지역 탭 (5칸) */
+.region-seg {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.region-seg .seg-btn {
+  position: relative;
+  font-size: 12px;
+}
+
+.region-seg .seg-btn.dot::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7cf2a0;
+  box-shadow: 0 0 0 2px #2a1606;
+}
+
+/* 보기 탭 아래 내용: 패널과 같은 간격 */
+.skill-view-body,
+.craft-view-body,
+.region-area {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skill-view-seg,
+.craft-view-seg {
+  margin: 0;
+}

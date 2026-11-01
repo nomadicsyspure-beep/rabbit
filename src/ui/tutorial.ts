@@ -44,6 +44,8 @@ export class Tutorial {
       const s = game.save;
       const c = boxCost(BOX_BY_ID.wood, 1, s.maxStage).gold ?? 0;
       if (s.gold < c) s.gold = c;
+      // 스킬 탭이 '스킬 목록' 보기면 '스킬 상자' 보기로
+      if (!$('.box-wood')) $('.skill-view-btn[data-view="box"]')?.click();
       $('.box-wood')?.scrollIntoView({ block: 'center' });
     };
     const tab = (name: string) => () => [...document.querySelectorAll<HTMLElement>('.tab')].find((t) => t.textContent?.includes(name)) ?? null;
