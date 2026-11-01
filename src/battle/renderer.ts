@@ -250,13 +250,18 @@ export class Renderer {
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    // 피격: 화면 테두리가 잠깐 빨갛게
-    if (eng.hurtT > 0 && eng.followCamera) {
+    // 피격: 화면 테두리가 잠깐 빨갛게. 체력이 적을수록 더 진하고 넓게, 색도 검붉게
+    if (eng.vignT > 0 && eng.followCamera) {
       const w = eng.viewW;
       const hh = eng.viewH;
-      const g = ctx.createRadialGradient(w / 2, hh / 2, Math.min(w, hh) * 0.3, w / 2, hh / 2, Math.max(w, hh) * 0.6);
-      g.addColorStop(0, 'rgba(255,40,60,0)');
-      g.addColorStop(1, `rgba(255,30,50,${(0.7 * Math.min(1, eng.hurtT / 0.6)).toFixed(3)})`);
+      const lost = 1 - Math.max(0, Math.min(1, eng.player.hp / eng.player.maxHp));
+      const fade = Math.min(1, eng.vignT / eng.vignMax);
+      const a = (0.25 + 0.6 * lost) * fade;
+      const r = Math.round(255 - 110 * lost);
+      const gc = Math.round(40 - 40 * lost);
+      const g = ctx.createRadialGradient(w / 2, hh / 2, Math.min(w, hh) * (0.38 - 0.18 * lost), w / 2, hh / 2, Math.max(w, hh) * 0.6);
+      g.addColorStop(0, `rgba(${r},${gc},40,0)`);
+      g.addColorStop(1, `rgba(${r},${gc},40,${a.toFixed(3)})`);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, hh);
     }

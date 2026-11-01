@@ -398,10 +398,12 @@ const START_SPEED = 0.85;
 const ACCEL = 6;
 /** 화면 흔들림 최대(px) */
 const MAX_SHAKE = 7;
-/** 피격: 넉백 속도(px/초, 금방 줄어든다) / 느려지는 시간(초) / 그동안 이동 속도 배율 */
-const HURT_KNOCK = 320;
-const HURT_SLOW_T = 0.6;
-const HURT_SLOW = 0.55;
+/**
+ * 피격 패널티: 넉백 속도(px/초, 금방 줄어든다) / 느려지는 시간(초) / 그동안 이동 속도 배율 / 화면 흔들림 / 빨간 테두리 시간(초) / 부딪힌 몹 튕김.
+ * 보스(몸통·탄막·장판)는 세게, 일반 몹은 아주 가볍게
+ */
+const HURT_HEAVY = { knock: 320, slowT: 0.6, slow: 0.55, shake: 6, vign: 0.6, bounce: 0 };
+const HURT_LIGHT = { knock: 70, slowT: 0.15, slow: 0.9, shake: 2, vign: 0.35, bounce: 60 };
 /** 황금 몹이 도망치기 시작하는 거리(px) */
 const GOLDEN_FLEE_DIST = 170;
 /** 상자를 끌어오는 거리(px). 보석 자석보다 훨씬 넓다 */
@@ -435,10 +437,13 @@ export class Engine {
   time = 0;
   /** 화면 흔들림 세기(px). 폭발·피격 때 올라가고 금방 줄어든다 */
   shake = 0;
-  /** 피격: 병아리가 밀려나는 속도 / 남은 피격 시간 (이동 느려짐 + 화면 테두리 빨갛게) */
+  /** 피격: 병아리가 밀려나는 속도 / 남은 느려짐 시간과 배율 / 화면 테두리 빨갛게 남은 시간과 처음 길이 */
   hurtKX = 0;
   hurtKY = 0;
   hurtT = 0;
+  hurtSlow = 1;
+  vignT = 0;
+  vignMax = 1;
 
   readonly player: Player = {
     x: 0, y: 0, r: 12, hp: 100, maxHp: 100, speed: 120, regen: 0, magnet: 60,
@@ -525,6 +530,7 @@ export class Engine {
     this.hurtKX = 0;
     this.hurtKY = 0;
     this.hurtT = 0;
+    this.vignT = 0;
     this.fever = 0;
     const p = this.player;
     p.dead = false;
@@ -746,15 +752,15 @@ export class Engine {
     this.onKill?.(e);
   }
 
-  /** 병아리 피격. 때린 쪽 위치(fx, fy)를 주면 반대쪽으로 살짝 밀려난다 */
-  damagePlayer(dmg: number, fx?: number, fy?: number) {
+  /** 병아리 피격. 때린 쪽 위치(fx, fy)를 주면 반대쪽으로 밀려난다. heavy = 보스 공격 (패널티가 세다). 맞았으면 true */
+  damagePlayer(dmg: number, fx?: number, fy?: number, heavy = true): boolean {
     const p = this.player;
-    if (p.dead || p.invuln > 0 || dmg <= 0 || this.buffOn('invuln') > 0) return;
+    if (p.dead || p.invuln > 0 || dmg <= 0 || this.buffOn('invuln') > 0) return false;
     // 유물 회피
     if (this.procs.dodge > 0 && Math.random() < this.procs.dodge) {
       p.invuln = 0.3;
       this.addText(p.x, p.y - p.r - 10, '회피!', '#9fe4ff', 14);
-      return;
+      return false;
     }
     // 보호막이 먼저 막는다
     if (this.shieldHp > 0) {
@@ -764,25 +770,33 @@ export class Engine {
       this.addEffect('ring', p.x, p.y, 26, 0.25, '#9fe4ff');
       if (dmg <= 0) {
         p.invuln = 0.3;
-        return;
+        return false;
       }
     }
     p.hp -= dmg;
     p.invuln = 0.5;
     p.flash = 0.2;
-    this.addShake(6);
-    this.addText(p.x, p.y - p.r - 6, '-' + fmt(dmg), '#ff6b6b', 14);
+    const hk = heavy ? HURT_HEAVY : HURT_LIGHT;
+    this.addShake(hk.shake);
+    this.addText(p.x, p.y - p.r - 6, '-' + fmt(dmg), '#ff6b6b', heavy ? 14 : 12);
     // 피격 패널티: 반대쪽으로 넉백 + 잠깐 느려짐, 빨간 조각과 충격 고리
     if (fx !== undefined && fy !== undefined) {
       const dx = p.x - fx;
       const dy = p.y - fy;
       const d = Math.hypot(dx, dy) || 1;
-      this.hurtKX = (dx / d) * HURT_KNOCK;
-      this.hurtKY = (dy / d) * HURT_KNOCK;
+      this.hurtKX = (dx / d) * hk.knock;
+      this.hurtKY = (dy / d) * hk.knock;
     }
-    this.hurtT = HURT_SLOW_T;
-    this.burst(p.x, p.y - 8, 10, ['#ff4d6d', '#ff8fa3', '#ffffff'], 200, 0.4, 300, 3);
-    this.addEffect('ring', p.x, p.y - 4, 30, 0.25, '#ff6b6b');
+    // 약한 피격이 센 피격의 느려짐을 덮어쓰지 않게
+    if (heavy || this.hurtT <= 0) {
+      this.hurtT = hk.slowT;
+      this.hurtSlow = hk.slow;
+    }
+    if (heavy || this.vignT <= this.vignMax * 0.5) {
+      this.vignT = this.vignMax = hk.vign;
+    }
+    this.burst(p.x, p.y - 8, heavy ? 10 : 5, ['#ff4d6d', '#ff8fa3', '#ffffff'], heavy ? 200 : 140, 0.4, 300, 3);
+    this.addEffect('ring', p.x, p.y - 4, heavy ? 30 : 20, 0.25, '#ff6b6b');
     this.onHurt?.();
     // 유물: 맞으면 냉기 (주변 적 느리게) / 반격 폭발
     if (this.procs.frostHurt > 0 && this.frostCd <= 0) {
@@ -802,6 +816,7 @@ export class Engine {
       this.addEffect('burst', p.x, p.y, 40, 0.5, '#ffffff');
       this.onPlayerDead?.();
     }
+    return true;
   }
 
   fireProjectile(
@@ -1110,7 +1125,7 @@ export class Engine {
       p.moving = len > 0.01;
       p.moveK = p.moving ? Math.min(1, len) : 0;
       // 출발은 느리게, 계속 움직이면 목표 속도까지 가속 (멈추거나 덜 밀면 바로 줄어든다)
-      const target = p.speed * p.moveK * (1 + this.buffOn('sprint')) * (this.hurtT > 0 ? HURT_SLOW : 1);
+      const target = p.speed * p.moveK * (1 + this.buffOn('sprint')) * (this.hurtT > 0 ? this.hurtSlow : 1);
       if (!p.moving) p.curSpeed = 0;
       else if (p.curSpeed < target * START_SPEED) p.curSpeed = target * START_SPEED;
       else if (p.curSpeed > target) p.curSpeed = target;
@@ -1143,6 +1158,7 @@ export class Engine {
     this.frostCd -= dt;
     this.hurtCd -= dt;
     this.hurtT -= dt;
+    this.vignT -= dt;
     for (const id of BUFF_IDS) this.buffs[id].t -= dt;
     this.shieldT -= dt;
     if (this.shieldT <= 0) this.shieldHp = 0;
@@ -1314,13 +1330,11 @@ export class Engine {
       }
 
       if (!p.dead && d < e.r + p.r) {
-        if (!stunned && p.invuln <= 0) {
-          this.damagePlayer(e.dmg, e.x, e.y);
-          // 부딪힌 몹도 조금 튕겨 나간다 (보스는 안 밀린다)
-          if (e.kind !== 'boss') {
-            e.kx += (-dx / (d || 1)) * 140;
-            e.ky += (-dy / (d || 1)) * 140;
-          }
+        // 보스·중간 보스(정예) 몸통은 세게, 일반 몹은 가볍게. 부딪힌 일반 몹은 살짝 튕겨 나간다
+        const heavy = e.kind === 'boss' || e.elite;
+        if (!stunned && this.damagePlayer(e.dmg, e.x, e.y, heavy) && !heavy) {
+          e.kx += (-dx / (d || 1)) * HURT_LIGHT.bounce;
+          e.ky += (-dy / (d || 1)) * HURT_LIGHT.bounce;
         }
         // 가시 갑옷: 부딪힌 몹에게 되돌려 준다
         const thorns = this.buffOn('thorns');
