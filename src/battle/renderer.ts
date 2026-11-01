@@ -92,6 +92,8 @@ export class Renderer {
 
     this.drawDecorations(eng);
     if (eng.arena) this.drawArena(eng);
+    for (const t of eng.thorns) this.drawThorn(eng, t);
+    for (const rk of eng.rocks) this.drawRock(rk);
     if (eng.lure) this.drawLure(eng);
     if (eng.curse) this.drawCurse(eng);
 
@@ -879,6 +881,79 @@ export class Renderer {
       post(a.w + 4, y);
     }
     ctx.restore();
+  }
+
+  /** 돌기둥: 둥근 바위 (그림자 + 밝은 윗면) */
+  private drawRock(rk: { x: number; y: number; r: number }) {
+    const ctx = this.ctx;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(rk.x, rk.y + rk.r * 0.55, rk.r * 1.05, rk.r * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const g = ctx.createLinearGradient(rk.x, rk.y - rk.r * 1.3, rk.x, rk.y + rk.r * 0.6);
+    g.addColorStop(0, '#9a8f84');
+    g.addColorStop(1, '#5c5048');
+    ctx.fillStyle = g;
+    ctx.strokeStyle = '#2a1e16';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(rk.x - rk.r, rk.y + rk.r * 0.4);
+    ctx.lineTo(rk.x - rk.r * 0.85, rk.y - rk.r * 0.9);
+    ctx.quadraticCurveTo(rk.x, rk.y - rk.r * 1.45, rk.x + rk.r * 0.85, rk.y - rk.r * 0.9);
+    ctx.lineTo(rk.x + rk.r, rk.y + rk.r * 0.4);
+    ctx.quadraticCurveTo(rk.x, rk.y + rk.r * 0.75, rk.x - rk.r, rk.y + rk.r * 0.4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(rk.x - rk.r * 0.5, rk.y - rk.r * 0.85);
+    ctx.quadraticCurveTo(rk.x, rk.y - rk.r * 1.15, rk.x + rk.r * 0.4, rk.y - rk.r * 0.9);
+    ctx.stroke();
+  }
+
+  /** 가시덤불: 진한 초록 덩굴 + 가시 */
+  private drawThorn(eng: Engine, t: { x: number; y: number; r: number }) {
+    const ctx = this.ctx;
+    if (t.y < eng.camY - 80 || t.y > eng.camY + eng.viewH + 80) return;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(t.x, t.y + t.r * 0.5, t.r, t.r * 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2f5a2a';
+    ctx.strokeStyle = '#132a12';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      const rr = i % 2 === 0 ? t.r : t.r * 0.7;
+      const x = t.x + Math.cos(a) * rr;
+      const y = t.y - t.r * 0.2 + Math.sin(a) * rr * 0.7;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // 가시
+    ctx.strokeStyle = '#e8e0c0';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + 0.3;
+      const x = t.x + Math.cos(a) * t.r * 0.6;
+      const y = t.y - t.r * 0.2 + Math.sin(a) * t.r * 0.42;
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a) * 7, y + Math.sin(a) * 5);
+    }
+    ctx.stroke();
+    ctx.fillStyle = '#c0306a';
+    for (let i = 0; i < 3; i++) {
+      const a = i * 2.1 + t.x * 0.01;
+      ctx.beginPath();
+      ctx.arc(t.x + Math.cos(a) * t.r * 0.35, t.y - t.r * 0.25 + Math.sin(a) * t.r * 0.25, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   /** 저주 상자: 보랏빛 기운이 감도는 검은 상자 */
