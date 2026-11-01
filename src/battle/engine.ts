@@ -52,6 +52,8 @@ export interface Enemy {
   step: number;
   /** 웨이브 몹 색 (돌진·포위·벽) */
   tint: EnemyTint;
+  /** 아레나 수비: 병아리 대신 지킬 알(lure)로 간다 */
+  toLure: boolean;
   /** 정예·마왕 (화면 밖에 있으면 빨간 화살표로 알려 준다) */
   elite: boolean;
   /** 디버프 남은 시간: 기절(멈춤) / 공포(도망) / 혼란(갈팡질팡) / 취약(받는 피해 ×1.5) / 표식(치명타 확정) */
@@ -82,7 +84,7 @@ export interface Enemy {
  */
 export type ProjectileKind = string;
 /** 레이드·웨이브 몹 색: 돌진(빨강) / 포위(보라) / 벽(남색) */
-export type EnemyTint = '' | 'charge' | 'ring' | 'wall';
+export type EnemyTint = '' | 'charge' | 'ring' | 'wall' | 'bomb';
 
 export interface Projectile {
   active: boolean;
@@ -469,6 +471,16 @@ export class Engine {
   time = 0;
   /** 화면 흔들림 세기(px). 폭발·피격 때 올라가고 금방 줄어든다 */
   shake = 0;
+  /** 아레나(테스트 맵): 닫힌 경기장 (0,0)~(w,h). 병아리는 못 나가고 카메라도 안쪽에서 멈춘다 */
+  arena: { w: number; h: number } | null = null;
+  /** 좁혀 오는 독안개: 이 원 밖은 독 (아레나 이벤트) */
+  safe: { x: number; y: number; r: number } | null = null;
+  /** 아레나 수비: 몹이 노리는 알 */
+  lure: { x: number; y: number; r: number; hp: number; maxHp: number } | null = null;
+  /** 마지막 몇 초 러시: 0보다 크면 화면 테두리가 맥박 친다 */
+  rush = 0;
+  /** 아레나 저주 상자 (밟으면 저주 발동) */
+  curse: { x: number; y: number } | null = null;
   /** 피격: 병아리가 밀려나는 속도 / 남은 느려짐 시간과 배율 / 화면 테두리 빨갛게 남은 시간과 처음 길이 */
   hurtKX = 0;
   hurtKY = 0;
@@ -490,7 +502,7 @@ export class Engine {
     id: 0, active: false, kind: 'normal', skin: 'slime', x: 0, y: 0, r: 10, hp: 1, maxHp: 1, speed: 40, dmg: 1,
     gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false,
     stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
-    t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+    t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0, toLure: false,
   }), 500);
   readonly projectiles = new Pool<Projectile>(() => ({
     active: false, kind: 'feather', x: 0, y: 0, vx: 0, vy: 0, r: 4, dmg: 1, life: 1, pierce: 0, hit: [], blast: 0, flight: 0,
@@ -573,6 +585,11 @@ export class Engine {
     this.hurtKY = 0;
     this.hurtT = 0;
     this.vignT = 0;
+    this.arena = null;
+    this.safe = null;
+    this.lure = null;
+    this.rush = 0;
+    this.curse = null;
     this.hitStop = 0;
     this.bossHitCd = 0;
     this.bossStopCd = 0;
@@ -592,7 +609,7 @@ export class Engine {
     Object.assign(e, {
       skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, move: 'chase',
       phase: Math.random() * Math.PI * 2, golden: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false, stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
-      t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0,
+      t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0, toLure: false,
     }, init);
     e.id = this.nextId++;
     e.active = true;
@@ -1320,6 +1337,10 @@ export class Engine {
         p.x = Math.max(p.r, Math.min(this.bounds.w - p.r, p.x));
         p.y = Math.max(p.r, Math.min(this.bounds.h - p.r, p.y));
       }
+      if (this.arena) {
+        p.x = Math.max(p.r, Math.min(this.arena.w - p.r, p.x));
+        p.y = Math.max(p.r, Math.min(this.arena.h - p.r, p.y));
+      }
       p.hp = Math.min(p.maxHp, p.hp + (p.regen + this.buffOn('regen')) * p.maxHp * dt);
     }
     p.invuln -= dt;
@@ -1338,6 +1359,13 @@ export class Engine {
     if (this.followCamera) {
       this.camX = p.x - this.viewW / 2;
       this.camY = p.y - this.viewH / 2;
+      // 아레나: 벽 너머가 조금만 보이게 카메라를 묶는다 (경기장이 화면보다 작으면 가운데)
+      if (this.arena) {
+        const m = 40;
+        const a = this.arena;
+        this.camX = a.w + 2 * m <= this.viewW ? (a.w - this.viewW) / 2 : Math.max(-m, Math.min(a.w - this.viewW + m, this.camX));
+        this.camY = a.h + 2 * m <= this.viewH ? (a.h - this.viewH) / 2 : Math.max(-m, Math.min(a.h - this.viewH + m, this.camY));
+      }
     } else {
       this.camX = 0;
       this.camY = 0;
@@ -1457,6 +1485,15 @@ export class Engine {
         if (e.t1 <= 0) {
           e.active = false;
           continue;
+        }
+      } else if (e.toLure && this.lure) {
+        // 수비: 알 쪽으로 곧장
+        const lx = this.lure.x - e.x;
+        const ly = this.lure.y - e.y;
+        const ld = Math.hypot(lx, ly) || 1;
+        if (ld > this.lure.r + e.r * 0.6) {
+          e.x += (lx / ld) * e.speed * slow * dt;
+          e.y += (ly / ld) * e.speed * slow * dt;
         }
       } else if (!p.dead) {
         let tx = dx;

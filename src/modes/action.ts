@@ -12,12 +12,15 @@ import { regionOf, stageSkins, type MatId } from '../data/world';
 import { BOOSTERS } from '../data/craft';
 import { SKILL_BY_ID, createSkill, type SkillDef, type SkillId } from '../data/skills';
 import type { Game } from '../game';
+import { ArenaDirector, type ArenaResult, type ArenaVariant } from './arena';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
 // 스테이지는 30초: 시간이 다 되면 일반 스테이지는 정예 몬스터 / 보스 스테이지(10단위)는 마왕 보스. 중간에 중간 보스.
 // 스테이지 1은 튜토리얼처럼 15초, 몹 아주 적고 보스도 약하다
 const NORMAL_SECONDS = 30;
 const BOSS_STAGE_SECONDS = 30;
+/** 아레나 별: 처음 딴 별 하나마다 다이아 */
+const ARENA_STAR_DIAMONDS = 10;
 const FIRST_STAGE_SECONDS = 15;
 /** 중간 보스가 나오는 시각(초) */
 const MID_BOSS_AT = [10, 20];
@@ -84,7 +87,7 @@ const TRICKLE = 0.55;
 const VACUUM_COMBO = 100;
 
 /** 판 종류: 스테이지 / 재료 던전 / 보스 레이드 / 무한 모드 */
-export type RunKind = 'stage' | 'material' | 'raid' | 'infinite';
+export type RunKind = 'stage' | 'material' | 'raid' | 'infinite' | 'arena';
 /** 재료 던전: 길이(초), 상자 간격(초) */
 const MATERIAL_SECONDS = 45;
 const MATERIAL_CHEST_SEC = 3;
@@ -115,6 +118,8 @@ export interface RunResult {
   chests: ChestGrade[];
   /** 장착 스킬 숙련도 변화 */
   mastery: { id: SkillId; before: number; after: number; points: number }[];
+  /** 아레나 별 */
+  arena?: ArenaResult;
 }
 
 export type RunState = 'playing' | 'paused' | 'ended';
@@ -162,7 +167,7 @@ export class ActionMode {
   private endT = -1;
   private chestT = 0;
   /** 황금 몹으로 번 골드 (결과에 더한다) */
-  private bonusGold = 0;
+  bonusGold = 0;
   /** 이번 판에 주운 상자 등급들 */
   private chests: ChestGrade[] = [];
   /** 유물 발동: 보호막·발자국 타이머 */
@@ -192,7 +197,36 @@ export class ActionMode {
   private phase2 = false;
   private nextElite = 0;
 
-  constructor(private readonly game: Game) {}
+  /** 아레나(테스트 맵) 진행 */
+  readonly arena: ArenaDirector;
+
+  constructor(readonly game: Game) {
+    this.arena = new ArenaDirector(this);
+  }
+
+  get engine() {
+    return this.game.engine;
+  }
+
+  /** 이번 판 공격력 (스킬 피해 기준) */
+  get power() {
+    return this.stats.power;
+  }
+
+  /** 스테이지처럼 흘러가는 판 (스테이지 · 아레나) */
+  get stageLike() {
+    return this.kind === 'stage' || this.kind === 'arena';
+  }
+
+  /** 상자 하나를 바로 가방 몫으로 */
+  addChest(grade: ChestGrade) {
+    this.chests.push(grade);
+  }
+
+  /** 이겼다: 잠깐 보여 주고 결과 화면 */
+  winSoon() {
+    if (this.winT < 0) this.winT = WIN_DELAY;
+  }
 
   get running() {
     return this.state === 'playing';
@@ -270,7 +304,7 @@ export class ActionMode {
     this.waveT = WAVE_FIRST;
     this.packT = 1.5;
     this.winT = -1;
-    this.midBosses = kind === 'stage' && stage > 1 ? [...MID_BOSS_AT] : [];
+    this.midBosses = (kind === 'stage' && stage > 1) || (kind === 'arena' && raidId === 'normal') ? [...MID_BOSS_AT] : [];
     this.waveIdx = Math.floor(Math.random() * WAVES.length);
     this.endT = -1;
     this.chestT = kind === 'material' ? 1 : kind === 'raid' ? Infinity : CHEST_SEC * 0.6;
@@ -280,13 +314,14 @@ export class ActionMode {
     // 지역 바닥
     const region = regionOf(stage);
     eng.ground = region.ground;
-    const intro = {
+    const intro: Record<RunKind, string> = {
+      arena: '',
       stage: region.name,
       material: `재료 던전 · ${region.name}: 상자가 쏟아져요!`,
       raid: `보스 레이드: ${this.raidBoss.name}! 빨간 장판을 피해라!`,
       infinite: '무한 모드: 얼마나 버틸 수 있을까?',
     };
-    this.game.ui.toast(intro[kind]);
+    if (intro[kind]) this.game.ui.toast(intro[kind]);
 
     // 장착한 스킬만 발동한다 (레벨은 성장 탭에서 올린 그대로)
     this.equipped = [];
@@ -306,6 +341,14 @@ export class ActionMode {
       eng.weapons.push(createSkill(SKILL_BY_ID[fr.skill], this.stats, tree));
     }
     if (kind === 'raid') this.spawnRaidBoss();
+    if (kind === 'arena') {
+      this.arena.start(raidId as ArenaVariant);
+      this.duration = this.arena.def.sec;
+      eng.onHurt = (heavy) => {
+        sfx.hurt(heavy);
+        this.arena.countHit();
+      };
+    }
     this.state = 'playing';
     // 제작한 부스터: 스테이지에서 하나씩 자동으로
     this.goldMul = 1;
@@ -347,7 +390,10 @@ export class ActionMode {
 
     this.time += dt;
 
-    if (this.kind === 'stage') {
+    if (this.kind === 'arena') {
+      this.arena.update(dt);
+      if (this.state !== 'playing' || this.winT >= 0) return;
+    } else if (this.kind === 'stage') {
       if (!this.bossSpawned && this.time >= this.duration) this.spawnBoss();
     } else if (this.kind === 'material') {
       if (this.time >= this.duration) return this.finish(true);
@@ -362,9 +408,9 @@ export class ActionMode {
     const peak = this.isBossStage ? 18 : 14;
     // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
-    const kindRate = this.kind === 'raid' ? RAID_SPAWN : this.kind === 'infinite' ? 1 + this.time / 120 : 1;
+    const kindRate = this.kind === 'raid' ? RAID_SPAWN : this.kind === 'infinite' ? 1 + this.time / 120 : this.kind === 'arena' ? this.arena.spawnMul : 1;
     const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1) * (0.5 + 0.5 * this.ease)
-      * (this.kind === 'stage' ? TRICKLE : 1) * (this.firstStage ? 0.5 : 1);
+      * (this.stageLike ? TRICKLE : 1) * (this.firstStage ? 0.5 : 1);
 
     if (this.fever > 0) {
       this.fever -= dt;
@@ -378,7 +424,7 @@ export class ActionMode {
     }
 
     // 몹 무리: 가끔 한 덩어리로 우르르 / 도망 다니는 무리 (스테이지만)
-    if (this.kind === 'stage' && !this.bossSpawned) {
+    if (this.stageLike && !this.bossSpawned) {
       this.packT -= dt;
       if (this.packT <= 0) {
         this.packT = PACK_SEC * (0.7 + Math.random() * 0.6) * (this.firstStage ? 1.6 : 1);
@@ -411,7 +457,7 @@ export class ActionMode {
     }
 
     this.updateGearProcs(dt);
-    this.recycleFarEnemies();
+    if (this.kind !== 'arena') this.recycleFarEnemies();
   }
 
   /** 스테이지 1 (튜토리얼처럼 쉽게) */
@@ -514,7 +560,7 @@ export class ActionMode {
 
   /** 초반 스테이지 쉬움 배율 (스테이지 판에서만, 1 = 원래 난이도) */
   private get ease() {
-    if (this.kind !== 'stage') return 1;
+    if (!this.stageLike) return 1;
     return Math.min(1, EASY_START + ((1 - EASY_START) * (this.stage - 1)) / (EASY_UNTIL - 1));
   }
 
@@ -549,6 +595,8 @@ export class ActionMode {
    * 한 방향으로만 달리면 계속 몹 떼에 부딪히게.
    */
   private spawnPos(angle?: number) {
+    // 아레나: 울타리 바로 바깥에서 들어온다
+    if (this.kind === 'arena') return this.arena.edgePos();
     const p = this.game.engine.player;
     const h = this.heading;
     let a = angle;
@@ -662,12 +710,14 @@ export class ActionMode {
   }
 
   /** 일반 몹 생성: 난이도 배율(MOB_HP, MOB_DMG)을 적용한다 */
-  private spawnMob(init: Parameters<Engine['spawnEnemy']>[0]) {
+  spawnMob(init: Parameters<Engine['spawnEnemy']>[0]) {
     const ease = this.ease;
-    return this.game.engine.spawnEnemy({ ...init, hp: init.hp * MOB_HP * ease, dmg: (init.dmg ?? 1) * MOB_DMG * ease });
+    const e = this.game.engine.spawnEnemy({ ...init, hp: init.hp * MOB_HP * ease, dmg: (init.dmg ?? 1) * MOB_DMG * ease });
+    if (this.kind === 'arena') this.arena.decorate(e);
+    return e;
   }
 
-  private spawnBoss() {
+  spawnBoss() {
     this.bossSpawned = true;
     const { x, y } = this.spawnPos();
     const eng = this.game.engine;
@@ -770,6 +820,12 @@ export class ActionMode {
     if (this.fever <= 0 && (this.feverGauge += this.feverMul) >= FEVER_NEED) this.startFever();
     // 중간 보스: 보상이 펑 (골드·다이아·은/금 상자)
     if (e.elite && e.kind !== 'boss') this.bossReward(e, MIDBOSS_GOLD, MIDBOSS_DIAMONDS, Math.random() < 0.3 ? 2 : 1, false);
+    if (this.kind === 'arena') {
+      // 아레나: 폭주 몹·추격 목표·보스는 아레나가 처리 (보스 보상은 스테이지 정예와 같게)
+      if (e.kind === 'boss') this.bossReward(e, STAGE_BOSS_GOLD, STAGE_BOSS_DIAMONDS, 2, true);
+      this.arena.onKill(e);
+      return;
+    }
     if (e.kind === 'boss') {
       if (this.kind !== 'stage') return this.finish(true);
       // 스테이지 보스: 크게 펑 (마왕 스테이지는 2배) + 금 상자는 바로 가방으로, 잠깐 보여 주고 결과 화면
@@ -896,7 +952,7 @@ export class ActionMode {
     );
   }
 
-  private finish(win: boolean) {
+  finish(win: boolean) {
     if (this.state === 'ended') return;
     this.state = 'ended';
     this.game.joystick.release();
@@ -905,6 +961,18 @@ export class ActionMode {
     // 피버 중 처치는 골드 2배
     let gold = (this.kills + this.feverKills) * enemyGold(this.stage) * KILL_GOLD + this.bonusGold;
     if (win && this.kind === 'raid') gold += stageClearGold(this.stage) * 2;
+    if (win && this.kind === 'arena') gold += stageClearGold(this.stage);
+    // 아레나 별: 종류마다 최고 기록, 처음 딴 별마다 💎10
+    let arena: ArenaResult | undefined;
+    if (this.kind === 'arena') {
+      const st = this.arena.stars(win);
+      const count = st.got.filter(Boolean).length;
+      const prev = save.arenaStars[this.arena.variant] ?? 0;
+      const newStars = Math.max(0, count - prev);
+      save.arenaStars[this.arena.variant] = Math.max(prev, count);
+      save.diamonds += newStars * ARENA_STAR_DIAMONDS;
+      arena = { variant: this.arena.variant, stars: st.got, labels: st.labels, newStars, diamonds: newStars * ARENA_STAR_DIAMONDS };
+    }
     if (win && this.kind === 'stage') {
       gold += stageClearGold(this.stage);
       save.maxStage = Math.max(save.maxStage, this.stage);
@@ -945,7 +1013,7 @@ export class ActionMode {
     const mastery = this.game.gainMastery(this.equipped.map((e) => e.def.id), Math.min(this.time, 180));
     const result: RunResult = {
       win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps,
-      gold, stage: this.stage, chests, kind: this.kind, essence, best, mastery,
+      gold, stage: this.stage, chests, kind: this.kind, essence, best, mastery, arena,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }

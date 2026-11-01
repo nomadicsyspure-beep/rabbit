@@ -16,7 +16,7 @@ const PET_SIZE = 26;
 /** 몹 색: 황금 몹, 웨이브 몹(돌진 빨강 / 포위 보라 / 벽 남색) */
 const GOLDEN_COLOR: Recolor = { shift: 0, sat: 1.6, light: 1.25, set: 46 };
 /** 웨이브 몹은 몸 색 대신 발밑 원 테두리 색으로 구분한다 */
-const TINT_RINGS: Record<string, string> = { charge: '#ff3b3b', ring: '#b05cff', wall: '#4f8cff' };
+const TINT_RINGS: Record<string, string> = { charge: '#ff3b3b', ring: '#b05cff', wall: '#4f8cff', bomb: '#ff2a2a' };
 /** 떠오르는 글자 글꼴 (크기별로 미리 만들어 둔다) */
 const FONTS: Record<number, string> = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [i, `900 ${i}px system-ui, sans-serif`]));
 
@@ -91,6 +91,9 @@ export class Renderer {
     ctx.translate(-eng.camX + sx, -eng.camY + sy);
 
     this.drawDecorations(eng);
+    if (eng.arena) this.drawArena(eng);
+    if (eng.lure) this.drawLure(eng);
+    if (eng.curse) this.drawCurse(eng);
 
     for (const g of eng.gems.items) {
       if (!g.active) continue;
@@ -263,6 +266,18 @@ export class Renderer {
       const g = ctx.createRadialGradient(w / 2, hh / 2, Math.min(w, hh) * (0.38 - 0.18 * lost), w / 2, hh / 2, Math.max(w, hh) * 0.6);
       g.addColorStop(0, `rgba(${r},${gc},40,0)`);
       g.addColorStop(1, `rgba(${r},${gc},40,${a.toFixed(3)})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, hh);
+    }
+
+    // 마지막 러시: 화면 테두리가 빨갛게 맥박
+    if (eng.rush > 0 && eng.followCamera) {
+      const w = eng.viewW;
+      const hh = eng.viewH;
+      const beat = Math.pow(Math.max(0, Math.sin(eng.time * Math.PI * 2.4)), 6);
+      const g = ctx.createRadialGradient(w / 2, hh / 2, Math.min(w, hh) * 0.35, w / 2, hh / 2, Math.max(w, hh) * 0.62);
+      g.addColorStop(0, 'rgba(255,30,40,0)');
+      g.addColorStop(1, `rgba(255,30,40,${(0.18 + 0.35 * beat).toFixed(3)})`);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, hh);
     }
@@ -441,6 +456,19 @@ export class Renderer {
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(e.x, e.y - e.r * 0.5, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (e.tint === 'bomb') {
+      // 폭주 몹: 빨갛게 부푼 빛 (가까이 오면 펑)
+      const ctx = this.ctx;
+      const pulse = 0.5 + 0.5 * Math.sin(eng.time * 14 + e.id);
+      const r = e.r * (1.8 + 0.4 * pulse);
+      const g = ctx.createRadialGradient(e.x, e.y - e.r * 0.4, 2, e.x, e.y - e.r * 0.4, r);
+      g.addColorStop(0, `rgba(255,60,40,${0.45 + 0.3 * pulse})`);
+      g.addColorStop(1, 'rgba(255,60,40,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y - e.r * 0.4, r, 0, Math.PI * 2);
       ctx.fill();
     }
     if (e.tint) {
@@ -796,6 +824,143 @@ export class Renderer {
       ctx.drawImage(img, -w * 0.3, -h / 2, w, h);
     }
     ctx.restore();
+  }
+
+  /** 아레나: 바깥은 어둡게, 경계에 나무 울타리. 독안개가 좁혀 오면 원 밖을 보랏빛으로 */
+  private drawArena(eng: Engine) {
+    const ctx = this.ctx;
+    const a = eng.arena!;
+    const x0 = eng.camX - 60;
+    const y0 = eng.camY - 60;
+    const x1 = eng.camX + eng.viewW + 60;
+    const y1 = eng.camY + eng.viewH + 60;
+    ctx.save();
+    // 바깥: 화면 전체 사각형에서 경기장을 뺀 부분
+    ctx.fillStyle = 'rgba(12,8,4,0.62)';
+    ctx.beginPath();
+    ctx.rect(x0, y0, x1 - x0, y1 - y0);
+    ctx.rect(0, 0, a.w, a.h);
+    ctx.fill('evenodd');
+    if (eng.safe) {
+      const sf = eng.safe;
+      const pulse = 0.5 + 0.5 * Math.sin(eng.time * 4);
+      ctx.fillStyle = `rgba(150,60,200,${(0.28 + 0.08 * pulse).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.rect(0, 0, a.w, a.h);
+      ctx.arc(sf.x, sf.y, sf.r, 0, Math.PI * 2);
+      ctx.fill('evenodd');
+      ctx.strokeStyle = '#d58bff';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 8]);
+      ctx.lineDashOffset = -eng.time * 30;
+      ctx.beginPath();
+      ctx.arc(sf.x, sf.y, sf.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // 울타리: 두꺼운 테두리 + 기둥
+    ctx.strokeStyle = '#3a2412';
+    ctx.lineWidth = 9;
+    ctx.strokeRect(-4, -4, a.w + 8, a.h + 8);
+    ctx.strokeStyle = '#a5743e';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(-4, -4, a.w + 8, a.h + 8);
+    ctx.fillStyle = '#6b4423';
+    const post = (px: number, py: number) => {
+      if (px < x0 || px > x1 || py < y0 || py > y1) return;
+      ctx.fillRect(px - 5, py - 9, 10, 14);
+    };
+    for (let x = 0; x <= a.w; x += 48) {
+      post(x, -4);
+      post(x, a.h + 4);
+    }
+    for (let y = 0; y <= a.h; y += 48) {
+      post(-4, y);
+      post(a.w + 4, y);
+    }
+    ctx.restore();
+  }
+
+  /** 저주 상자: 보랏빛 기운이 감도는 검은 상자 */
+  private drawCurse(eng: Engine) {
+    const ctx = this.ctx;
+    const c = eng.curse!;
+    const pulse = 0.5 + 0.5 * Math.sin(eng.time * 5);
+    const bob = Math.sin(eng.time * 3) * 2;
+    ctx.save();
+    const g = ctx.createRadialGradient(c.x, c.y - 8, 2, c.x, c.y - 8, 38 + 6 * pulse);
+    g.addColorStop(0, `rgba(199,139,255,${0.55 + 0.25 * pulse})`);
+    g.addColorStop(1, 'rgba(199,139,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y - 8, 38 + 6 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y + 8, 14, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.translate(c.x, c.y - 6 + bob);
+    ctx.fillStyle = '#2a1040';
+    ctx.strokeStyle = '#c78bff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-13, -8, 26, 18, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#4a2370';
+    ctx.beginPath();
+    ctx.roundRect(-14, -13, 28, 8, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('☠', 0, 2);
+    ctx.restore();
+  }
+
+  /** 아레나 수비: 지켜야 할 큰 알 + 체력 막대 */
+  private drawLure(eng: Engine) {
+    const ctx = this.ctx;
+    const l = eng.lure!;
+    const k = l.hp / l.maxHp;
+    const hurt = k < 0.35 && Math.floor(eng.time * 6) % 2 === 0;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(l.x, l.y + l.r * 0.9, l.r * 0.9, l.r * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = hurt ? '#ffd0d0' : '#fff6e4';
+    ctx.strokeStyle = '#5a3a20';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(l.x, l.y - l.r * 0.1, l.r * 0.78, l.r, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#f2c14e';
+    for (const [ox, oy, rr] of [[-0.3, -0.35, 0.16], [0.28, 0.05, 0.13], [-0.1, 0.4, 0.1]] as const) {
+      ctx.beginPath();
+      ctx.arc(l.x + ox * l.r, l.y + oy * l.r, rr * l.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 금 간 정도
+    if (k < 0.66) {
+      ctx.strokeStyle = '#5a3a20';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(l.x - l.r * 0.4, l.y - l.r * 0.5);
+      ctx.lineTo(l.x - l.r * 0.1, l.y - l.r * 0.2);
+      ctx.lineTo(l.x - l.r * 0.3, l.y + l.r * 0.1);
+      if (k < 0.33) {
+        ctx.moveTo(l.x + l.r * 0.3, l.y - l.r * 0.6);
+        ctx.lineTo(l.x + l.r * 0.05, l.y - l.r * 0.15);
+        ctx.lineTo(l.x + l.r * 0.35, l.y + l.r * 0.2);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+    this.bar(l.x - 30, l.y - l.r * 1.25 - 8, 60, 6, k, k < 0.35 ? '#ff5c6c' : '#ffd23f');
   }
 
   /** 설치형: 벼락 막대 / 지뢰 / 알 함정 */

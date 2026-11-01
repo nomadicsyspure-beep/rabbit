@@ -3252,3 +3252,81 @@ button:active:not(:disabled) {
   height: 100%;
   background: linear-gradient(90deg, #7cf2a0, #ffd23f);
 }
+
+/* 아레나: 마지막 러시 타이머 (빨갛게 쿵쿵) */
+.timer.rush {
+  color: #ff4d5e !important;
+  animation: timer-rush 0.42s ease-in-out infinite;
+}
+
+@keyframes timer-rush {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.18) rotate(-2deg);
+  }
+  60% {
+    transform: scale(1.05) rotate(2deg);
+  }
+}
+
+/* 아레나 결과: 별 3개 */
+.arena-stars {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.arena-star-row {
+  display: flex;
+  gap: 8px;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.arena-star {
+  color: #5a4a3a;
+  animation: arena-star-pop 0.45s ease-out both;
+}
+
+.arena-star.on {
+  color: #ffd23f;
+  text-shadow: 0 0 10px rgba(255, 210, 63, 0.7), 0 2px 0 #7a4a10;
+}
+
+@keyframes arena-star-pop {
+  0% {
+    transform: scale(0.2) rotate(-40deg);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.35) rotate(8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.arena-star-line {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.arena-star-line.on {
+  color: #b8f5c8;
+  font-weight: 800;
+}
+
+.arena-star-new {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #9fe4ff;
+}
