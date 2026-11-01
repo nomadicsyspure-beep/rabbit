@@ -2,6 +2,11 @@ name: Deploy to GitHub Pages
 
 # main에 푸시되면 빌드해서, 완성된 파일만 gh-pages 브랜치에 올린다.
 # Pages 설정: Source = Deploy from a branch, Branch = gh-pages / (root)
+#
+# GitHub이 gh-pages를 받아 게시하는 단계(pages build and deployment)는 가끔 바로 전 배포를
+# '진행 중'으로 붙잡아 두고 새 배포를 거절한다 ("due to in progress deployment").
+# 그래서 올리기 전에 지금 gh-pages 커밋의 배포를 취소하고, 올린 뒤엔 게시가 끝났는지 확인해서
+# 실패면 취소 후 다시 게시를 요청한다.
 
 on:
   push:
@@ -10,6 +15,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  deployments: read
 
 concurrency:
   group: pages
@@ -26,6 +33,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Cancel stuck Pages deployment of current gh-pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prev=$(git ls-remote origin refs/heads/gh-pages | cut -f1)
+          if [ -n "$prev" ]; then
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/deployments/${prev}/cancel" >/dev/null 2>&1 \
+              && echo "cancelled deployment of ${prev}" || echo "nothing to cancel for ${prev}"
+          fi
       - name: Publish dist to gh-pages branch
         working-directory: dist
         env:
@@ -38,3 +54,27 @@ jobs:
           git add -A
           git commit -q -m "Deploy ${GITHUB_SHA::7}"
           git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+      - name: Make sure Pages actually published this build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          want=$(git ls-remote origin refs/heads/gh-pages | cut -f1)
+          echo "waiting for Pages to publish ${want}"
+          for i in $(seq 1 30); do
+            sleep 10
+            read -r status commit <<< "$(gh api "repos/${GITHUB_REPOSITORY}/pages/builds/latest" --jq '.status + " " + .commit' 2>/dev/null || echo 'unknown -')"
+            echo "try ${i}: ${status} ${commit}"
+            if [ "$commit" = "$want" ] && [ "$status" = "built" ]; then
+              echo "published"; exit 0
+            fi
+            # 거절됐으면(errored) 붙잡고 있는 배포를 취소하고 다시 게시 요청
+            if [ "$status" = "errored" ] || { [ $((i % 6)) -eq 0 ] && [ "$commit" != "$want" ]; }; then
+              for sha in $(gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=github-pages&per_page=5" --jq '.[].sha' 2>/dev/null); do
+                [ "$sha" = "$want" ] && continue
+                gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/deployments/${sha}/cancel" >/dev/null 2>&1 && echo "cancelled ${sha}"
+              done
+              gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/builds" >/dev/null 2>&1 && echo "requested a new Pages build"
+            fi
+          done
+          echo "::error::Pages did not publish ${want} in time"
+          exit 1
