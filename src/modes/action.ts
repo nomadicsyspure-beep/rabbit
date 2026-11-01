@@ -7,7 +7,7 @@ import { fmt } from '../core/format';
 import {
   actionRatio, enemyGold, isBossStage, stageClearGold, type ActionRatio,
 } from '../data/balance';
-import { CHEST_NAMES, rollChest, type ChestGrade } from '../data/items';
+import { CHEST_COLORS, CHEST_NAMES, addReward, emptyReward, openChest, rewardText, rollChest, type ChestGrade, type Reward } from '../data/items';
 import { regionOf, stageSkins } from '../data/world';
 import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
 import type { Game } from '../game';
@@ -110,6 +110,8 @@ export interface RunResult {
   best: boolean;
   /** 주운 상자 등급들 (가방에 들어갔다) */
   chests: ChestGrade[];
+  /** 이번 판 상자에서 나온 것 합계 */
+  loot: Reward;
 }
 
 export type RunState = 'playing' | 'paused' | 'ended';
@@ -160,6 +162,8 @@ export class ActionMode {
   private bonusGold = 0;
   /** 이번 판에 주운 상자 등급들 */
   private chests: ChestGrade[] = [];
+  /** 이번 판 상자에서 나온 것 합계 (결과 화면) */
+  private loot: Reward = emptyReward();
   /** 장신구 효과: 콤보 유지 시간, 피버 게이지 배율, 좋은 상자 확률 */
   comboSec = COMBO_SEC;
   private feverMul = 1;
@@ -259,6 +263,7 @@ export class ActionMode {
     this.chestT = kind === 'material' ? 1 : kind === 'raid' ? Infinity : CHEST_SEC * 0.6;
     this.bonusGold = 0;
     this.chests = [];
+    this.loot = emptyReward();
 
     // 지역 바닥
     const region = regionOf(stage);
@@ -728,8 +733,7 @@ export class ActionMode {
     eng.burst(e.x, e.y - 20, 40, ['#ffe066', '#ffb347', '#ffffff', '#9fe4ff'], 340, 0.9, 380, 4);
     eng.addShake(8);
     if (inBag) {
-      this.chests.push(chest);
-      eng.addText(e.x, e.y - 86, `${CHEST_NAMES[chest]} 획득!`, '#ffd166', 18);
+      this.openChestNow(e.x, e.y - 20, chest);
     } else {
       eng.spawnChest(e.x, e.y, chest);
     }
@@ -774,10 +778,28 @@ export class ActionMode {
   }
 
   /** 재료 상자: 결과 화면에서 연다 */
+  /** 상자를 주우면 그 자리에서 펑 열린다: 나온 재료·골드·다이아가 위로 튀어 오른다 */
   private onChest(x: number, y: number, grade: ChestGrade) {
+    this.openChestNow(x, y, grade);
+  }
+
+  /** 상자 바로 열기 (줍기·보스 보상). 보상은 바로 저장에, 이번 판 전리품에도 더한다 */
+  private openChestNow(x: number, y: number, grade: ChestGrade) {
+    const eng = this.game.engine;
+    const reward = openChest(grade, this.stage, enemyGold(this.stage));
+    this.game.grantReward(reward);
+    addReward(this.loot, reward);
     this.chests.push(grade);
-    this.game.engine.addText(x, y - 30, `${CHEST_NAMES[grade]}!`, '#ffe066', 16);
-    this.game.ui.toast(`${CHEST_NAMES[grade]} 획득!`);
+    this.game.save.stats.chests++;
+    addDaily(this.game.save, 'chests');
+    const color = CHEST_COLORS[grade];
+    eng.addEffect('ring', x, y, 50 + grade * 20, 0.4, color);
+    eng.burst(x, y - 10, 14 + grade * 8, [color, '#ffe066', '#ffffff'], 220, 0.6, 300, 3);
+    eng.addText(x, y - 34, `${CHEST_NAMES[grade]} 열림!`, color, 15);
+    // 나온 것들이 차례로 위로 떠오른다
+    const lines = [...rewardText(reward).split(' · ').filter(Boolean), `🪙 +${fmt(reward.gold)}`];
+    lines.forEach((line, i) => eng.addText(x + (i % 2 ? 14 : -14), y - 54 - i * 16, line, '#fff6c8', 12));
+    sfx.chest();
   }
 
   /** 경험치 보석: 캐릭터 영구 경험치로 바로 쌓는다 */
@@ -846,12 +868,8 @@ export class ActionMode {
     }
     const best = this.kind === 'infinite' && this.time > save.infiniteBest;
     if (best) save.infiniteBest = this.time;
-    // 주운 상자는 가방에 넣는다 (가방 탭에서 한꺼번에 연다)
+    // 상자는 주울 때 이미 열었다 (전리품은 결과 화면에 모아서 보여 준다)
     const chests = [...this.chests];
-    for (const grade of chests) {
-      const key = `${grade}:${this.stage}`;
-      save.chestBag[key] = (save.chestBag[key] ?? 0) + 1;
-    }
     save.gold += gold;
     save.stats.kills += this.kills;
     save.stats.bestCombo = Math.max(save.stats.bestCombo, this.bestCombo);
@@ -863,7 +881,7 @@ export class ActionMode {
     this.game.addPassXp(PLAY_PASS_XP + (win ? PLAY_PASS_XP : 0));
     const result: RunResult = {
       win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps,
-      gold, stage: this.stage, chests, kind: this.kind, essence, best,
+      gold, stage: this.stage, chests, loot: this.loot, kind: this.kind, essence, best,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }

@@ -74,6 +74,11 @@ export class Game {
     // 브라우저는 첫 터치 뒤에야 소리를 낼 수 있다
     window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
     this.bindLifecycle();
+    // 예전 저장에 안 연 상자가 남아 있으면 바로 열어 준다
+    if (Object.keys(this.save.chestBag).length > 0) {
+      const n = this.openAllChests().length;
+      if (n > 0) this.ui.toast(`가방에 남아 있던 상자 ${n}개를 열었어요 (재료는 가방에)`);
+    }
 
     new ResizeObserver(() => this.resize()).observe(this.ui.battle);
     this.resize();
@@ -705,14 +710,7 @@ export class Game {
 
   // ---- 가방: 안 연 상자 ----
 
-  /** 가방 속 상자 수 (등급별) */
-  get chestCounts() {
-    const c = [0, 0, 0];
-    for (const [k, n] of Object.entries(this.save.chestBag)) c[Number(k.split(':')[0])] += n;
-    return c;
-  }
-
-  /** 가방 속 상자를 모두 연다: 상자마다 보상 (이미 저장에 넣은 상태로 돌려준다) */
+  /** 예전 저장의 가방 속 안 연 상자를 모두 연다 (상자는 이제 주울 때 바로 열린다) */
   openAllChests() {
     const s = this.save;
     const out: { grade: ChestGrade; reward: Reward }[] = [];

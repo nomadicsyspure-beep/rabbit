@@ -2821,3 +2821,43 @@ button:active:not(:disabled) {
   font-size: 12px;
   line-height: 18px;
 }
+
+/* 모험 탭: 큰 아이콘 타일 2열 */
+.adv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.adv-tile {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin: 0;
+  padding: 12px 6px;
+  min-height: 118px;
+  color: var(--text);
+}
+
+.adv-icon {
+  font-size: 42px;
+  line-height: 1.1;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.35));
+}
+
+.adv-title {
+  font-size: 16px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.adv-status {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.adv-tile.dim {
+  filter: grayscale(0.7) brightness(0.8);
+}
