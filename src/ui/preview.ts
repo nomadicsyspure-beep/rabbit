@@ -12,7 +12,8 @@ const W = 300;
 const H = 170;
 const MOBS = 9;
 
-export function skillPreview(def: SkillDef, tree: SkillTree) {
+/** power: 실제 공격력 (피해 숫자가 스테이지와 같게). 몹 체력은 강화 전 기준이라 강화할수록 빨리 쓰러진다 */
+export function skillPreview(def: SkillDef, tree: SkillTree, power = 10) {
   const canvas = h('canvas', 'preview-canvas');
   const eng = new Engine();
   const ren = new Renderer(canvas);
@@ -25,8 +26,9 @@ export function skillPreview(def: SkillDef, tree: SkillTree) {
   eng.showDamageText = true;
   eng.autoSkills = true;
   eng.ground = regionOf(1).ground;
-  const stats = { power: 10, aps: 1 };
-  eng.weapons = [createSkill(def, stats, tree)];
+  const stats = { power, aps: 1 };
+  // 강화 단계(피해·속도·개수)를 그대로 쓴다 (복사본: 미리보기가 저장을 건드리지 않게)
+  eng.weapons = [createSkill(def, stats, { ...tree })];
   const p = eng.player;
   p.x = W / 2;
   p.y = H / 2 + 8;
@@ -40,7 +42,7 @@ export function skillPreview(def: SkillDef, tree: SkillTree) {
     eng.spawnEnemy({
       kind: 'normal', skin: skins[Math.floor(Math.random() * skins.length)],
       x: p.x + Math.cos(a) * d * 1.4, y: p.y + Math.sin(a) * d * 0.8,
-      hp: stats.power * 6, r: 10, speed: 16, dmg: 0, xp: 0,
+      hp: stats.power * def.dmg * 6, r: 10, speed: 16, dmg: 0, xp: 0,
     });
   };
 

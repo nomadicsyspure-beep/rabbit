@@ -846,6 +846,12 @@ export class Game {
     if (i >= 0) this.save.newSkills.splice(i, 1);
   }
 
+  /** 스킬 탭을 둘러보고 나갔다: NEW 표시 전부 끄기 */
+  clearNewSkills() {
+    this.save.newSkills.length = 0;
+    this.seeSkillTab();
+  }
+
   // ---- 가방: 안 연 상자 ----
 
   /** 가방 속 상자 수 (등급별) */

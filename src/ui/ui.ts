@@ -361,6 +361,8 @@ export class UI implements UIHost {
     for (const [tid, b] of this.tabButtons) b.classList.toggle('active', tid === id);
     // 방치 화면은 메인(성장 탭)에서만, 나머지 탭은 아래 내용이 화면을 꽉 채운다
     this.app.classList.toggle('compact', id !== 'growth');
+    // 스킬 탭을 한 번 보고 다른 데로 가면 NEW 표시는 전부 끈다
+    if (this.currentTab === 'skill' && id !== 'skill') this.game.clearNewSkills();
     this.currentTab = id;
     if (id === 'skill') this.game.seeSkillTab();
     this.panel.replaceChildren();
@@ -673,10 +675,13 @@ export class UI implements UIHost {
 
   /** 스킬 발동 미리보기 창: 돌아가기 = 그 스킬 창으로 */
   private showSkillPreview(def: SkillDef) {
+    const tree = this.game.skillTree(def.id);
+    const lv = tree ? treeLevel(tree) : 0;
     this.openModal(
       h('div', 'modal-title', `${def.name} 미리보기`),
       h('div', 'modal-sub', def.blurb),
-      skillPreview(def, this.game.skillTree(def.id) ?? emptyTree()),
+      skillPreview(def, tree ?? emptyTree(), this.game.stats.atk),
+      h('div', 'preview-hint', tree ? `지금 강화 기준 (Lv ${lv}) · ${skillSummary(def, tree)}` : `배우기 전 (기본) · ${skillSummary(def, emptyTree())}`),
       this.button('돌아가기', 'primary', () => this.showSkill(def)),
     );
   }
