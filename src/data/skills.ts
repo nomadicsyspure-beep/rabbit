@@ -9,6 +9,7 @@ import {
   GravityWeapon, LanceWeapon, LaserWeapon, NovaWeapon, PoisonWeapon, QuakeWeapon, ThunderWeapon, VampireWeapon, WispWeapon,
   BuffSkill, DebuffSkill, PulseSkill, ShotSkill, StrikeSkill, ZoneSkill,
 } from '../battle/weapons-more';
+import { BurstBoomerangWeapon, EggTrapWeapon, MineWeapon, OilWeapon, PeckWeapon, RodWeapon } from '../battle/weapons-traps';
 
 // 스킬은 스킬 상자(data/skillbox.ts)에서 얻는다. 같은 스킬이 또 나오면 그 스킬의 스킬 포인트 +1,
 // 포인트를 가지(피해 / 발동 속도 / 개수) 중 골라서 찍는다 (영구, 골드로는 못 올린다).
@@ -26,7 +27,8 @@ export type SkillId =
   | 'thornring' | 'spinblades' | 'stormpulse' | 'lavapool' | 'snipe' | 'hailstorm' | 'magicmissile' | 'lavaball'
   | 'chillaura' | 'bind' | 'doom' | 'panic' | 'fortress' | 'frenzy' | 'spikeshell' | 'guardian'
   | 'spiralflame' | 'icering' | 'thunderpulse' | 'starspiral' | 'thunderhammer' | 'poisonarrow'
-  | 'glacier' | 'inferno' | 'mire' | 'dash' | 'warcry' | 'phantom';
+  | 'glacier' | 'inferno' | 'mire' | 'dash' | 'warcry' | 'phantom'
+  | 'rod' | 'mine' | 'eggtrap' | 'oil' | 'peck' | 'burstrang';
 
 export type Branch = keyof SkillTree;
 
@@ -652,6 +654,37 @@ export const SKILLS: SkillDef[] = [
     dmg: 1, cd: 12, count: 1.2, countStep: 0.2, countLabel: '지속', countUnit: '초',
     create: (s, spec, t) => new BuffSkill(s, spec, t, { id: 'phantom', buff: 'invuln', v: 1, also: { buff: 'sprint', v: 0.9 }, sprite: 'purple-flame@220', color: '#c9b8ff' }),
   },
+  // ---- 5차: 설치형 · 기름 · 연타 · 팔방 부메랑 ----
+  {
+    id: 'rod', type: 'attack', name: '벼락 막대', icon: 'fx:pillar@50', blurb: '내 자리에 막대를 꽂으면 잠깐 뒤 벼락이 떨어져 주변을 지지고 기절 (개수만큼 적 무리 쪽에도)',
+    dmg: 2.8, cd: 3, count: 1, countLabel: '막대',
+    create: (s, spec, t) => new RodWeapon(s, spec, t),
+  },
+  {
+    id: 'mine', type: 'attack', name: '깃털 지뢰', icon: 'fx:fire-burst@330', blurb: '발밑에 지뢰를 깔아 둔다: 몹이 밟으면 펑 (불 폭발이라 기름에 불이 붙는다)',
+    dmg: 1.5, cd: 1.6, count: 2, countLabel: '지뢰',
+    create: (s, spec, t) => new MineWeapon(s, spec, t),
+  },
+  {
+    id: 'eggtrap', type: 'target', name: '알 함정', icon: 'fx:star-burst@20', blurb: '적이 오는 길목에 알을 떨어뜨려 둔다: 밟으면 펑',
+    dmg: 1.6, cd: 2, count: 2, countLabel: '알',
+    create: (s, spec, t) => new EggTrapWeapon(s, spec, t),
+  },
+  {
+    id: 'oil', type: 'debuff', name: '끈적 기름', icon: 'fx:purple-pit@250', blurb: '적 무리 밑에 기름: 엉금엉금 느려진다. 불(화염 폭발·불 장판·지뢰)이 닿으면 불바다',
+    dmg: 0.25, cd: 3, count: 2, countLabel: '웅덩이',
+    create: (s, spec, t) => new OilWeapon(s, spec, t),
+  },
+  {
+    id: 'peck', type: 'target', name: '연타 쪼기', icon: 'fx:slash@30', blurb: '가까운 적에게 콩 뛰어들어 세 번 연달아 쪼고, 세 번째는 크게 들어가며 밀쳐 낸다',
+    dmg: 1.8, cd: 1.3, count: 1, countLabel: '대상',
+    create: (s, spec, t) => new PeckWeapon(s, spec, t),
+  },
+  {
+    id: 'burstrang', type: 'target', name: '팔방 부메랑', icon: 'fx:blue-slash@300', blurb: '하나를 던져 맞힌 적 자리에서 부메랑이 팔방으로 퍼졌다가 돌아온다',
+    dmg: 0.6, cd: 2.2, count: 8, countStep: 2, countLabel: '부메랑',
+    create: (s, spec, t) => new BurstBoomerangWeapon(s, spec, t),
+  },
 ];
 
 /**
@@ -661,9 +694,9 @@ export const SKILLS: SkillDef[] = [
  */
 export type Grade = 'S' | 'A' | 'B' | 'C' | 'D';
 const RANKING: Record<SkillType, [SkillId, Grade][]> = {
-  attack: [['cross', 'S'], ['phoenix', 'S'], ['thornring', 'S'], ['icering', 'S'], ['quake', 'A'], ['boomerang', 'A'], ['lavapool', 'A'], ['firetrail', 'A'], ['emberring', 'A'], ['pollen', 'A'], ['spinblades', 'B'], ['windblade', 'B'], ['shockwave', 'B'], ['stormpulse', 'B'], ['wisp', 'B'], ['darkwave', 'B'], ['sunflare', 'B'], ['tornadoring', 'B'], ['spiralflame', 'C'], ['starfall', 'C'], ['featherstorm', 'C'], ['thunderpulse', 'C'], ['slash', 'C'], ['petal', 'C'], ['nova', 'D'], ['flame', 'D'], ['tornado', 'D'], ['dark', 'D']],
-  target: [['firepillar', 'S'], ['bigegg', 'S'], ['firework', 'S'], ['goldspear', 'S'], ['snipe', 'S'], ['lance', 'A'], ['laser', 'A'], ['eruption', 'A'], ['meteor', 'A'], ['thunder', 'A'], ['arrowrain', 'A'], ['icemeteor', 'A'], ['lavaball', 'B'], ['poisonarrow', 'B'], ['holymark', 'B'], ['shuriken', 'B'], ['hailstorm', 'B'], ['acid', 'B'], ['shadowbolt', 'B'], ['iceorb', 'B'], ['fire', 'B'], ['pillar', 'B'], ['thunderhammer', 'C'], ['heartbeam', 'C'], ['feather', 'C'], ['egg', 'C'], ['skullfire', 'C'], ['starspiral', 'C'], ['chain', 'C'], ['magicmissile', 'D'], ['candy', 'D'], ['bubble', 'D'], ['note', 'D'], ['firefly', 'D']],
-  debuff: [['mire', 'S'], ['swamp', 'S'], ['vortex', 'S'], ['frostwave', 'S'], ['blackhole', 'S'], ['blizzard', 'A'], ['curse', 'A'], ['icetrail', 'A'], ['frostspike', 'A'], ['timestop', 'A'], ['shadowhand', 'A'], ['poisonbolt', 'A'], ['venom', 'B'], ['gravity', 'B'], ['poison', 'B'], ['frostbite', 'B'], ['ice', 'B'], ['flash', 'B'], ['inferno', 'B'], ['doom', 'B'], ['dizzy', 'B'], ['glacier', 'C'], ['plague', 'C'], ['bind', 'C'], ['roar', 'C'], ['huntmark', 'C'], ['terror', 'C'], ['hex', 'C'], ['ignite', 'D'], ['sleepdust', 'D'], ['weaken', 'D'], ['panic', 'D'], ['chillaura', 'D']],
+  attack: [['cross', 'S'], ['phoenix', 'S'], ['thornring', 'S'], ['icering', 'S'], ['quake', 'A'], ['mine', 'A'], ['boomerang', 'A'], ['lavapool', 'A'], ['firetrail', 'A'], ['emberring', 'A'], ['pollen', 'A'], ['spinblades', 'B'], ['rod', 'B'], ['windblade', 'B'], ['shockwave', 'B'], ['stormpulse', 'B'], ['wisp', 'B'], ['darkwave', 'B'], ['sunflare', 'B'], ['tornadoring', 'B'], ['spiralflame', 'C'], ['starfall', 'C'], ['featherstorm', 'C'], ['thunderpulse', 'C'], ['slash', 'C'], ['petal', 'C'], ['nova', 'D'], ['flame', 'D'], ['tornado', 'D'], ['dark', 'D']],
+  target: [['firepillar', 'S'], ['bigegg', 'S'], ['firework', 'S'], ['goldspear', 'S'], ['snipe', 'S'], ['lance', 'A'], ['burstrang', 'A'], ['laser', 'A'], ['eruption', 'A'], ['meteor', 'A'], ['thunder', 'A'], ['arrowrain', 'A'], ['icemeteor', 'A'], ['lavaball', 'B'], ['eggtrap', 'B'], ['poisonarrow', 'B'], ['holymark', 'B'], ['shuriken', 'B'], ['hailstorm', 'B'], ['acid', 'B'], ['shadowbolt', 'B'], ['iceorb', 'B'], ['fire', 'B'], ['pillar', 'B'], ['thunderhammer', 'C'], ['heartbeam', 'C'], ['feather', 'C'], ['peck', 'C'], ['egg', 'C'], ['skullfire', 'C'], ['starspiral', 'C'], ['chain', 'C'], ['magicmissile', 'D'], ['candy', 'D'], ['bubble', 'D'], ['note', 'D'], ['firefly', 'D']],
+  debuff: [['mire', 'S'], ['swamp', 'S'], ['vortex', 'S'], ['frostwave', 'S'], ['blackhole', 'S'], ['blizzard', 'A'], ['oil', 'A'], ['curse', 'A'], ['icetrail', 'A'], ['frostspike', 'A'], ['timestop', 'A'], ['shadowhand', 'A'], ['poisonbolt', 'A'], ['venom', 'B'], ['gravity', 'B'], ['poison', 'B'], ['frostbite', 'B'], ['ice', 'B'], ['flash', 'B'], ['inferno', 'B'], ['doom', 'B'], ['dizzy', 'B'], ['glacier', 'C'], ['plague', 'C'], ['bind', 'C'], ['roar', 'C'], ['huntmark', 'C'], ['terror', 'C'], ['hex', 'C'], ['ignite', 'D'], ['sleepdust', 'D'], ['weaken', 'D'], ['panic', 'D'], ['chillaura', 'D']],
   buff: [['overdrive', 'S'], ['regen', 'S'], ['shield', 'S'], ['heal', 'A'], ['fortress', 'A'], ['haste', 'A'], ['vampire', 'A'], ['warcry', 'B'], ['luck', 'B'], ['phantom', 'B'], ['berserk', 'B'], ['rage', 'B'], ['invincible', 'B'], ['bless', 'B'], ['spikeshell', 'C'], ['guardian', 'C'], ['magnetstorm', 'C'], ['frenzy', 'C'], ['dash', 'D'], ['thorns', 'D'], ['sprint', 'D']],
 };
 export const SKILL_GRADE = Object.fromEntries(Object.values(RANKING).flat()) as Record<SkillId, Grade>;

@@ -11,7 +11,7 @@ import {
 } from '../data/skills';
 import { RAID_BOSSES } from '../data/raids';
 import { SHARD_COST, SKILL_BOXES, boxCost, boxesFor, type BoxDef } from '../data/skillbox';
-import { COLLECTION_BONUS, DUNGEON_DAILY, REBIRTH_MIN_STAGE, type Game, type Mode } from '../game';
+import { COLLECTION_BONUS, DUNGEON_DAILY, MASTERY_SEC, REBIRTH_MIN_STAGE, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
 import { art, chickPic, coin, h, holdRepeat, ibox, monsterPic, skillIcon, svgIcon } from './dom';
@@ -783,9 +783,19 @@ export class UI implements UIHost {
         r.cost.textContent = c === null ? 'MAX' : `⭐ ${c}`;
         r.btn.disabled = !g.canUpgradeBranch(def.id, r.br.id);
       }
-      gold.textContent = `⭐ 스킬 포인트 ${g.save.skillPoints[def.id] ?? 0} (상자에서 겹치면 +1)`;
+      gold.textContent = `⭐ 스킬 포인트 ${g.save.skillPoints[def.id] ?? 0} (상자에서 겹치거나 숙련도가 차면 +1)`;
+      const m = g.save.mastery[def.id] ?? 0;
+      mFill.style.width = `${(m / MASTERY_SEC) * 100}%`;
+      mText.textContent = `숙련도 ${Math.floor(m)}/${MASTERY_SEC}초 · 장착하고 싸우면 차요, 다 차면 포인트 +1`;
     };
-    this.openModal(name, gold, ...rows.map((r) => r.row), head, pvHint, equipBox, this.button('닫기', 'primary', () => this.closeModal()));
+    // 숙련도 게이지
+    const mBox = h('div', 'mastery-box');
+    const mBar = h('div', 'mastery-bar');
+    const mFill = h('div', 'mastery-fill');
+    mBar.append(mFill);
+    const mText = h('div', 'mastery-text');
+    mBox.append(mText, mBar);
+    this.openModal(name, gold, mBox, ...rows.map((r) => r.row), head, pvHint, equipBox, this.button('닫기', 'primary', () => this.closeModal()));
     this.treeRefresh();
   }
 
@@ -989,7 +999,7 @@ export class UI implements UIHost {
     const g = this.game;
     const eq = g.save.equipped;
     this.skillHeader.textContent = `장착 중 ${eq.length}/${EQUIP_SLOTS} · 형태마다 한 칸`;
-    const key = eq.join();
+    const key = eq.map((id) => `${id}:${Math.floor(g.save.mastery[id] ?? 0)}`).join();
     if (key !== this.equipKey) {
       this.equipKey = key;
       const slots = SKILL_TYPES.map((type) => {
@@ -999,7 +1009,12 @@ export class UI implements UIHost {
         b.style.setProperty('--type', type.color);
         b.append(h('span', 'slot-type', type.name));
         if (def) {
-          b.append(skillIcon(def, 'tile-icon'), h('span', 'tile-name', def.name));
+          // 숙련도 막대 (다 차면 포인트 +1)
+          const bar = h('span', 'slot-mastery');
+          const fill = h('span', 'slot-mastery-fill');
+          fill.style.width = `${((g.save.mastery[def.id] ?? 0) / MASTERY_SEC) * 100}%`;
+          bar.append(fill);
+          b.append(skillIcon(def, 'tile-icon'), h('span', 'tile-name', def.name), bar);
           b.addEventListener('click', () => this.showSkill(def));
         } else {
           b.append(h('span', 'tile-plus', '+'), h('span', 'tile-name', '빈 칸'));
@@ -1082,6 +1097,36 @@ export class UI implements UIHost {
     );
   }
 
+  /** 결과 창: 장착 스킬 숙련도가 차오르는 막대 (다 차면 포인트 +1) */
+  private masteryShow(list: RunResult['mastery']) {
+    const box = h('div', 'mastery-result');
+    box.append(h('div', 'mastery-result-title', '📈 스킬 숙련도'));
+    list.forEach((m, i) => {
+      const def = SKILL_BY_ID[m.id];
+      const row = h('div', 'mastery-row');
+      const bar = h('div', 'mastery-bar');
+      const fill = h('div', 'mastery-fill');
+      bar.append(fill);
+      const tag = h('span', 'mastery-tag', m.points > 0 ? `⭐ +${m.points}` : `${Math.floor(m.after)}/${MASTERY_SEC}`);
+      if (m.points > 0) tag.classList.add('up');
+      row.append(skillIcon(def, 'mastery-icon'), bar, tag);
+      box.append(row);
+      // 처음 자리에서 차오르게 (포인트를 받았으면 한 번 꽉 찼다가 남은 만큼)
+      fill.style.width = `${(m.before / MASTERY_SEC) * 100}%`;
+      window.setTimeout(() => {
+        fill.style.width = m.points > 0 ? '100%' : `${(m.after / MASTERY_SEC) * 100}%`;
+        if (m.points > 0) window.setTimeout(() => {
+          fill.classList.add('instant');
+          fill.style.width = '0%';
+          void fill.offsetWidth;
+          fill.classList.remove('instant');
+          fill.style.width = `${(m.after / MASTERY_SEC) * 100}%`;
+        }, 650);
+      }, 250 + i * 120);
+    });
+    return box;
+  }
+
   showResult(r: RunResult, done: () => void) {
     const stats = h('div', 'result-stats');
     const line = (k: string, v: string | HTMLElement) => {
@@ -1112,6 +1157,7 @@ export class UI implements UIHost {
     const parts: HTMLElement[] = [h('div', 'modal-title ' + (r.win || r.best ? 'win' : 'lose'), title), h('div', 'modal-sub', sub), stats];
     // 주운 상자: 하나씩 튀어나오는 연출만 (가방에 들어갔다)
     if (r.chests.length > 0) parts.push(this.chestShow(r.chests));
+    if (r.mastery.length > 0) parts.push(this.masteryShow(r.mastery));
     // 자동 진행: 스테이지를 깼으면 몇 초 뒤 다음 스테이지 (지거나 다른 판이면 멈춘다)
     let timer = 0;
     const g = this.game;

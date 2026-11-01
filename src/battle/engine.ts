@@ -105,8 +105,34 @@ export interface Projectile {
   /** 부메랑: 플레이어 쪽으로 계속 끌려와 되돌아온다 (돌아오는 길에 한 번 더 맞힌다) */
   back: boolean;
   turned: boolean;
+  /** 부메랑이 돌아올 자리 (backPt가 false면 플레이어) */
+  backPt: boolean;
+  bx: number;
+  by: number;
+  /** 0보다 크면 처음 맞힌 적 자리에서 부메랑 burst개가 팔방으로 퍼졌다가 그 자리로 돌아온다 (burstDmg 피해) */
+  burst: number;
+  burstDmg: number;
   /** 그림 크기 배율 */
   scale: number;
+}
+
+/** 설치형: rod = 꽂아 두면 fuse초 뒤 벼락 · mine = 깔아 둔 지뢰 · egg = 알 함정 (둘 다 밟으면 펑) */
+export type TrapKind = 'rod' | 'mine' | 'egg';
+export interface Trap {
+  active: boolean;
+  kind: TrapKind;
+  x: number;
+  y: number;
+  /** 밟는 반경 (rod는 벼락 반경) */
+  r: number;
+  /** 폭발 반경 */
+  blastR: number;
+  dmg: number;
+  /** rod: 벼락까지 남은 시간 / mine·egg: 준비될 때까지 */
+  t: number;
+  maxT: number;
+  /** 사라질 때까지 */
+  life: number;
 }
 
 /** 움직이며 닿는 적에게 계속 피해를 주는 장판 (회오리) */
@@ -129,6 +155,8 @@ export interface Zone {
   blastR: number;
   /** 0보다 크면 장판 안의 적을 이 시간(초)만큼 느리게 */
   slow: number;
+  /** 기름 웅덩이: 불(화염 폭발·불 장판)이 닿으면 불바다가 된다 */
+  oil: boolean;
 }
 
 export interface EnemyBullet {
@@ -466,11 +494,16 @@ export class Engine {
   }), 500);
   readonly projectiles = new Pool<Projectile>(() => ({
     active: false, kind: 'feather', x: 0, y: 0, vx: 0, vy: 0, r: 4, dmg: 1, life: 1, pierce: 0, hit: [], blast: 0, flight: 0,
-    home: 0, back: false, turned: false, scale: 1,
+    home: 0, back: false, turned: false, backPt: false, bx: 0, by: 0, burst: 0, burstDmg: 0, scale: 1,
   }), 500);
+  /** 기름 웅덩이가 있나 (없으면 불 장판마다 기름을 찾지 않는다) */
+  private hasOil = false;
+  readonly traps = new Pool<Trap>(() => ({
+    active: false, kind: 'mine', x: 0, y: 0, r: 14, blastR: 40, dmg: 1, t: 0, maxT: 1, life: 0,
+  }), 40);
   readonly zones = new Pool<Zone>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 20, dmg: 1, life: 0, maxLife: 1, sprite: '', nextHit: new Map(),
-    pull: 0, blast: 0, blastR: 0, slow: 0,
+    pull: 0, blast: 0, blastR: 0, slow: 0, oil: false,
   }), 60);
   readonly bullets = new Pool<EnemyBullet>(() => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
@@ -519,6 +552,7 @@ export class Engine {
     this.enemies.clear();
     this.projectiles.clear();
     this.zones.clear();
+    this.traps.clear();
     this.bullets.clear();
     this.gems.clear();
     this.chests.clear();
@@ -628,6 +662,19 @@ export class Engine {
     this.dashVX = (dx * dist) / T;
     this.dashVY = (dy * dist) / T;
     p.invuln = Math.max(p.invuln, T + 0.15);
+  }
+
+  /** 짧은 도약: (tx, ty) 쪽으로 dist만큼 T초에 (연타 쪼기). 피해 없이 몸만 옮긴다 */
+  hopPlayer(tx: number, ty: number, dist: number, T = 0.1) {
+    const p = this.player;
+    const d = Math.hypot(tx - p.x, ty - p.y) || 1;
+    if (dist <= 0 || this.dashT > 0) return;
+    this.dashT = T;
+    this.dashVX = ((tx - p.x) / d) * (dist / T);
+    this.dashVY = ((ty - p.y) / d) * (dist / T);
+    p.faceX = (tx - p.x) / d;
+    p.faceY = (ty - p.y) / d;
+    this.addSprite('dust', p.x, p.y + 8, 14, 0.25);
   }
 
   /** 주변 적을 바깥으로 밀쳐 낸다 (함성 등) */
@@ -860,12 +907,18 @@ export class Engine {
 
   fireProjectile(
     x: number, y: number, tx: number, ty: number, speed: number, dmg: number, range: number, pierce: number,
-    kind: ProjectileKind = 'feather', blast = 0, opts: { home?: number; back?: boolean; scale?: number; r?: number } = {},
+    kind: ProjectileKind = 'feather', blast = 0,
+    opts: { home?: number; back?: boolean; scale?: number; r?: number; backTo?: { x: number; y: number }; burst?: number; burstDmg?: number } = {},
   ) {
     const pr = this.projectiles.get();
     if (!pr) return;
     pr.home = opts.home ?? 0;
-    pr.back = opts.back ?? false;
+    pr.back = opts.back ?? !!opts.backTo;
+    pr.backPt = !!opts.backTo;
+    pr.bx = opts.backTo?.x ?? 0;
+    pr.by = opts.backTo?.y ?? 0;
+    pr.burst = opts.burst ?? 0;
+    pr.burstDmg = opts.burstDmg ?? 0;
     pr.turned = false;
     pr.scale = opts.scale ?? 1;
     const dx = tx - x;
@@ -895,6 +948,8 @@ export class Engine {
     if (!pr) return;
     pr.home = 0;
     pr.back = false;
+    pr.backPt = false;
+    pr.burst = 0;
     pr.turned = false;
     pr.scale = scale;
     pr.active = true;
@@ -917,6 +972,73 @@ export class Engine {
     this.addShake(2.5);
     sfx.boom();
     this.blast(x, y, r, dmg, 120);
+    if (sprite.startsWith('fire')) this.igniteOil(x, y, r, dmg);
+  }
+
+  /** 불이 닿은 기름 웅덩이는 불바다로 (피해 = 기름 피해 ×4와 불 피해의 절반 중 큰 쪽) */
+  igniteOil(x: number, y: number, r: number, fireDmg = 0) {
+    for (const z of this.zones.items) {
+      if (!z.active || !z.oil) continue;
+      if ((z.x - x) ** 2 + (z.y - y) ** 2 > (z.r + r) ** 2) continue;
+      z.oil = false;
+      z.sprite = 'fire-burst';
+      z.dmg = Math.max(z.dmg * 4, fireDmg * 0.5);
+      z.life = Math.max(z.life, 3);
+      z.maxLife = z.life + 0.2;
+      z.r *= 1.15;
+      this.addSprite('fire-burst', z.x, z.y - 6, z.r * 1.4, 0.35);
+      this.burst(z.x, z.y - 6, 10, ['#ff7a2a', '#ffd166', '#3a1d0b'], 220, 0.5, 200, 3);
+      this.addShake(2);
+    }
+  }
+
+  /** 설치형 놓기 */
+  addTrap(kind: TrapKind, x: number, y: number, dmg: number, r: number, blastR: number, t: number, life = 12) {
+    const tr = this.traps.get();
+    if (!tr) return;
+    tr.active = true;
+    tr.kind = kind;
+    tr.x = x;
+    tr.y = y;
+    tr.dmg = dmg;
+    tr.r = r;
+    tr.blastR = blastR;
+    tr.t = tr.maxT = t;
+    tr.life = life;
+  }
+
+  private updateTraps(dt: number) {
+    for (const tr of this.traps.items) {
+      if (!tr.active) continue;
+      tr.t -= dt;
+      tr.life -= dt;
+      if (tr.kind === 'rod') {
+        if (tr.t > 0) continue;
+        // 벼락: 하늘에서 막대로 내리꽂혀 주변을 지진다
+        tr.active = false;
+        this.addEffect('bolt', tr.x + (Math.random() - 0.5) * 20, tr.y - 190, 0, 0.25, '#fff27a', tr.x, tr.y - 12);
+        this.addEffect('bolt', tr.x + (Math.random() - 0.5) * 30, tr.y - 170, 0, 0.2, '#bfe8ff', tr.x, tr.y - 10);
+        this.addEffect('ring', tr.x, tr.y, tr.r, 0.3, '#fff27a');
+        this.addSprite('star-burst', tr.x, tr.y - 8, tr.r * 1.1, 0.3);
+        this.burst(tr.x, tr.y - 10, 14, ['#fff27a', '#ffffff', '#7ad7ff'], 260, 0.4, 100, 3);
+        this.addShake(3);
+        sfx.boom();
+        for (const e of this.blast(tr.x, tr.y, tr.r, tr.dmg, 90)) if (e.kind !== 'boss') e.stunT = Math.max(e.stunT, 0.4);
+        continue;
+      }
+      if (tr.life <= 0) {
+        tr.active = false;
+        this.addSprite('dust', tr.x, tr.y, 16, 0.3);
+        continue;
+      }
+      if (tr.t > 0) continue;
+      // 준비된 지뢰·알: 몹이 밟으면 펑
+      const hit = this.queryEnemies(tr.x, tr.y, tr.r + 16).some((e) => (e.x - tr.x) ** 2 + (e.y - tr.y) ** 2 <= (e.r + tr.r) ** 2);
+      if (!hit) continue;
+      tr.active = false;
+      this.explode(tr.x, tr.y, tr.blastR, tr.dmg, tr.kind === 'mine' ? 'fire-burst' : 'star-burst');
+      if (tr.kind === 'egg') this.burst(tr.x, tr.y - 6, 10, ['#ffffff', '#ffe9a8', '#ffd23f'], 220, 0.5, 300, 3);
+    }
   }
 
   /** 반경 안 모든 적에게 피해 + 바깥으로 knock만큼 밀기. 맞은 적을 돌려준다 */
@@ -1017,6 +1139,8 @@ export class Engine {
     z.blast = blast;
     z.blastR = blastR;
     z.slow = slow;
+    z.oil = false;
+    return z;
   }
 
   fireBullet(x: number, y: number, angle: number, speed: number, dmg: number) {
@@ -1230,6 +1354,7 @@ export class Engine {
 
     this.updateProjectiles(dt);
     this.updateZones(dt);
+    this.updateTraps(dt);
     this.updateBullets(dt);
     this.updateGems(dt);
     this.updateChests(dt);
@@ -1528,8 +1653,8 @@ export class Engine {
       if (pr.back) {
         // 부메랑: 플레이어 쪽으로 끌려온다. 돌아서면 맞은 목록을 비워 한 번 더 맞힌다
         const p = this.player;
-        const dx = p.x - pr.x;
-        const dy = p.y - pr.y;
+        const dx = (pr.backPt ? pr.bx : p.x) - pr.x;
+        const dy = (pr.backPt ? pr.by : p.y) - pr.y;
         const d = Math.hypot(dx, dy) || 1;
         pr.vx += (dx / d) * 900 * dt;
         pr.vy += (dy / d) * 900 * dt;
@@ -1563,11 +1688,30 @@ export class Engine {
         pr.hit.push(e.id);
         const sp = Math.hypot(pr.vx, pr.vy) || 1;
         this.damageEnemy(e, pr.dmg, (pr.vx / sp) * 130, (pr.vy / sp) * 130);
+        if (pr.burst > 0) {
+          // 맞은 자리에서 팔방으로 부메랑이 퍼졌다가 그 자리로 돌아온다
+          pr.active = false;
+          this.burstBoomerangs(e.x, e.y, pr.burst, pr.burstDmg);
+          break;
+        }
         if (pr.pierce-- <= 0) {
           pr.active = false;
           break;
         }
       }
+    }
+  }
+
+  /** 팔방 부메랑: (x, y)에서 n개가 고르게 퍼졌다가 그 자리로 돌아온다 */
+  burstBoomerangs(x: number, y: number, n: number, dmg: number) {
+    const off = Math.random() * Math.PI;
+    this.addEffect('ring', x, y, 30, 0.25, '#ffffff');
+    this.addSprite('star-burst', x, y - 6, 26, 0.2);
+    for (let i = 0; i < n; i++) {
+      const a = off + (i / n) * Math.PI * 2;
+      this.fireProjectile(x, y - 4, x + Math.cos(a), y - 4 + Math.sin(a), 400, dmg, 900, 999, 'slash', 0, {
+        backTo: { x, y: y - 4 }, r: 11, scale: 0.85,
+      });
     }
   }
 
@@ -1619,8 +1763,12 @@ export class Engine {
   }
 
   private updateZones(dt: number) {
+    // 불 장판이 닿은 기름은 불바다로
+    for (const z of this.zones.items) if (z.active && !z.oil && z.sprite.startsWith('fire') && this.hasOil) this.igniteOil(z.x, z.y, z.r, z.dmg * 2);
+    this.hasOil = false;
     for (const z of this.zones.items) {
       if (!z.active) continue;
+      if (z.oil) this.hasOil = true;
       z.x += z.vx * dt;
       z.y += z.vy * dt;
       z.life -= dt;

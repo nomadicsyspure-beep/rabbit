@@ -10,7 +10,7 @@ import {
 import { CHEST_COLORS, CHEST_NAMES, rollChest, type ChestGrade } from '../data/items';
 import { regionOf, stageSkins, type MatId } from '../data/world';
 import { BOOSTERS } from '../data/craft';
-import { SKILL_BY_ID, createSkill, type SkillDef } from '../data/skills';
+import { SKILL_BY_ID, createSkill, type SkillDef, type SkillId } from '../data/skills';
 import type { Game } from '../game';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
@@ -39,7 +39,7 @@ const MOB_DMG = 1.5;
 /** 몹 수·구성이 최대로 짙어지기까지 걸리는 시간(초) */
 const RAMP_SEC = 30;
 /** 피버: 게이지(처치 수, 콤보와 상관없이 쌓임)가 FEVER_NEED만큼 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
-export const FEVER_NEED = 250;
+export const FEVER_NEED = 200;
 export const FEVER_SEC = 10;
 const FEVER_BONUS = 5;
 const FEVER_SPAWN = 2.5;
@@ -113,6 +113,8 @@ export interface RunResult {
   best: boolean;
   /** 주운 상자 등급들 (가방에 들어갔다) */
   chests: ChestGrade[];
+  /** 장착 스킬 숙련도 변화 */
+  mastery: { id: SkillId; before: number; after: number; points: number }[];
 }
 
 export type RunState = 'playing' | 'paused' | 'ended';
@@ -939,9 +941,11 @@ export class ActionMode {
     addDaily(save, 'plays');
     addDaily(save, 'fevers', this.fevers);
     this.game.addPassXp(PLAY_PASS_XP + (win ? PLAY_PASS_XP : 0));
+    // 숙련도: 장착하고 싸운 시간만큼 (유물 공짜 스킬은 빼고)
+    const mastery = this.game.gainMastery(this.equipped.map((e) => e.def.id), Math.min(this.time, 180));
     const result: RunResult = {
       win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps,
-      gold, stage: this.stage, chests, kind: this.kind, essence, best,
+      gold, stage: this.stage, chests, kind: this.kind, essence, best, mastery,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }

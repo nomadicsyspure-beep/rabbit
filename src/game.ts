@@ -28,6 +28,8 @@ import { IdleMode } from './modes/idle';
 import { UI } from './ui/ui';
 
 const AUTOSAVE_SEC = 10;
+/** 스킬 숙련도: 장착하고 이만큼(초) 싸우면 그 스킬 포인트 +1 (스테이지 30초 기준 4판) */
+export const MASTERY_SEC = 120;
 /** 방치 화면에서 병아리가 1초에 잡는 몹 수 (대략). 마리당 골드 = 초당 수입 ÷ 이 값 */
 export const IDLE_KILLS_PER_SEC = 2.3;
 /** 도감 하나당 공격력·체력 +1% */
@@ -838,6 +840,31 @@ export class Game {
       }
     }
     return used;
+  }
+
+  /**
+   * 숙련도: 스테이지에서 장착하고 싸운 시간만큼 차고, MASTERY_SEC마다 그 스킬 포인트 +1
+   * (다 찍을 만큼 이미 모았으면 조각). 결과 창에 보여 줄 변화를 돌려준다
+   */
+  gainMastery(ids: SkillId[], sec: number) {
+    const s = this.save;
+    const out: { id: SkillId; before: number; after: number; points: number }[] = [];
+    if (sec <= 0) return out;
+    for (const id of ids) {
+      if (!s.skills[id]) continue;
+      const before = s.mastery[id] ?? 0;
+      let m = before + sec;
+      let points = 0;
+      while (m >= MASTERY_SEC) {
+        m -= MASTERY_SEC;
+        points++;
+        if (this.pointsToMax(id) > (s.skillPoints[id] ?? 0)) s.skillPoints[id] = (s.skillPoints[id] ?? 0) + 1;
+        else s.shards += SHARD_GAIN[SKILL_GRADE[id]];
+      }
+      s.mastery[id] = m;
+      out.push({ id, before, after: m, points });
+    }
+    return out;
   }
 
   /** 스킬 창을 열어 봤다: NEW 표시 끄기 */
