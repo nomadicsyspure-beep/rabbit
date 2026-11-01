@@ -10,7 +10,7 @@ import {
   BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_GRADE, SKILL_TYPES, branchValue, emptyTree, skillSummary, treeLevel, SKILL_BY_ID, type Grade, type SkillDef,
 } from '../data/skills';
 import { RAID_BOSSES } from '../data/raids';
-import { SHARD_COST, SKILL_BOXES, boxCost, boxesFor, weeklyPickup, type BoxDef } from '../data/skillbox';
+import { SHARD_COST, SKILL_BOXES, boxCost, boxesFor, type BoxDef } from '../data/skillbox';
 import { COLLECTION_BONUS, DUNGEON_DAILY, REBIRTH_MIN_STAGE, type Game, type Mode } from '../game';
 import { FEVER_SEC, type RunResult } from '../modes/action';
 import { UI_URLS } from '../battle/sprites';
@@ -536,31 +536,12 @@ export class UI implements UIHost {
     );
   }
 
-  /** 스킬 상자 칸: 주간 픽업 띠 + 상자 5종 + 조각 교환 (2열). 상자를 누르면 확률 */
+  /** 스킬 상자 칸: 상자 5종 + 조각 교환 (2열). 상자를 누르면 확률 */
   private buildBoxes() {
     const g = this.game;
     const wrap = h('div', 'box-area');
-    // 이번 주 픽업
-    const up = weeklyPickup();
-    const banner = h('button', 'pickup-banner');
-    banner.append(h('span', 'pickup-title', '⭐ 이번 주 픽업'));
-    for (const d of [...up.S, ...up.A]) {
-      const chip = h('span', 'pickup-chip');
-      chip.append(skillIcon(d, 'pickup-icon'), h('span', `tile-grade g-${SKILL_GRADE[d.id]}`, SKILL_GRADE[d.id]));
-      banner.append(chip);
-    }
-    banner.addEventListener('click', () => this.openModal(
-      h('div', 'modal-title', '⭐ 이번 주 픽업'),
-      h('div', 'modal-sub', '금·전설·형태 선택 상자에서 S·A급이 나오면 절반 확률로 이 스킬이에요 (매주 바뀜)'),
-      ...[...up.S, ...up.A].map((d) => {
-        const row = h('div', 'box-where-row');
-        row.append(h('span', '', `${d.name}`), h('b', `tile-grade g-${SKILL_GRADE[d.id]} odds-grade`, `${SKILL_GRADE[d.id]}급`));
-        return row;
-      }),
-      this.button('닫기', 'primary', () => this.closeModal()),
-    ));
     const list = h('div', 'box-list');
-    wrap.append(banner, list);
+    wrap.append(list);
     const refreshers = SKILL_BOXES.map((box) => {
       // 작은 칸: 위에 상자(누르면 확률), 천장까지 남은 횟수, 아래 1회·10회
       const card = h('div', `card skill-box box-${box.id}`);
