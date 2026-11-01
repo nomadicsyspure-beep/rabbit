@@ -80,7 +80,7 @@ export class OilWeapon extends SkillWeapon {
     const near = engine.nearestEnemies(p.x, p.y, 30, 260);
     if (near.length === 0) return false;
     for (const t of shuffle(near).slice(0, this.count)) {
-      const z = engine.addZone(t.x, t.y, 0, 0, 46 * FX, 4.5, this.power, 'oil', 0, 0, 0, 1.6);
+      const z = engine.addZone(t.x, t.y, 0, 0, 46 * FX, 4, this.power, 'oil', 0, 0, 0, 1.2);
       if (z) z.oil = true;
       engine.burst(t.x, t.y - 4, 5, ['#1d1712', '#3a2c20', '#8a7cff'], 120, 0.35, 300, 3);
     }
