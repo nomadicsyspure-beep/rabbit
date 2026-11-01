@@ -250,6 +250,17 @@ export class Renderer {
     ctx.globalAlpha = 1;
     ctx.restore();
 
+    // 피격: 화면 테두리가 잠깐 빨갛게
+    if (eng.hurtT > 0 && eng.followCamera) {
+      const w = eng.viewW;
+      const hh = eng.viewH;
+      const g = ctx.createRadialGradient(w / 2, hh / 2, Math.min(w, hh) * 0.3, w / 2, hh / 2, Math.max(w, hh) * 0.6);
+      g.addColorStop(0, 'rgba(255,40,60,0)');
+      g.addColorStop(1, `rgba(255,30,50,${(0.7 * Math.min(1, eng.hurtT / 0.6)).toFixed(3)})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, hh);
+    }
+
     const boss = eng.boss;
     if (boss && eng.followCamera) this.drawBossBar(eng, boss);
     if (eng.followCamera) this.drawOffscreenArrows(eng);

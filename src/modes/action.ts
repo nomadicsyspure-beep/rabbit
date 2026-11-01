@@ -26,13 +26,15 @@ const BASE_HP = 150;
 const BASE_SPEED = 165;
 const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
-const ELITE_HP = 1200;
+const ELITE_HP = 1800;
+/** 중간 보스 기본 체력 (일반 몹 배율 MOB_HP를 따로 곱한다) */
+const MID_BOSS_HP = 520;
 /** 초반 스테이지는 쉽게: 스테이지 1은 몹 체력·피해·숫자 EASY_START배, EASY_UNTIL 스테이지부터 원래대로 */
 const EASY_START = 0.5;
 const EASY_UNTIL = 12;
-const BOSS_HP = 5000;
+const BOSS_HP = 7000;
 /** 일반 몹 난이도 배율 (체력 / 부딪힐 때 피해) */
-const MOB_HP = 1.8;
+const MOB_HP = 1.3;
 const MOB_DMG = 1.5;
 /** 몹 수·구성이 최대로 짙어지기까지 걸리는 시간(초) */
 const RAMP_SEC = 30;
@@ -209,6 +211,7 @@ export class ActionMode {
     eng.controller = this.game.pilot;
     this.game.applyControls();
     eng.onKill = (e) => this.onKill(e);
+    eng.onHurt = () => sfx.hurt();
     eng.onGem = (v) => this.onGem(v);
     eng.onChest = (x, y, grade) => this.onChest(x, y, grade);
     eng.onPlayerDead = () => {
@@ -468,14 +471,14 @@ export class ActionMode {
     const pos = this.spawnPos();
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.skinStage);
-    this.spawnMob({ kind: 'tank', skin: skins.tank, x: pos.x, y: pos.y, hp: 260 * s, r: 24, speed: 52, dmg: 14 * s, xp: 25, elite: true });
+    this.spawnMob({ kind: 'tank', skin: skins.tank, x: pos.x, y: pos.y, hp: MID_BOSS_HP * s, r: 24, speed: 52, dmg: 14 * s, xp: 25, elite: true });
     this.game.ui.toast('중간 보스 등장!');
   }
 
   private spawnElite() {
     const pos = this.spawnPos();
     const s = 1 + (this.time / 60) * 0.6;
-    this.spawnMob({ kind: 'tank', skin: 'rabbit', x: pos.x, y: pos.y, hp: 160 * s, r: 20, speed: 60, dmg: 12 * s, xp: 15, elite: true });
+    this.spawnMob({ kind: 'tank', skin: 'rabbit', x: pos.x, y: pos.y, hp: 240 * s, r: 20, speed: 60, dmg: 12 * s, xp: 15, elite: true });
     this.game.ui.toast('정예 습격!');
   }
 

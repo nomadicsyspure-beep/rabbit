@@ -79,6 +79,12 @@ export const sfx = {
   hit() {
     if (combat && throttle('hit', 40)) tone(900 + Math.random() * 200, 0.04, 'square', 0.05);
   },
+  /** 병아리가 맞았을 때: 둔탁하게 퍽 */
+  hurt() {
+    if (!combat || !throttle('hurt', 150)) return;
+    noise(0.12, 0.3, 600);
+    tone(220, 0.14, 'sawtooth', 0.12, 90);
+  },
   /** 콤보가 오를수록 음이 올라간다 (100마다 다시 낮아짐) */
   kill(combo: number) {
     if (!combat || !throttle('kill', 35)) return;
