@@ -13,8 +13,10 @@ import { HERO_FOOT, HERO_SIZE, SPRITES, isReady } from './sprites';
 //   무기: <장비id>.png 한 장
 // 그림이 없으면 모자·무기는 아이콘 글자, 등은 코드로 그린 모양으로 대신한다.
 
-/** 모자·등 장비를 몸에 그릴지 (지금은 꺼 둠: 무기만 옆에 둥둥) */
+/** 모자를 몸에 그릴지 (지금은 꺼 둠) */
 const SHOW_BODY_GEAR = false;
+/** 몸 전체를 감싸는 등 장비 (후드 망토 등): 어느 방향이든 병아리 앞에 그린다 */
+const WRAP_BACK = new Set(['cape_red']);
 /** 무기가 떠 있는 거리(px) */
 const HAND_DIST = 36;
 
@@ -164,14 +166,14 @@ function drawHand(ctx: CanvasRenderingContext2D, eng: Engine, id: string, footY:
 /** 병아리 뒤에 그릴 것 (등 장비, 위를 볼 땐 무기) */
 export function drawOutfitBehind(ctx: CanvasRenderingContext2D, eng: Engine, at: HeroPlace) {
   const { back, hand } = eng.look;
-  if (SHOW_BODY_GEAR && back && !facingUp(at.dir)) drawBack(ctx, back, at);
+  if (back && !WRAP_BACK.has(back) && !facingUp(at.dir)) drawBack(ctx, back, at);
   if (hand && facingUp(at.dir)) drawHand(ctx, eng, hand, at.top + HERO_SIZE * HERO_FOOT);
 }
 
 /** 병아리 앞에 그릴 것 (모자, 위를 볼 땐 등 장비, 무기) */
 export function drawOutfitFront(ctx: CanvasRenderingContext2D, eng: Engine, at: HeroPlace) {
   const { hat, back, hand } = eng.look;
-  if (SHOW_BODY_GEAR && back && facingUp(at.dir)) drawBack(ctx, back, at);
+  if (back && (WRAP_BACK.has(back) || facingUp(at.dir))) drawBack(ctx, back, at);
   if (SHOW_BODY_GEAR && hat) drawHat(ctx, hat, at);
   if (hand && !facingUp(at.dir)) drawHand(ctx, eng, hand, at.top + HERO_SIZE * HERO_FOOT);
 }

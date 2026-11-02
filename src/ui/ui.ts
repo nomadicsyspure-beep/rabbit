@@ -1465,6 +1465,12 @@ export class UI implements UIHost {
         this.toast(g.save.landscape ? '가로 모드 켜짐: 스테이지에서 가로로 (왼손 조이스틱 · 오른손 스킬)' : '가로 모드 꺼짐');
         this.showSettings(back);
       }),
+      this.button(`꾸미기: 빨간 후드 망토 ${g.save.capeOn ? 'ON' : 'OFF'}`, '', () => {
+        g.save.capeOn = !g.save.capeOn;
+        g.applyLook();
+        this.toast(g.save.capeOn ? '빨간 후드 망토를 입었어요' : '망토를 벗었어요');
+        this.showSettings(back);
+      }),
       this.button('테스트: 골드 지급', '', () => {
         g.save.gold += g.goldPerSec * 500;
         this.refresh();
