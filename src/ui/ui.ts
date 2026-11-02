@@ -1,9 +1,10 @@
 import { sfx } from '../audio/sfx';
 import { CHEST_NAMES, MAT_BY_ID, type ChestGrade } from '../data/items';
 import { regionOf } from '../data/world';
+import { BOSS_STAGE_SECONDS, STAGE_SECONDS, chapterBoss } from '../data/chapters';
 import { fmt, fmtDuration, fmtTime } from '../core/format';
 import {
-  STATS, STAT_ORDER, actionRatio, isBossStage, stageClearGold, xpToNext,
+  IDLE_JUMP, STATS, STAT_ORDER, actionRatio, chapterOf, isBossStage, stageClearGold, stageLabel, xpToNext,
   type StatId,
 } from '../data/balance';
 import {
@@ -554,7 +555,7 @@ export class UI implements UIHost {
     const me = g.power;
     const st = g.stats;
     const rows: [string, ScoutKind, string?][] = [
-      [`⚔️ 스테이지 ${g.nextStage}`, 'stage'],
+      [`⚔️ 스테이지 ${stageLabel(g.nextStage)}`, 'stage'],
       ['📦 재료 던전', 'material'],
       ['😈 보스 레이드 (꼬마 마왕)', 'raid', 'devil'],
       ['♾️ 무한 모드 (1분)', 'infinite'],
@@ -572,7 +573,7 @@ export class UI implements UIHost {
     this.openModal(
       h('div', 'modal-title', `⚔️ 전투력 ${fmt(me.cp)}`),
       h('div', 'modal-sub', `공격력 ${fmt(st.atk)} × 공격 속도 ${st.aps.toFixed(2)} × 스킬 배율 ${me.skill.toFixed(2)} · 체력 ${fmt(st.hp)}`),
-      h('div', 'modal-sub', `장착 스킬 ${me.count}개 · 평균 Lv ${me.count ? me.avgLv.toFixed(1) : '-'} (스테이지 ${sc.stage} 권장 Lv ${sc.recLv}) · 등급이 높고 Lv이 높을수록 배율이 커요`),
+      h('div', 'modal-sub', `장착 스킬 ${me.count}개 · 평균 Lv ${me.count ? me.avgLv.toFixed(1) : '-'} (스테이지 ${stageLabel(sc.stage)} 권장 Lv ${sc.recLv}) · 등급이 높고 Lv이 높을수록 배율이 커요`),
       list,
       h('div', 'hint', '여유(1.3배↑) · 적정 · 도전(0.7배↑) · 위험 — 레벨·능력치·유물·동료·스킬을 모두 합친 대략의 지표예요'),
       this.button('닫기', 'primary', () => this.closeModal()),
@@ -925,11 +926,17 @@ export class UI implements UIHost {
     const tiles: Tile[] = [
       {
         icon: '⚔️',
-        title: () => (isBossStage(g.nextStage) ? `스테이지 ${g.nextStage} 마왕` : `스테이지 ${g.nextStage}`),
+        title: () => (isBossStage(g.nextStage) ? `스테이지 ${stageLabel(g.nextStage)} 보스` : `스테이지 ${stageLabel(g.nextStage)}`),
         status: () => stageInfo().label,
         desc: () => {
           const { stage, r, label } = stageInfo();
-          return [`${regionOf(stage).name} · 30초 버티면 ${isBossStage(stage) ? '마왕' : '정예'} 등장, 잡으면 클리어`, `클리어 보상 🪙 ${fmt(stageClearGold(stage))}`, `${label} · 공격 ×${r.atk.toFixed(2)} · 체력 ×${r.hp.toFixed(2)}`];
+          const boss = isBossStage(stage);
+          return [
+            `${regionOf(stage).name} · ${boss ? BOSS_STAGE_SECONDS : STAGE_SECONDS}초 버티면 ${boss ? chapterBoss(stage).name : '정예'} 등장, 잡으면 클리어`,
+            boss ? `보스를 깨면 방치 수입 ×${IDLE_JUMP}!` : '못 깨면 보상 없음 · 판 안에서 스킬 레벨 업',
+            `클리어 보상 🪙 ${fmt(stageClearGold(stage))}`,
+            `${label} · 공격 ×${r.atk.toFixed(2)} · 체력 ×${r.hp.toFixed(2)}`,
+          ];
         },
         action: '도전',
         go: () => g.enterAction(),
@@ -937,7 +944,7 @@ export class UI implements UIHost {
       },
       {
         icon: '📦', title: () => '재료 던전', status: () => left('material'),
-        desc: () => ['45초 동안 3초마다 보물 상자!', '지역 재료·스킬북을 쓸어 담아요', left('material')],
+        desc: () => ['몹이 녹아내리는 45초! 3초마다 보물 상자', '지역 재료·스킬북을 쓸어 담아요', left('material')],
         action: '입장', go: () => g.enterAction('material'), disabled: () => g.entriesLeft('material') <= 0, scout: ['material'],
       },
       {
@@ -978,7 +985,7 @@ export class UI implements UIHost {
       },
       {
         icon: '🪶', title: () => '환생', status: () => `${g.save.rebirth.count}번`,
-        desc: () => [`최고 스테이지 ${REBIRTH_MIN_STAGE}부터 환생 → 환생 깃털로 영구 강화`, `환생 ${g.save.rebirth.count}번 · 깃털 ${g.save.rebirth.feathers}개`],
+        desc: () => [`최고 스테이지 ${stageLabel(REBIRTH_MIN_STAGE)}부터 환생 → 환생 깃털로 영구 강화`, `환생 ${g.save.rebirth.count}번 · 깃털 ${g.save.rebirth.feathers}개`],
         action: '열기', go: () => showRebirth(g, this),
       },
     ];
@@ -1074,10 +1081,10 @@ export class UI implements UIHost {
       this.goldEl.textContent = fmt(save.gold);
       this.miniGold.replaceChildren(coin(fmt(save.gold)));
       this.miniDia.textContent = `💎 ${fmt(save.diamonds)}`;
-      this.stageEl.textContent = save.maxStage > 0 ? `최고 스테이지 ${save.maxStage}` : '스테이지 기록 없음';
+      this.stageEl.textContent = save.maxStage > 0 ? `최고 스테이지 ${stageLabel(save.maxStage)}` : '스테이지 기록 없음';
       setText(this.incomeEl, `마리당 +${fmt(g.goldPerKill)}`);
       const next = g.nextStage;
-      this.challengeLabel.textContent = isBossStage(next) ? `스테이지 ${next} 마왕 도전` : `스테이지 ${next} 도전`;
+      this.challengeLabel.textContent = isBossStage(next) ? `${stageLabel(next)} 보스 도전` : `스테이지 ${stageLabel(next)} 도전`;
       this.challengeBtn.classList.toggle('boss', isBossStage(next));
       // 스카우터는 0.5초마다 (전투력 계산이 가볍지 않다)
       const nowMs = performance.now();
@@ -1092,7 +1099,7 @@ export class UI implements UIHost {
           this.powerEl.replaceChildren(
             h('span', '', `Lv ${save.level} (경험치 ${Math.floor(save.xp)}/${xpToNext(save.level)})  ·  `),
             h('b', 'power-num', `⚔️ 전투력 ${fmt(sc.me.cp)}`),
-            h('span', '', `  ·  마왕 처치 ${save.bossKills}회`),
+            h('span', '', `  ·  보스 처치 ${save.bossKills}회`),
           );
         }
       }
@@ -1122,11 +1129,17 @@ export class UI implements UIHost {
       const hp = Math.max(0, p.hp / p.maxHp);
       setStyle(this.hpLost, 'width', `${((1 - hp) * 100).toFixed(1)}%`);
       setText(this.hpText, `${Math.ceil(Math.max(0, p.hp))} / ${Math.ceil(p.maxHp)}`);
-      setText(this.lvEl, `Lv.${save.level}`);
-      setStyle(this.xpFill, 'width', `${(Math.min(1, save.xp / xpToNext(save.level)) * 100).toFixed(1)}%`);
       if (a.kind === 'stage') {
-        setText(this.plateEl, `STAGE ${a.stage}`);
-        setText(this.timerEl, a.bossSpawned ? (a.isBossStage ? '마왕!' : '정예!') : fmtTime(a.duration - a.time));
+        // 스테이지: 판 안 레벨 (경험치로 오르고, 오를 때마다 스킬 고르기)
+        setText(this.lvEl, `Lv.${a.runLv}`);
+        setStyle(this.xpFill, 'width', `${(Math.min(1, a.runXp / a.runNeed) * 100).toFixed(1)}%`);
+      } else {
+        setText(this.lvEl, `Lv.${save.level}`);
+        setStyle(this.xpFill, 'width', `${(Math.min(1, save.xp / xpToNext(save.level)) * 100).toFixed(1)}%`);
+      }
+      if (a.kind === 'stage') {
+        setText(this.plateEl, `STAGE ${stageLabel(a.stage)}`);
+        setText(this.timerEl, a.bossSpawned ? (a.isBossStage ? '보스!' : '정예!') : fmtTime(a.duration - a.time));
       } else if (a.test) {
         const bossFight = a.kind === 'arena' && a.test.variant === 'boar';
         setText(this.plateEl, a.kind === 'scroll' ? '스크롤 (B)' : bossFight ? '🐗 보스전' : a.test.plate);
@@ -1239,6 +1252,23 @@ export class UI implements UIHost {
     return b;
   }
 
+  /** 판 안 레벨 업: 세 개 중 하나 고르기 (이번 판만 강해진다) */
+  showRunLevelUp(lv: number, opts: { icon: SkillDef | null; title: string; desc: string }[], pick: (i: number) => void) {
+    const list = h('div', 'runup-list');
+    opts.forEach((o, i) => {
+      const b = h('button', 'card runup-card');
+      const info = h('div', 'runup-info');
+      info.append(h('b', '', o.title), h('span', '', o.desc));
+      b.append(o.icon ? skillIcon(o.icon, 'runup-icon') : h('div', 'runup-icon heal', '💚'), info);
+      b.addEventListener('click', () => {
+        this.closeModal();
+        pick(i);
+      });
+      list.append(b);
+    });
+    this.openModal(h('div', 'modal-title win', `판 레벨 ${lv}!`), h('div', 'modal-sub', '하나 골라서 이번 판 동안 강해져요'), list);
+  }
+
   showPause(resume: () => void, giveUp: () => void) {
     this.openModal(
       h('div', 'modal-title', '일시정지'),
@@ -1314,8 +1344,11 @@ export class UI implements UIHost {
       const boss = this.game.action.raidBoss;
       if (r.win && boss.diamonds) line('다이아', `💎 +${boss.diamonds}`);
     }
-    let title = r.win ? `스테이지 ${r.stage} 클리어!` : '쓰러졌어요…';
-    let sub = r.win ? '방치 수입이 이 스테이지 기준으로 올라가요' : '강화하고 다시 도전해 보세요';
+    if (r.diamonds) line('다이아', `💎 +${r.diamonds}`);
+    let title = r.win ? `스테이지 ${stageLabel(r.stage)} 클리어!` : '쓰러졌어요…';
+    let sub = r.win
+      ? isBossStage(r.stage) ? `${chapterOf(r.stage)}장 보스 격파! 방치 수입 ×${IDLE_JUMP}` : '다음은 더 세요. 재료 던전·레이드로 키워서 도전!'
+      : '스테이지는 깨야 보상이 있어요 (경험치·골드·상자 모두). 던전에서 키우고 다시 도전!';
     if (r.kind === 'material') {
       title = r.win ? '재료 던전 완료!' : '재료 던전 끝';
       sub = '주운 상자는 가방 탭에서 열어요';
@@ -1341,7 +1374,7 @@ export class UI implements UIHost {
       let left = AUTO_NEXT_SEC;
       const count = h('div', 'auto-next-count');
       const tick = () => {
-        count.textContent = `⏩ ${left}초 뒤 스테이지 ${g.nextStage} 자동 시작`;
+        count.textContent = `⏩ ${left}초 뒤 스테이지 ${stageLabel(g.nextStage)} 자동 시작`;
         if (left-- <= 0) {
           this.closeModal();
           g.enterAction();

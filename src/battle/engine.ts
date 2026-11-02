@@ -12,6 +12,11 @@ export type EnemyKind = 'normal' | 'fast' | 'tank' | 'boss';
  * flee = 플레이어에게서 도망치다 t1초 뒤 사라짐 (황금 몹)
  */
 export type EnemyMove = 'chase' | 'lead' | 'charge' | 'flee';
+/**
+ * 몹 미니 스킬 (스테이지 몹만): shot = 조준 한 발 / fan = 부채꼴 세 발 / dash = 짧게 기 모았다 돌진 /
+ * nova = 사방 여덟 발 / pop = 쓰러질 때 사방으로 터진다. 쓰기 전에 빨갛게 기를 모은다 (castT)
+ */
+export type MobSkill = '' | 'shot' | 'fan' | 'dash' | 'nova' | 'pop';
 
 /** 그릴 때 쓰는 외형(src/assets/monsters). 행동(kind)과 따로 둔다. */
 /** firstaid = 구급상자 몹 (그림 없이 코드로 그린다. 잡으면 체력 회복템) */
@@ -58,6 +63,16 @@ export interface Enemy {
   scripted: boolean;
   /** 받는 피해 배율 (약점 노출 때 2배 등) */
   dmgTaken: number;
+  /** 몹 미니 스킬과 그 타이머: 기 모으는 남은 시간 / 다음 스킬까지 */
+  skill: MobSkill;
+  castT: number;
+  cdT: number;
+  /** 보스 패턴 세기 0~1 (장이 높을수록 탄이 많고 빠르다) */
+  heat: number;
+  /** 보스: 제자리에 멈춰 패턴을 쓰는 남은 시간 / 지금 이어지는 패턴(나선·십자·탄막 비) / 조준 산탄 남은 발수 */
+  holdT: number;
+  pat: number;
+  volN: number;
   /** 정예·마왕 (화면 밖에 있으면 빨간 화살표로 알려 준다) */
   elite: boolean;
   /** 디버프 남은 시간: 기절(멈춤) / 공포(도망) / 혼란(갈팡질팡) / 취약(받는 피해 ×1.5) / 표식(치명타 확정) */
@@ -167,6 +182,8 @@ export interface Zone {
 
 export interface EnemyBullet {
   active: boolean;
+  /** 몹 탄(주황, 맞으면 가볍게) / 보스 탄(보라 불꽃, 맞으면 세게) */
+  mob: boolean;
   x: number;
   y: number;
   vx: number;
@@ -444,6 +461,9 @@ const BOSS_HIT_GAP = 0.07;
 const BOSS_CRIT_STOP = 0.035;
 const BOSS_CRIT_STOP_GAP = 0.45;
 /** 황금 몹이 도망치기 시작하는 거리(px) */
+/** 몹 미니 스킬: 기 모으는 시간 / 다시 쓰기까지(초) */
+const MOB_CAST: Record<MobSkill, number> = { '': 0, shot: 0.45, fan: 0.55, dash: 0.5, nova: 0.6, pop: 0 };
+const MOB_CD: Record<MobSkill, number> = { '': 99, shot: 2.6, fan: 3.4, dash: 3.2, nova: 4.2, pop: 99 };
 const GOLDEN_FLEE_DIST = 170;
 /** 상자를 끌어오는 거리(px). 보석 자석보다 훨씬 넓다 */
 const CHEST_MAGNET = 240;
@@ -487,7 +507,7 @@ export class Engine {
   /** 아레나 저주 상자 (밟으면 저주 발동) */
   curse: { x: number; y: number } | null = null;
   /** 보스 경고선 (효과 풀이 가득 차도 꼭 보이게 따로 둔다) */
-  warns: { x1: number; y1: number; x2: number; y2: number; w: number; t: number; maxT: number; color: string }[] = [];
+  warns: { x1: number; y1: number; x2: number; y2: number; w: number; t: number; maxT: number; color: string; dmg?: number }[] = [];
   /** 돌기둥: 병아리·몹 모두 못 지나간다 (아레나) */
   rocks: { x: number; y: number; r: number }[] = [];
   /** 가시덤불: 그리기만 (닿으면 아픈 건 스크롤 테스트가 처리) */
@@ -517,6 +537,7 @@ export class Engine {
     gold: 0, xp: 0, flash: 0, kx: 0, ky: 0, slowT: 0, move: 'chase', phase: 0, golden: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false,
     stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
     t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0, toLure: false, scripted: false, dmgTaken: 1,
+    skill: '', castT: 0, cdT: 0, heat: 0, holdT: 0, pat: 0, volN: 0,
   }), 500);
   readonly projectiles = new Pool<Projectile>(() => ({
     active: false, kind: 'feather', x: 0, y: 0, vx: 0, vy: 0, r: 4, dmg: 1, life: 1, pierce: 0, hit: [], blast: 0, flight: 0,
@@ -532,8 +553,8 @@ export class Engine {
     pull: 0, blast: 0, blastR: 0, slow: 0, oil: false,
   }), 60);
   readonly bullets = new Pool<EnemyBullet>(() => ({
-    active: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
-  }), 300);
+    active: false, mob: false, x: 0, y: 0, vx: 0, vy: 0, r: 5, dmg: 1, life: 1,
+  }), 800);
   readonly gems = new Pool<Gem>(() => ({ active: false, x: 0, y: 0, value: 1, pulled: false, vacuum: false }), 900);
   readonly heals = new Pool<HealItem>(() => ({ active: false, x: 0, y: 0, t: 0, pulled: false }), 10);
   readonly chests = new Pool<Chest>(() => ({ active: false, x: 0, y: 0, grade: 0, t: 0, pulled: false }), 12);
@@ -629,6 +650,7 @@ export class Engine {
       skin: DEFAULT_SKIN[init.kind], r: 10, speed: 40, dmg: 1, gold: 0, xp: 1, slowT: 0, move: 'chase',
       phase: Math.random() * Math.PI * 2, golden: false, raid: false, pats: [], minion: 'bat', step: 0, tint: '', elite: false, stunT: 0, fearT: 0, confuseT: 0, weakT: 0, markT: 0, dotT: 0, dotDps: 0, dotTick: 0, dotSpread: false, curseT: 0, curseDmg: 0,
       t1: 0, t2: 0, dashT: 0, dashX: 0, dashY: 0, toLure: false, scripted: false, dmgTaken: 1,
+      skill: '', castT: 0, cdT: 1 + Math.random() * 2, heat: 0, holdT: 0, pat: 0, volN: 0,
     }, init);
     e.id = this.nextId++;
     e.active = true;
@@ -840,6 +862,13 @@ export class Engine {
 
   private killEnemy(e: Enemy) {
     e.active = false;
+    // 터지는 몹: 쓰러질 때 사방으로 탄
+    if (e.skill === 'pop') {
+      const n = 6;
+      const off = Math.random() * Math.PI;
+      for (let i = 0; i < n; i++) this.fireBullet(e.x, e.y, off + (i / n) * Math.PI * 2, 120, e.dmg * 0.8, true);
+      this.addEffect('ring', e.x, e.y, 30, 0.25, '#ffb347');
+    }
     if (e.curseT > 0) {
       // 저주: 보라색으로 터져 옆 몹까지
       this.addSprite('purple-burst', e.x, e.y - 6, 40, 0.35);
@@ -1180,15 +1209,16 @@ export class Engine {
     return z;
   }
 
-  fireBullet(x: number, y: number, angle: number, speed: number, dmg: number) {
+  fireBullet(x: number, y: number, angle: number, speed: number, dmg: number, mob = false) {
     const b = this.bullets.get();
     if (!b) return;
     b.active = true;
+    b.mob = mob;
     b.x = x;
     b.y = y;
     b.vx = Math.cos(angle) * speed;
     b.vy = Math.sin(angle) * speed;
-    b.r = 5;
+    b.r = mob ? 4.5 : 5;
     b.dmg = dmg;
     b.life = 5;
   }
@@ -1385,8 +1415,12 @@ export class Engine {
     this.hurtT -= dt;
     this.vignT -= dt;
     for (let i = this.warns.length - 1; i >= 0; i--) {
-      this.warns[i].t -= dt;
-      if (this.warns[i].t <= 0) this.warns.splice(i, 1);
+      const w = this.warns[i];
+      w.t -= dt;
+      if (w.t > 0) continue;
+      this.warns.splice(i, 1);
+      // 피해 있는 경고 길(보스 레이저): 다 차면 그 길 위에 있으면 맞는다
+      if (w.dmg) this.strikeLane(w);
     }
     this.bossHitCd -= dt;
     this.bossStopCd -= dt;
@@ -1529,6 +1563,13 @@ export class Engine {
           e.active = false;
           continue;
         }
+      } else if (e.castT > 0) {
+        // 미니 스킬 기 모으는 중: 제자리
+      } else if (e.skill === 'dash' && e.dashT > 0) {
+        // 미니 돌진
+        e.dashT -= dt;
+        e.x += e.dashX * 380 * slow * dt;
+        e.y += e.dashY * 380 * slow * dt;
       } else if (e.toLure && this.lure) {
         // 수비: 알 쪽으로 곧장
         const lx = this.lure.x - e.x;
@@ -1558,6 +1599,7 @@ export class Engine {
         e.y += (uy / ul) * e.speed * slow * dt;
       }
       e.slowT -= dt;
+      if (e.skill && e.kind !== 'boss' && !stunned && !feared && !confused && !p.dead) this.updateMobSkill(e, dx, dy, d, dt);
 
       // 돌기둥에 막힌다
       for (const rk of this.rocks) {
@@ -1625,32 +1667,122 @@ export class Engine {
     this.hazards.push({ x, y, r, t, maxT: t, dmg });
   }
 
+  /** 몹 미니 스킬: 가까우면 빨갛게 기를 모았다가 쏜다 / 돌진한다 */
+  private updateMobSkill(e: Enemy, dx: number, dy: number, d: number, dt: number) {
+    if (e.castT > 0) {
+      e.castT -= dt;
+      if (e.castT <= 0) this.fireMobSkill(e, dx / d, dy / d);
+      return;
+    }
+    if (e.dashT > 0 || e.skill === 'pop') return;
+    e.cdT -= dt;
+    if (e.cdT > 0) return;
+    const range = e.skill === 'dash' ? 230 : 340;
+    if (d > range) {
+      e.cdT = 0.4;
+      return;
+    }
+    e.castT = MOB_CAST[e.skill];
+    e.cdT = MOB_CD[e.skill] * (0.8 + Math.random() * 0.4);
+    if (e.skill === 'dash') {
+      e.dashX = dx / d;
+      e.dashY = dy / d;
+    }
+  }
+
+  private fireMobSkill(e: Enemy, ux: number, uy: number) {
+    const a = Math.atan2(uy, ux);
+    const dmg = e.dmg * 0.8;
+    switch (e.skill) {
+      case 'shot':
+        this.fireBullet(e.x, e.y, a, 175, dmg, true);
+        break;
+      case 'fan':
+        for (const k of [-0.3, 0, 0.3]) this.fireBullet(e.x, e.y, a + k, 160, dmg, true);
+        break;
+      case 'nova': {
+        const off = Math.random() * Math.PI;
+        for (let i = 0; i < 8; i++) this.fireBullet(e.x, e.y, off + (i / 8) * Math.PI * 2, 130, dmg, true);
+        this.addEffect('ring', e.x, e.y, e.r * 1.8, 0.25, '#ffb347');
+        break;
+      }
+      case 'dash':
+        e.dashT = 0.35;
+        break;
+    }
+  }
+
+  /** 보스 레이저 길: 다 차는 순간 길 위에 있으면 맞는다 (하얗게 번쩍) */
+  private strikeLane(w: { x1: number; y1: number; x2: number; y2: number; w: number; dmg?: number }) {
+    const p = this.player;
+    this.warns.push({ x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, w: w.w * 1.15, t: 0.14, maxT: 0.14, color: '#fff3e0' });
+    this.addShake(2);
+    if (p.dead) return;
+    const lx = w.x2 - w.x1;
+    const ly = w.y2 - w.y1;
+    const l2 = lx * lx + ly * ly || 1;
+    const t = Math.max(0, Math.min(1, ((p.x - w.x1) * lx + (p.y - w.y1) * ly) / l2));
+    const cx = w.x1 + lx * t;
+    const cy = w.y1 + ly * t;
+    if (Math.hypot(p.x - cx, p.y - cy) < w.w / 2 + p.r * 0.5) this.damagePlayer(w.dmg ?? 0, cx, cy, true);
+  }
+
   /**
-   * 레이드 보스: 패턴을 돌아가며 쓴다. 체력 절반 아래(2페이즈)면 더 빠르고 더 많이.
-   * 장판(바닥 경고 원) → 나선 탄막 → 돌진 → 졸개 소환
+   * 레이드·장 보스: 패턴을 돌아가며 쓴다. 체력 절반 아래(2페이즈)면 더 빠르고 더 많이. heat(장이 높을수록)만큼 더 세다.
+   * 0 장판 · 1 나선 탄막 · 2 돌진 · 3 졸개 소환 · 4 사방 이중 탄막 · 5 조준 산탄 3연발 · 6 회전 십자 · 7 레이저 길 3줄 · 8 탄막 비
    */
   private updateRaidBoss(e: Enemy, nx: number, ny: number, dt: number) {
     const p = this.player;
     const enraged = e.hp < e.maxHp * 0.5;
+    const heat = e.heat;
     if (e.dashT > 0) {
       e.dashT -= dt;
       if (e.dashT < 0.55) {
-        e.x += e.dashX * (enraged ? 560 : 460) * dt;
-        e.y += e.dashY * (enraged ? 560 : 460) * dt;
+        e.x += e.dashX * (enraged ? 560 : 460) * (1 + heat * 0.2) * dt;
+        e.y += e.dashY * (enraged ? 560 : 460) * (1 + heat * 0.2) * dt;
       }
       return;
     }
-    // 나선 탄막: 제자리에서 빙글빙글 쏜다
+    // 이어지는 패턴: 나선 / 회전 십자 / 탄막 비 (제자리에서)
     if (e.t2 > 0) {
       e.t2 -= dt;
       e.phase += dt;
-      const gap = enraged ? 0.06 : 0.09;
-      while (e.phase >= gap) {
-        e.phase -= gap;
-        const arms = enraged ? 3 : 2;
-        const base = this.time * (enraged ? 3.4 : 2.6);
-        for (let k = 0; k < arms; k++) this.fireBullet(e.x, e.y, base + (k / arms) * Math.PI * 2, 170, e.dmg * 0.45);
+      if (e.pat === 8) {
+        // 탄막 비: 병아리 위쪽 화면 밖에서 비처럼 쏟아진다
+        const gap = (enraged ? 0.05 : 0.075) / (1 + heat * 0.5);
+        while (e.phase >= gap) {
+          e.phase -= gap;
+          const x = p.x + (Math.random() - 0.5) * this.viewW * 1.1;
+          this.fireBullet(x, p.y - this.viewH * 0.6, Math.PI / 2 + (Math.random() - 0.5) * 0.25, 170 + heat * 60, e.dmg * 0.4);
+        }
+      } else {
+        const cross = e.pat === 6;
+        const gap = (cross ? 0.11 : enraged ? 0.06 : 0.09) / (1 + heat * 0.3);
+        while (e.phase >= gap) {
+          e.phase -= gap;
+          const arms = cross ? (enraged ? 5 : 4) : enraged ? 3 : 2;
+          const base = this.time * (cross ? (enraged ? 1.3 : 0.9) : enraged ? 3.4 : 2.6) * (e.step % 2 ? -1 : 1);
+          for (let k = 0; k < arms; k++) this.fireBullet(e.x, e.y, base + (k / arms) * Math.PI * 2, (cross ? 150 : 170) * (1 + heat * 0.25), e.dmg * 0.45);
+        }
       }
+      return;
+    }
+    // 조준 산탄: 짧은 간격으로 여러 번
+    if (e.volN > 0) {
+      e.phase -= dt;
+      if (e.phase <= 0) {
+        e.volN--;
+        e.phase = enraged ? 0.26 : 0.34;
+        const a = Math.atan2(p.y - e.y, p.x - e.x);
+        const n = (enraged ? 7 : 5) + Math.round(heat * 2);
+        const spread = 0.65 + heat * 0.15;
+        for (let i = 0; i < n; i++) this.fireBullet(e.x, e.y, a + (i / (n - 1) - 0.5) * spread, 215 * (1 + heat * 0.25), e.dmg * 0.5);
+        this.addEffect('ring', e.x, e.y, e.r * 1.3, 0.2, '#ff7aa8');
+      }
+      return;
+    }
+    if (e.holdT > 0) {
+      e.holdT -= dt;
       return;
     }
     if (!p.dead) {
@@ -1659,22 +1791,24 @@ export class Engine {
     }
     e.t1 -= dt;
     if (e.t1 > 0) return;
-    e.t1 = enraged ? 2.1 : 3;
-    // 장판 → 탄막 → 돌진 → 소환 순서로 (2페이즈에선 무작위)
+    e.t1 = (enraged ? 2.1 : 3) / (1 + heat * 0.35);
+    // 정한 순서대로 (2페이즈에선 무작위)
     const pats = e.pats.length ? e.pats : [0, 1, 2, 3];
     const pattern = enraged ? pats[Math.floor(Math.random() * pats.length)] : pats[e.step++ % pats.length];
+    if (enraged) e.step++;
     if (pattern === 0) {
       // 장판: 플레이어 발밑 하나 + 주변 여러 개
-      const n = enraged ? 7 : 4;
+      const n = (enraged ? 7 : 4) + Math.round(heat * 3);
       for (let i = 0; i < n; i++) {
         const a = Math.random() * Math.PI * 2;
         const d = i === 0 ? 0 : 50 + Math.random() * 120;
-        this.addHazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 58, enraged ? 1.0 : 1.3, e.dmg * 1.8);
+        this.addHazard(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 58, (enraged ? 1.0 : 1.3) - heat * 0.15, e.dmg * 1.8);
       }
-    } else if (pattern === 1) {
-      e.t2 = enraged ? 2.6 : 2;
+    } else if (pattern === 1 || pattern === 6 || pattern === 8) {
+      e.pat = pattern;
+      e.t2 = pattern === 8 ? 2.6 : pattern === 6 ? (enraged ? 3 : 2.4) : enraged ? 2.6 : 2;
       e.phase = 0;
-      this.addEffect('ring', e.x, e.y, e.r * 2.2, 0.4, '#c78bff');
+      this.addEffect('ring', e.x, e.y, e.r * 2.2, 0.4, pattern === 8 ? '#7ad7ff' : '#c78bff');
     } else if (pattern === 2) {
       e.dashT = enraged ? 1.0 : 1.2;
       e.dashX = nx;
@@ -1682,16 +1816,30 @@ export class Engine {
       this.addEffect('telegraph', e.x, e.y, e.r, 0.65, '#ff4d6d', e.x + nx * 300, e.y + ny * 300);
     } else if (pattern === 4) {
       // 사방 탄막: 두 겹으로 퍼진다
-      const n = enraged ? 20 : 14;
+      const n = (enraged ? 20 : 14) + Math.round(heat * 8);
       const off = Math.random() * Math.PI;
       for (let i = 0; i < n; i++) {
-        this.fireBullet(e.x, e.y, off + (i / n) * Math.PI * 2, 150, e.dmg * 0.5);
-        this.fireBullet(e.x, e.y, off + ((i + 0.5) / n) * Math.PI * 2, 105, e.dmg * 0.5);
+        this.fireBullet(e.x, e.y, off + (i / n) * Math.PI * 2, 150 * (1 + heat * 0.2), e.dmg * 0.5);
+        this.fireBullet(e.x, e.y, off + ((i + 0.5) / n) * Math.PI * 2, 105 * (1 + heat * 0.2), e.dmg * 0.5);
       }
       this.addEffect('ring', e.x, e.y, e.r * 1.8, 0.3, '#ff7aa8');
+    } else if (pattern === 5) {
+      e.volN = enraged ? 4 : 3;
+      e.phase = 0.45;
+      this.addEffect('ring', e.x, e.y, e.r * 1.6, 0.45, '#ff4d6d');
+    } else if (pattern === 7) {
+      // 레이저 길: 병아리 쪽과 양옆으로 빨간 길 → 잠시 뒤 번쩍
+      const a = Math.atan2(p.y - e.y, p.x - e.x);
+      const lanes = enraged ? [-0.55, -0.27, 0, 0.27, 0.55] : [-0.45, 0, 0.45];
+      const t = (enraged ? 0.7 : 0.85) - heat * 0.15;
+      for (const k of lanes) {
+        const la = a + k;
+        this.warns.push({ x1: e.x, y1: e.y, x2: e.x + Math.cos(la) * 900, y2: e.y + Math.sin(la) * 900, w: 40, t, maxT: t, color: '#ff3b3b', dmg: e.dmg * 1.5 });
+      }
+      e.holdT = t + 0.2;
     } else {
       // 졸개 소환: 보스 둘레에 졸개 떼
-      const n = enraged ? 12 : 8;
+      const n = (enraged ? 12 : 8) + Math.round(heat * 4);
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
         this.spawnEnemy({
@@ -1905,7 +2053,7 @@ export class Engine {
       }
       if (!p.dead && (b.x - p.x) ** 2 + (b.y - p.y) ** 2 < (b.r + p.r) ** 2) {
         b.active = false;
-        this.damagePlayer(b.dmg, b.x - b.vx, b.y - b.vy);
+        this.damagePlayer(b.dmg, b.x - b.vx, b.y - b.vy, !b.mob);
       }
     }
   }

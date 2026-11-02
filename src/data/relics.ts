@@ -50,7 +50,7 @@ export interface RelicDef {
 
 export const RELIC_SLOTS = 6;
 /** 칸이 열리는 최고 스테이지 (0 = 처음부터) */
-export const SLOT_UNLOCK = [0, 0, 5, 10, 20, 30];
+export const SLOT_UNLOCK = [0, 0, 3, 6, 12, 18];
 export const RELIC_MAX = 15;
 
 export const RELICS: RelicDef[] = [

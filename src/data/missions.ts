@@ -91,8 +91,8 @@ export interface AchieveDef {
 export const ACHIEVEMENTS: AchieveDef[] = [
   { id: 'kills', name: '몹 처치', value: (s) => s.stats.kills, goals: [1000, 10000, 100000, 1000000], diamonds: 50 },
   { id: 'combo', name: '최고 콤보', value: (s) => s.stats.bestCombo, goals: [100, 300, 1000, 3000], diamonds: 50 },
-  { id: 'stage', name: '최고 스테이지', value: (s) => Math.max(s.maxStage, s.bestStageEver), goals: [10, 25, 50, 100], diamonds: 80 },
-  { id: 'clears', name: '스테이지 클리어', value: (s) => s.stats.stages, goals: [10, 50, 200, 1000], diamonds: 40 },
+  { id: 'stage', name: '최고 스테이지', value: (s) => Math.max(s.maxStage, s.bestStageEver), goals: [3, 9, 15, 30], diamonds: 80 },
+  { id: 'clears', name: '스테이지 클리어', value: (s) => s.stats.stages, goals: [5, 15, 40, 100], diamonds: 40 },
   { id: 'fevers', name: '피버', value: (s) => s.stats.fevers, goals: [10, 50, 200], diamonds: 40 },
   { id: 'golden', name: '황금 몹 사냥', value: (s) => s.stats.golden, goals: [5, 30, 100], diamonds: 40 },
   { id: 'chests', name: '보물 상자', value: (s) => s.stats.chests, goals: [30, 300, 2000], diamonds: 40 },

@@ -1,26 +1,43 @@
 // 수치 공식. 밸런스 조정은 이 파일에서만 한다.
 // 스테이지는 액션 모드로 직접 깨고, 방치는 깬 최고 스테이지 기준으로 재화만 쌓인다.
 
-export const BOSS_EVERY = 10;
+/** 한 장(챕터)은 스테이지 3개: X-1 · X-2 · X-3(보스). 스테이지 번호는 안에서 1, 2, 3, 4…로 세고 화면엔 "1-1"처럼 보여 준다 */
+export const STAGES_PER_CHAPTER = 3;
+export const BOSS_EVERY = STAGES_PER_CHAPTER;
+/** 지역(바닥·몹·재료)이 바뀌는 장 수 */
+export const CHAPTERS_PER_REGION = 5;
+export const STAGES_PER_REGION = STAGES_PER_CHAPTER * CHAPTERS_PER_REGION;
 export const TAP_DAMAGE_MUL = 0.5;
 export const OFFLINE_CAP_SEC = 8 * 60 * 60;
 export const OFFLINE_EFFICIENCY = 0.5;
 
 export const isBossStage = (stage: number) => stage % BOSS_EVERY === 0;
+export const chapterOf = (stage: number) => Math.floor((Math.max(1, stage) - 1) / STAGES_PER_CHAPTER) + 1;
+export const subOf = (stage: number) => ((Math.max(1, stage) - 1) % STAGES_PER_CHAPTER) + 1;
+/** 화면에 보이는 스테이지 이름: 1-1, 1-2, 1-3 … */
+export const stageLabel = (stage: number) => `${chapterOf(stage)}-${subOf(stage)}`;
+/** 깬 보스(장) 수 */
+export const chaptersCleared = (maxStage: number) => Math.floor(Math.max(0, maxStage) / STAGES_PER_CHAPTER);
 
+// 스테이지마다 확실히 세진다: 몹 체력 ×1.4, 피해 ×1.28 (한 장이면 체력 ×2.7)
+export const STAGE_HP_STEP = 1.4;
+export const STAGE_DMG_STEP = 1.28;
+export const enemyHp = (stage: number) => 10 * Math.pow(STAGE_HP_STEP, stage - 1);
+export const enemyDmg = (stage: number) => 4 * Math.pow(STAGE_DMG_STEP, stage - 1);
 
-export const enemyHp = (stage: number) => 10 * Math.pow(1.17, stage - 1);
-export const enemyDmg = (stage: number) => 4 * Math.pow(1.13, stage - 1);
-export const enemyGold = (stage: number) => 3 * Math.pow(1.15, stage - 1);
+/** 방치 수입은 보스(X-3)를 깰 때만 크게 뛴다: 장 하나에 ×IDLE_JUMP */
+export const IDLE_JUMP = 2.4;
+const IDLE_BASE = 3;
+/** 방치 초당 골드 (깬 보스 수 기준). 아무것도 못 깼어도 조금은 쌓인다 */
+export const idleGoldPerSec = (maxStage: number) => IDLE_BASE * Math.pow(IDLE_JUMP, chaptersCleared(maxStage));
+/** 몹 한 마리 골드 기준 (그 스테이지 장의 방치 수입 기준, 장 안에서 조금씩) */
+export const enemyGold = (stage: number) => IDLE_BASE * Math.pow(IDLE_JUMP, chapterOf(stage) - 1) * Math.pow(1.15, subOf(stage) - 1);
+/** 스테이지 클리어 보상 (보스 스테이지는 크게) */
+export const stageClearGold = (stage: number) => enemyGold(stage) * (isBossStage(stage) ? 300 : 80);
 
-/** 방치 초당 골드. 아직 아무것도 못 깼어도 1스테이지 기준으로 조금은 쌓인다. */
-export const idleGoldPerSec = (maxStage: number) => enemyGold(Math.max(1, maxStage));
-/** 스테이지 첫 클리어 보상 */
-export const stageClearGold = (stage: number) => enemyGold(stage) * (isBossStage(stage) ? 120 : 40);
-
-/** 초반 스테이지는 쉽게: 스테이지 1은 몹 체력·피해·숫자 EASY_START배, EASY_UNTIL 스테이지부터 원래대로 */
-export const EASY_START = 0.5;
-export const EASY_UNTIL = 12;
+/** 맨 처음만 살짝 쉽게: 1-1은 몹 체력·피해·숫자 EASY_START배, EASY_UNTIL 스테이지부터 원래대로 */
+export const EASY_START = 0.6;
+export const EASY_UNTIL = 4;
 export const stageEase = (stage: number) => Math.min(1, EASY_START + ((1 - EASY_START) * (stage - 1)) / (EASY_UNTIL - 1));
 
 // 액션 모드 진입 시 "권장 전투력" 기준. 내 수치 ÷ 권장 수치 = 비율로 액션 밸런스를 맞춘다.
@@ -101,8 +118,8 @@ export interface ActionRatio {
 // 액션 모드에서 쓰는 배율. 너무 약하거나 강해도 게임이 성립하도록 범위를 묶는다.
 export function actionRatio(s: PlayerStats, stage: number): ActionRatio {
   return {
-    atk: clamp(playerPower(s) / recommendedPower(stage), 0.25, 4),
-    hp: clamp(s.hp / recommendedHp(stage), 0.5, 3),
+    atk: clamp(playerPower(s) / recommendedPower(stage), 0.15, 3),
+    hp: clamp(s.hp / recommendedHp(stage), 0.35, 2.5),
   };
 }
 
