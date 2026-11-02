@@ -25,9 +25,6 @@ import { ScrollDirector } from './scroll';
 const ARENA_STAR_DIAMONDS = 10;
 /** 중간 보스가 나오는 시각(초) */
 const MID_BOSS_AT = [13, 27];
-/** 스테이지는 탄막 판: 몹 수는 줄이고 하나하나 단단하게 */
-const STAGE_CROWD = 0.55;
-const STAGE_MOB_HP = 1.6;
 /** 재료 던전: 몹 체력·피해 배율 (녹아내리게), 몹 생성 배율, 피버 게이지 배율 */
 const MATERIAL_MOB_HP = 0.3;
 const MATERIAL_MOB_DMG = 0.5;
@@ -41,8 +38,8 @@ const MAX_ALIVE = 320;
 /** 중간 보스 기본 체력 (일반 몹 배율 MOB_HP를 따로 곱한다) */
 const MID_BOSS_HP = 520;
 /** 일반 몹 난이도 배율 (체력 / 부딪힐 때 피해) */
-const MOB_HP = 1.4;
-const MOB_DMG = 1.8;
+const MOB_HP = 1.3;
+const MOB_DMG = 1.5;
 /** 몹 수·구성이 최대로 짙어지기까지 걸리는 시간(초) */
 const RAMP_SEC = 30;
 /** 피버: 게이지(처치 수, 콤보와 상관없이 쌓임)가 FEVER_NEED만큼 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
@@ -432,8 +429,8 @@ export class ActionMode {
     // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
     const kindRate = this.kind === 'raid' ? RAID_SPAWN : this.kind === 'infinite' ? 1 + this.time / 120 : this.kind === 'material' ? MATERIAL_SPAWN : this.test ? this.test.spawnMul : 1;
-    const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1) * (0.5 + 0.5 * this.ease)
-      * (this.stageLike ? TRICKLE : 1) * (this.firstStage ? 0.5 : 1) * (this.kind === 'stage' ? STAGE_CROWD : 1);
+    const rate = (this.bossSpawned ? (this.kind === 'stage' ? 2.5 : 6) : 8 + this.ramp * peak) * crowd * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1) * (0.5 + 0.5 * this.ease)
+      * (this.stageLike ? TRICKLE : 1) * (this.firstStage ? 0.5 : 1);
 
     if (this.fever > 0) {
       this.fever -= dt;
@@ -495,14 +492,14 @@ export class ActionMode {
   private spawnPack() {
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.skinStage);
-    const total = Math.round((8 + 10 * this.ramp) * (this.firstStage ? 0.5 : 1) * (this.kind === 'stage' ? 0.7 : 1));
+    const total = Math.round((8 + 10 * this.ramp) * (this.firstStage ? 0.5 : 1));
     const p = this.game.engine.player;
     const mob = (x: number, y: number, i: number) => {
       const fast = i % 4 === 3;
       this.spawnMob({
         kind: fast ? 'fast' : 'normal', skin: fast ? skins.fast : skins.normal, x, y,
         hp: (fast ? 4 : 5) * s, r: fast ? 10 : 11, speed: fast ? 100 : 66, dmg: 3 * s, xp: 1,
-      }, 0.4);
+      });
     };
     const style = Math.random();
     if (style < 0.45) {
@@ -665,7 +662,7 @@ export class ActionMode {
     const p = eng.player;
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.skinStage);
-    const crowd = (1 + this.ramp) * (this.kind === 'stage' ? 0.6 : 1);
+    const crowd = 1 + this.ramp;
     const h = this.heading ?? Math.random() * Math.PI * 2;
     switch (wave) {
       case 'ring': {
@@ -736,25 +733,32 @@ export class ActionMode {
   spawnMob(init: Parameters<Engine['spawnEnemy']>[0], skillRate = 1) {
     const ease = this.ease;
     const mat = this.kind === 'material';
-    const hpK = mat ? MATERIAL_MOB_HP : this.kind === 'stage' && !init.elite ? STAGE_MOB_HP : 1;
+    const hpK = mat ? MATERIAL_MOB_HP : 1;
     const dmgK = mat ? MATERIAL_MOB_DMG : 1;
     // 스테이지 몹은 미니 스킬 (웨이브·황금·구급상자 몹은 빼고)
     const skill = init.skill ?? (init.tint || init.golden || init.skin === 'firstaid' ? '' : this.rollSkill(init.kind, skillRate));
-    const e = this.game.engine.spawnEnemy({ ...init, skill, hp: init.hp * MOB_HP * ease * hpK, dmg: (init.dmg ?? 1) * MOB_DMG * ease * dmgK });
+    // 스킬 쓰는 큰 몹은 조금 더 크고 단단하게 (한눈에 보이게)
+    const big = skill && !init.elite ? 1.25 : 1;
+    const e = this.game.engine.spawnEnemy({
+      ...init, skill, r: (init.r ?? 10) * big, hp: init.hp * MOB_HP * ease * hpK * big, dmg: (init.dmg ?? 1) * MOB_DMG * ease * dmgK,
+    });
     this.test?.decorate(e);
     return e;
   }
 
-  /** 스테이지 몹 미니 스킬: 장이 높고 같은 장에서도 뒤 스테이지일수록 많이, 종류도 늘어난다 */
+  /**
+   * 스테이지 몹 미니 스킬: 큰 몹(단단한 몹)만. 일반·빠른 몹은 없다.
+   * 장이 높고 같은 장에서도 뒤 스테이지일수록 자주, 종류도 늘어난다 (조준탄 → 부채꼴·터짐 → 사방탄·돌진)
+   */
   private rollSkill(kind: EnemyKind, rate: number): MobSkill {
-    if (this.kind !== 'stage' || this.firstStage) return '';
+    if (this.kind !== 'stage' || this.firstStage || kind !== 'tank') return '';
     const ch = chapterOf(this.stage);
-    const chance = Math.min(0.6, 0.14 + 0.06 * (ch - 1) + 0.04 * (subOf(this.stage) - 1)) * rate;
+    const chance = Math.min(0.6, 0.2 + 0.05 * (ch - 1) + 0.04 * (subOf(this.stage) - 1)) * rate;
     if (Math.random() >= chance) return '';
-    const r = Math.random();
-    if (kind === 'fast') return ch >= 2 ? 'dash' : 'shot';
-    if (kind === 'tank') return ch >= 2 && r < 0.5 ? 'nova' : 'pop';
-    return ch >= 3 && r < 0.35 ? 'fan' : 'shot';
+    const pool: MobSkill[] = ['shot'];
+    if (ch >= 2 || subOf(this.stage) >= 2) pool.push('fan', 'pop');
+    if (ch >= 3) pool.push('nova', 'dash');
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
   spawnBoss() {
