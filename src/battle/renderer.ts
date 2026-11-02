@@ -511,7 +511,7 @@ export class Renderer {
       const d = heroDirIndex(e.dashX || 0.001, e.dashY);
       const ba = bossAnims[d] ?? bossAnims.find((x) => x);
       if (ba) {
-        const frame = frameAt(ba, eng.time * 1000 * (e.speed > 300 ? 2.2 : 1));
+        const frame = frameAt(ba, eng.time * 1000 * (e.speed > 300 ? 1.7 : 1));
         const bs = e.r * 3.4;
         const hit = Math.min(1, Math.max(0, e.flash) / 0.1);
         const jx = hit > 0 ? (Math.random() - 0.5) * 5 * hit : 0;
