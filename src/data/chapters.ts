@@ -51,12 +51,12 @@ function seeded(ch: number) {
 }
 
 /** 장 보스 기본 체력·피해 (액션 모드 고정 수치: 내 힘은 권장 전투력 배율로 따로 들어온다) */
-const BOSS_HP = 4500;
+const BOSS_HP = 3200;
 const BOSS_DMG = 34;
-const ELITE_HP = 1300;
+const ELITE_HP = 900;
 const ELITE_DMG = 26;
 /** 1장은 처음 하는 사람용으로 보스·정예 체력을 조금 낮춘다 */
-const FIRST_CHAPTER = 0.7;
+const FIRST_CHAPTER = 0.55;
 
 export function chapterBoss(stage: number): ChapterBoss {
   const ch = chapterOf(stage);
