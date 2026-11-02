@@ -2654,11 +2654,13 @@ button:disabled {
 
 /* ---- 모든 버튼: 누르면 쑥 들어가는 느낌 (소리·진동은 ui.ts) ---- */
 button {
-  transition: transform 0.08s ease-out, filter 0.08s ease-out, box-shadow 0.08s ease-out;
+  transition: transform 0.08s ease-out, scale 0.08s ease-out, filter 0.08s ease-out, box-shadow 0.08s ease-out;
 }
 
-button:active:not(:disabled) {
-  transform: scale(0.93);
+/* 눌림은 transform이 아니라 scale 속성으로: 가운데 맞춤(translate)을 쓰는 버튼도 제자리에서 눌린다
+   (transform을 덮어쓰면 translateX(-50%)가 사라져 오른쪽으로 튀고, 손을 떼면 버튼 밖이라 안 눌렸다) */
+button:active:not(:disabled):not(.challenge-btn):not(.scout-badge) {
+  scale: 0.93;
   filter: brightness(0.88);
 }
 
@@ -2667,7 +2669,7 @@ button:active:not(:disabled) {
 }
 
 /* 도전 버튼은 가운데 맞춤(translateX)을 지킨 채로 */
-.challenge-btn:active {
+button.challenge-btn:active:not(:disabled) {
   transform: translate(-50%, 2px) scale(0.96);
   filter: brightness(0.9);
 }
@@ -3403,7 +3405,7 @@ button:active:not(:disabled) {
   white-space: nowrap;
 }
 
-.scout-badge:active {
+.scout-badge:active:not(:disabled) {
   transform: translate(-50%, 2px);
 }
 
