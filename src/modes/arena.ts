@@ -33,7 +33,7 @@ export const ARENA_VARIANTS: ArenaVariantDef[] = [
   { id: 'survive', name: '생존', icon: '🛡️', sec: 30, desc: '보스 없이 30초 버티기. 몹이 짙고 이벤트 3번', star3: '맞은 횟수 8번 이하' },
   { id: 'exterminate', name: '섬멸', icon: '💀', sec: 40, desc: '40초 안에 120마리 처치', star3: '30초 안에 달성' },
   { id: 'chase', name: '추격', icon: '🏃', sec: 30, desc: '도망치는 황금 몹을 30초 안에 잡기 (구석으로 몰아라)', star3: '15초 안에 처치' },
-  { id: 'boar', name: '보스전: 태엽 멧돼지', icon: '🐗', sec: 60, desc: '엄청 빠른 돌진! 빨간 길을 피하고 돌기둥에 박게 하면 기절, 태엽이 풀리면 약점. 60초 안에 처치', star3: '40초 안에 처치' },
+  { id: 'boar', name: '보스전: 태엽 멧돼지', icon: '🐗', sec: 60, desc: '어슬렁거리다 갑자기 빠른 돌진! 빨간 길을 피하고 돌기둥에 정면으로 박게 하면 기절, 태엽이 풀리면 약점. 60초 안에 처치', star3: '40초 안에 처치' },
   { id: 'defend', name: '수비', icon: '🥚', sec: 30, desc: '가운데 알을 30초 동안 지키기 (몹 열에 넷은 알을 노린다, 알 곁에서 싸워라)', star3: '알 체력 60% 이상' },
 ];
 export const ARENA_BY_ID = Object.fromEntries(ARENA_VARIANTS.map((v) => [v.id, v])) as Record<ArenaVariant, ArenaVariantDef>;
@@ -49,7 +49,7 @@ const RUSH_SEC = 5;
 const CURSE_SEC = 10;
 const EXTERMINATE_GOAL = 120;
 /** 태엽 멧돼지 체력·몸통 피해 (초반 쉬움 배율을 곱한다) */
-const BOAR_HP = 8000;
+const BOAR_HP = 6000;
 const BOAR_DMG = 30;
 
 /** 아레나 크기: 화면의 몇 배 */

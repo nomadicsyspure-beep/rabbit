@@ -2,17 +2,26 @@ import { sfx } from '../audio/sfx';
 import type { Enemy, Engine } from '../battle/engine';
 
 // 아레나 보스전: 태엽 멧돼지. 빠르고 아프다. 대신 틈이 있다.
-//  - 조준(빨간 길 표시) → 엄청 빠른 돌진. 울타리에 부딪히면 잠깐 멈칫 + 톱니 사방 발사
-//  - 돌기둥에 박으면 기절 2.2초: 받는 피해 2.5배
+//  - 평소엔 5~8초쯤 경기장을 어슬렁거리다가, 갑자기 조준(빨간 길 표시) → 빠른 돌진을 1~2번(분노 2~3번)
+//  - 울타리에 부딪히면 잠깐 멈칫 + 톱니 사방 발사
+//  - 돌기둥에 정면으로 박으면 기절 2.2초: 받는 피해 2.5배 (스치면 미끄러져 계속 달린다)
 //  - 돌진 3번(분노 4번)마다 태엽이 풀려 2.8초 멈춤: 받는 피해 2배 → 다시 감으며 톱니 나선 탄막
 //  - 체력 절반 아래: 분노 (더 빠른 조준·돌진, 울타리에 한 번 튕겨 다시 노림)
 
-type Phase = 'intro' | 'aim' | 'charge' | 'recover' | 'stun' | 'unwound' | 'rewind';
+type Phase = 'intro' | 'roam' | 'aim' | 'charge' | 'recover' | 'stun' | 'unwound' | 'rewind';
 
 const AIM = 0.62;
 const AIM_RAGE = 0.42;
-const CHARGE_SPEED = 760;
-const CHARGE_SPEED_RAGE = 940;
+const CHARGE_SPEED = 640;
+const CHARGE_SPEED_RAGE = 790;
+/** 어슬렁: 최소 시간 + 랜덤 */
+const ROAM_MIN = 5;
+const ROAM_RAND = 3;
+const ROAM_RAND_RAGE = 1.5;
+const ROAM_SPEED = 95;
+const ROAM_SPEED_RAGE = 130;
+/** 돌기둥 중심이 돌진 선에서 이만큼(돌 반지름 배수) 안쪽이면 정면 충돌 → 기절 */
+const SQUARE_HIT = 0.5;
 const STUN = 2.2;
 const UNWOUND = 2.8;
 
@@ -22,6 +31,11 @@ export class BoarBrain {
   private dx = 0;
   private dy = 1;
   private charges = 0;
+  /** 이번 돌진 묶음에서 남은 돌진 수 */
+  private combo = 0;
+  private wx = 0;
+  private wy = 0;
+  private wpT = 0;
   private bounced = false;
   private rage = false;
   private gearT = 0;
@@ -62,8 +76,26 @@ export class BoarBrain {
         // 위에서 걸어 들어온다
         e.y += 120 * dt;
         face(0, 1);
-        if (this.t <= 0) this.startAim();
+        if (this.t <= 0) this.startRoam();
         break;
+      case 'roam': {
+        // 경기장을 어슬렁: 아무 데나 골라 걸어가고, 닿으면 다음 자리
+        const mx = this.wx - e.x;
+        const my = this.wy - e.y;
+        const md = Math.hypot(mx, my);
+        this.wpT -= dt;
+        if (md < 20 || this.wpT <= 0) this.pickWaypoint();
+        else {
+          e.x += (mx / md) * e.speed * dt;
+          e.y += (my / md) * e.speed * dt;
+          face(mx, my);
+        }
+        if (this.t <= 0) {
+          this.combo = this.rage ? 2 + (Math.random() < 0.4 ? 1 : 0) : 1 + (Math.random() < 0.45 ? 1 : 0);
+          this.startAim();
+        }
+        break;
+      }
       case 'aim': {
         // 병아리를 노리며 발을 구른다 (조준선은 시작할 때 한 번 그린다)
         face(p.x - e.x, p.y - e.y);
@@ -85,14 +117,22 @@ export class BoarBrain {
         e.y += this.dy * e.speed * dt;
         face(this.dx, this.dy);
         if (Math.random() < 0.8) eng.burst(e.x - this.dx * e.r, e.y + e.r * 0.7, 2, ['#a07850', '#d8c0a0'], 120, 0.4, 0, 3.5);
-        // 돌기둥에 박으면 기절
+        // 돌기둥: 정면으로 박으면 기절, 스치면 옆으로 미끄러져 계속 달린다
         for (const rk of eng.rocks) {
-          if (Math.hypot(e.x - rk.x, e.y - rk.y) < rk.r + e.r * 0.8) {
+          const rx = e.x - rk.x;
+          const ry = e.y - rk.y;
+          const rd = Math.hypot(rx, ry) || 1;
+          const min = rk.r + e.r * 0.8;
+          if (rd >= min) continue;
+          const off = Math.abs(rx * this.dy - ry * this.dx);
+          if (off < rk.r * SQUARE_HIT) {
             e.x = rk.x - this.dx * (rk.r + e.r * 0.85);
             e.y = rk.y - this.dy * (rk.r + e.r * 0.85);
             this.startStun();
             return;
           }
+          e.x = rk.x + (rx / rd) * min;
+          e.y = rk.y + (ry / rd) * min;
         }
         // 울타리
         const hitX = e.x < e.r || e.x > ar.w - e.r;
@@ -119,15 +159,13 @@ export class BoarBrain {
           e.speed = 0;
           e.dmg = this.bodyDmg;
           this.charges++;
+          this.combo--;
         }
         break;
       }
       case 'recover':
         face(p.x - e.x, p.y - e.y);
-        if (this.t <= 0) {
-          if (this.charges >= (this.rage ? 4 : 3)) this.startUnwound();
-          else this.startAim();
-        }
+        if (this.t <= 0) this.next();
         break;
       case 'stun':
         e.stunT = this.t;
@@ -136,8 +174,8 @@ export class BoarBrain {
           e.stunT = 0;
           e.dmg = this.bodyDmg;
           this.charges++;
-          if (this.charges >= (this.rage ? 4 : 3)) this.startUnwound();
-          else this.startAim();
+          this.combo = 0;
+          this.next();
         }
         break;
       case 'unwound':
@@ -163,10 +201,44 @@ export class BoarBrain {
         }
         if (this.t <= 0) {
           this.charges = 0;
-          this.startAim();
+          this.startRoam();
         }
         break;
     }
+  }
+
+  /** 돌진이 끝난 뒤: 태엽 풀림 → 남은 돌진 → 어슬렁 */
+  private next() {
+    if (this.charges >= (this.rage ? 4 : 3)) this.startUnwound();
+    else if (this.combo > 0) this.startAim();
+    else this.startRoam();
+  }
+
+  private startRoam() {
+    const e = this.boss;
+    this.phase = 'roam';
+    this.t = ROAM_MIN + Math.random() * (this.rage ? ROAM_RAND_RAGE : ROAM_RAND);
+    e.speed = this.rage ? ROAM_SPEED_RAGE : ROAM_SPEED;
+    e.dmg = this.bodyDmg;
+    this.pickWaypoint();
+  }
+
+  /** 어슬렁 목적지: 울타리 안쪽, 돌기둥 위는 피한다 */
+  private pickWaypoint() {
+    const ar = this.eng.arena!;
+    const m = 70;
+    this.wpT = 2.5;
+    for (let i = 0; i < 8; i++) {
+      const x = m + Math.random() * (ar.w - m * 2);
+      const y = m + Math.random() * (ar.h - m * 2);
+      if (this.eng.rocks.every((rk) => Math.hypot(x - rk.x, y - rk.y) > rk.r + 50)) {
+        this.wx = x;
+        this.wy = y;
+        return;
+      }
+    }
+    this.wx = ar.w / 2;
+    this.wy = ar.h / 2;
   }
 
   private startAim() {
