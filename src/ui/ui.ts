@@ -8,7 +8,7 @@ import {
   type StatId,
 } from '../data/balance';
 import {
-  BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_GRADE, SKILL_TYPES, branchValue, emptyTree, skillSummary, treeLevel, SKILL_BY_ID, type Grade, type SkillDef,
+  BRANCHES, EQUIP_SLOTS, SKILLS, SKILL_GRADE, SKILL_TYPES, branchValue, emptyTree, skillSummary, treeLevel, SKILL_BY_ID, type Branch, type Grade, type SkillDef,
 } from '../data/skills';
 import { RAID_BOSSES } from '../data/raids';
 import { SHARD_COST, SKILL_BOXES, boxCost, boxesFor, type BoxDef } from '../data/skillbox';
@@ -330,7 +330,7 @@ export class UI implements UIHost {
     this.autoNextBtn.classList.toggle('on', save.autoNext);
   }
 
-  /** 스테이지에서 스킬 칸을 누르면: 전투를 멈추고 그 스킬 설명만 (강화는 메인 화면에서, 닫으면 이어서) */
+  /** 스테이지에서 스킬 칸을 누르면: 전투를 멈추고 그 스킬 설명 + 그 자리에서 가지 찍기 (이번 판에도 바로, 닫으면 이어서) */
   private openStageSkill(def: SkillDef) {
     const a = this.game.action;
     if (a.state !== 'playing') return;
@@ -339,22 +339,29 @@ export class UI implements UIHost {
     this.onModalClose = () => {
       if (a.state === 'paused') a.state = 'playing';
     };
+    const g = this.game;
     const type = SKILL_TYPES.find((t) => t.id === def.type)!;
     const grade = SKILL_GRADE[def.id];
-    const tree = this.game.skillTree(def.id) ?? emptyTree();
     const head = h('div', 'tree-head');
     const info = h('div', 'info');
     const name = h('div', 'modal-title', def.name + ' ');
     name.append(h('span', `grade-badge g-${grade}`, `${grade}등급`));
-    const kind = h('div', 'modal-sub', `${type.name} · Lv ${treeLevel(tree)}`);
+    const kind = h('div', 'modal-sub');
     kind.style.color = type.color;
-    info.append(name, kind, h('div', 'modal-sub', def.blurb), h('div', 'modal-sub', skillSummary(def, tree)));
+    const summary = h('div', 'modal-sub');
+    info.append(name, kind, h('div', 'modal-sub', def.blurb), summary);
     head.append(skillIcon(def, 'skill-art'), info);
-    this.openModal(
-      head,
-      h('div', 'modal-sub', '⏸ 전투 일시정지 중 · 스킬 강화는 메인 화면 스킬 탭에서'),
-      this.button('계속 싸우기', 'primary', () => this.closeModal()),
-    );
+    const points = h('div', 'tree-gold');
+    const branches = this.branchRows(def, (br) => a.bumpRunSkill(def.id, br));
+    this.treeRefresh = () => {
+      const tree = g.skillTree(def.id) ?? emptyTree();
+      kind.textContent = `${type.name} · Lv ${treeLevel(tree)}`;
+      summary.textContent = skillSummary(def, tree);
+      points.textContent = `⭐ 스킬 포인트 ${g.save.skillPoints[def.id] ?? 0} · 찍으면 지금 판에도 바로 세져요`;
+      branches.refresh();
+    };
+    this.openModal(head, points, ...branches.rows, h('div', 'modal-sub', '⏸ 전투 일시정지 중'), this.button('계속 싸우기', 'primary', () => this.closeModal()));
+    this.treeRefresh();
   }
 
   /** 장착 스킬 칸을 만든다 (스테이지가 시작되어 장착 목록이 바뀌면 다시) */
@@ -805,6 +812,48 @@ export class UI implements UIHost {
     );
   }
 
+  /** 가지 찍기 줄 세 개 (스킬 포인트로). refresh로 글자·버튼을 새로 쓴다. onUp: 찍을 때마다 (스테이지 중이면 이번 판 스킬에도) */
+  private branchRows(def: SkillDef, onUp?: (branch: Branch) => void) {
+    const g = this.game;
+    const rows = BRANCHES.map((br) => {
+      const row = h('div', 'tree-row');
+      const info = h('div', 'info');
+      const name = h('div', 'title', '');
+      const val = h('div', 'sub');
+      info.append(name, val);
+      const btn = h('button', 'buy');
+      const cost = h('span');
+      btn.append(cost, h('small', '', '찍기'));
+      holdRepeat(btn, () => {
+        const ok = g.upgradeBranch(def.id, br.id);
+        if (ok) {
+          onUp?.(br.id);
+          this.refresh();
+          // 스테이지 중엔 refresh가 스킬 창을 안 건드려서 직접
+          if (g.mode === 'action') this.treeRefresh?.();
+        }
+        return ok;
+      });
+      row.append(info, btn);
+      return { br, row, name, val, cost, btn };
+    });
+    const refresh = () => {
+      const tree = g.skillTree(def.id) ?? emptyTree();
+      for (const r of rows) {
+        const lv = tree[r.br.id];
+        const maxed = lv >= r.br.max;
+        const label = r.br.id === 'dmg' ? (def.dmgLabel ?? '피해') : r.br.id === 'cnt' ? def.countLabel : r.br.name;
+        r.name.textContent = `${label}  Lv ${lv}/${r.br.max}`;
+        const next = { ...tree, [r.br.id]: lv + 1 };
+        r.val.textContent = maxed ? `${branchValue(def, r.br.id, tree)} (최대)` : `${branchValue(def, r.br.id, tree)} → ${branchValue(def, r.br.id, next)}`;
+        const c = g.branchUpgradeCost(def.id, r.br.id);
+        r.cost.textContent = c === null ? 'MAX' : `⭐ ${c}`;
+        r.btn.disabled = !g.canUpgradeBranch(def.id, r.br.id);
+      }
+    };
+    return { rows: rows.map((r) => r.row), refresh };
+  }
+
   /** 스킬 창: 설명, 배우기 또는 가지 강화, 장착·교체 */
   private showSkill(def: SkillDef) {
     const g = this.game;
@@ -839,23 +888,7 @@ export class UI implements UIHost {
       return;
     }
 
-    const rows = BRANCHES.map((br) => {
-      const row = h('div', 'tree-row');
-      const info = h('div', 'info');
-      const name = h('div', 'title', '');
-      const val = h('div', 'sub');
-      info.append(name, val);
-      const btn = h('button', 'buy');
-      const cost = h('span');
-      btn.append(cost, h('small', '', '찍기'));
-      holdRepeat(btn, () => {
-        const ok = g.upgradeBranch(def.id, br.id);
-        if (ok) this.refresh();
-        return ok;
-      });
-      row.append(info, btn);
-      return { br, row, name, val, cost, btn };
-    });
+    const branches = this.branchRows(def);
     // 장착: 형태마다 한 칸. 같은 형태가 끼워져 있으면 바꿔 낀다
     const equipBox = h('div', 'equip-box');
     const typeName = SKILL_TYPES.find((t) => t.id === def.type)!.name;
@@ -874,17 +907,7 @@ export class UI implements UIHost {
     this.treeRefresh = () => {
       const tree = g.skillTree(def.id) ?? emptyTree();
       summary.textContent = skillSummary(def, tree);
-      for (const r of rows) {
-        const lv = tree[r.br.id];
-        const maxed = lv >= r.br.max;
-        const label = r.br.id === 'dmg' ? (def.dmgLabel ?? '피해') : r.br.id === 'cnt' ? def.countLabel : r.br.name;
-        r.name.textContent = `${label}  Lv ${lv}/${r.br.max}`;
-        const next = { ...tree, [r.br.id]: lv + 1 };
-        r.val.textContent = maxed ? `${branchValue(def, r.br.id, tree)} (최대)` : `${branchValue(def, r.br.id, tree)} → ${branchValue(def, r.br.id, next)}`;
-        const c = g.branchUpgradeCost(def.id, r.br.id);
-        r.cost.textContent = c === null ? 'MAX' : `⭐ ${c}`;
-        r.btn.disabled = !g.canUpgradeBranch(def.id, r.br.id);
-      }
+      branches.refresh();
       gold.textContent = `⭐ 스킬 포인트 ${g.save.skillPoints[def.id] ?? 0} (상자에서 겹치거나 숙련도가 차면 +1)`;
       const m = g.save.mastery[def.id] ?? 0;
       mFill.style.width = `${(m / MASTERY_SEC) * 100}%`;
@@ -897,7 +920,7 @@ export class UI implements UIHost {
     mBar.append(mFill);
     const mText = h('div', 'mastery-text');
     mBox.append(mText, mBar);
-    this.openModal(name, gold, mBox, ...rows.map((r) => r.row), head, pvHint, equipBox, this.button('닫기', 'primary', () => this.closeModal()));
+    this.openModal(name, gold, mBox, ...branches.rows, head, pvHint, equipBox, this.button('닫기', 'primary', () => this.closeModal()));
     this.treeRefresh();
   }
 
@@ -1129,14 +1152,8 @@ export class UI implements UIHost {
       const hp = Math.max(0, p.hp / p.maxHp);
       setStyle(this.hpLost, 'width', `${((1 - hp) * 100).toFixed(1)}%`);
       setText(this.hpText, `${Math.ceil(Math.max(0, p.hp))} / ${Math.ceil(p.maxHp)}`);
-      if (a.kind === 'stage') {
-        // 스테이지: 판 안 레벨 (경험치로 오르고, 오를 때마다 스킬 고르기)
-        setText(this.lvEl, `Lv.${a.runLv}`);
-        setStyle(this.xpFill, 'width', `${(Math.min(1, a.runXp / a.runNeed) * 100).toFixed(1)}%`);
-      } else {
-        setText(this.lvEl, `Lv.${save.level}`);
-        setStyle(this.xpFill, 'width', `${(Math.min(1, save.xp / xpToNext(save.level)) * 100).toFixed(1)}%`);
-      }
+      setText(this.lvEl, `Lv.${save.level}`);
+      setStyle(this.xpFill, 'width', `${(Math.min(1, save.xp / xpToNext(save.level)) * 100).toFixed(1)}%`);
       if (a.kind === 'stage') {
         setText(this.plateEl, `STAGE ${stageLabel(a.stage)}`);
         setText(this.timerEl, a.bossSpawned ? (a.isBossStage ? '보스!' : '정예!') : fmtTime(a.duration - a.time));
@@ -1250,23 +1267,6 @@ export class UI implements UIHost {
       b.classList.add('armed');
     });
     return b;
-  }
-
-  /** 판 안 레벨 업: 세 개 중 하나 고르기 (이번 판만 강해진다) */
-  showRunLevelUp(lv: number, opts: { icon: SkillDef | null; title: string; desc: string }[], pick: (i: number) => void) {
-    const list = h('div', 'runup-list');
-    opts.forEach((o, i) => {
-      const b = h('button', 'card runup-card');
-      const info = h('div', 'runup-info');
-      info.append(h('b', '', o.title), h('span', '', o.desc));
-      b.append(o.icon ? skillIcon(o.icon, 'runup-icon') : h('div', 'runup-icon heal', '💚'), info);
-      b.addEventListener('click', () => {
-        this.closeModal();
-        pick(i);
-      });
-      list.append(b);
-    });
-    this.openModal(h('div', 'modal-title win', `판 레벨 ${lv}!`), h('div', 'modal-sub', '하나 골라서 이번 판 동안 강해져요'), list);
   }
 
   showPause(resume: () => void, giveUp: () => void) {

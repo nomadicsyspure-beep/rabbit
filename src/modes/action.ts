@@ -12,7 +12,6 @@ import { CHEST_COLORS, CHEST_NAMES, rollChest, type ChestGrade } from '../data/i
 import { regionOf, stageSkins, type MatId } from '../data/world';
 import { BOOSTERS } from '../data/craft';
 import { SKILL_BY_ID, createSkill, type SkillDef, type SkillId } from '../data/skills';
-import type { SkillTree as Tree } from '../battle/weapons';
 import type { Game } from '../game';
 import { ArenaDirector, type ArenaResult, type ArenaVariant } from './arena';
 import { ScrollDirector } from './scroll';
@@ -20,21 +19,15 @@ import { ScrollDirector } from './scroll';
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
 // 스테이지는 장(1-1·1-2·1-3) 체계: X-1·X-2는 40초 버티면 정예, X-3은 30초 버티면 장 보스 (data/chapters.ts).
 // 스테이지는 탄막·패턴 피하기: 몹마다 미니 스킬(조준탄·부채꼴·돌진·사방탄·터짐)이 있고, 보스는 장마다 색·패턴이 다르다.
-// 스테이지는 못 깨면 아무 보상도 없다(골드·경험치·상자·다이아·열쇠·숙련도). 판 안에서는 경험치로 스킬 레벨 업.
+// 스테이지는 못 깨면 아무 보상도 없다(골드·경험치·상자·다이아·열쇠·숙련도). 스킬 칸을 누르면 멈추고 그 자리에서 가지를 찍는다.
 // 재료 던전은 반대로 몹이 녹아내리는 도파민 판.
 /** 아레나 별: 처음 딴 별 하나마다 다이아 */
 const ARENA_STAR_DIAMONDS = 10;
 /** 중간 보스가 나오는 시각(초) */
 const MID_BOSS_AT = [13, 27];
-/** 판 안 레벨 업: 필요 경험치 = RUN_XP_BASE + RUN_XP_STEP × 지금 판 레벨 */
-const RUN_XP_BASE = 25;
-const RUN_XP_STEP = 25;
 /** 스테이지는 탄막 판: 몹 수는 줄이고 하나하나 단단하게 */
 const STAGE_CROWD = 0.55;
 const STAGE_MOB_HP = 1.6;
-/** 판 안 레벨 업 선택지: 가지 하나 올리는 양 */
-const RUN_UP: Record<keyof Tree, number> = { dmg: 2, spd: 2, cnt: 1 };
-const RUN_UP_NAME: Record<keyof Tree, string> = { dmg: '피해', spd: '속도', cnt: '개수' };
 /** 재료 던전: 몹 체력·피해 배율 (녹아내리게), 몹 생성 배율, 피버 게이지 배율 */
 const MATERIAL_MOB_HP = 0.3;
 const MATERIAL_MOB_DMG = 0.5;
@@ -216,14 +209,6 @@ export class ActionMode {
   private deferred = false;
   private pendDiamonds = 0;
   private pendMats: Partial<Record<MatId, number>> = {};
-  /** 판 안 레벨: 경험치 보석으로 오르고, 오를 때마다 장착 스킬 하나를 골라 강하게 (이번 판만) */
-  runLv = 1;
-  runXp = 0;
-  get runNeed() {
-    return RUN_XP_BASE + RUN_XP_STEP * this.runLv;
-  }
-  /** 레벨 업 창이 떠 있는 동안 쌓인 레벨 업 수 */
-  private pendingUps = 0;
 
   /** 테스트 맵 진행: A 아레나 / B 스크롤 (그 밖의 판은 null) */
   test: ArenaDirector | null = null;
@@ -344,9 +329,6 @@ export class ActionMode {
     this.deferred = kind === 'stage';
     this.pendDiamonds = 0;
     this.pendMats = {};
-    this.runLv = 1;
-    this.runXp = 0;
-    this.pendingUps = 0;
 
     // 지역 바닥
     const region = regionOf(stage);
@@ -980,23 +962,11 @@ export class ActionMode {
     else this.game.save.mats[k] = (this.game.save.mats[k] ?? 0) + n;
   }
 
-  /**
-   * 경험치 보석. 스테이지: 판 안 레벨이 오르고(스킬 고르기), 캐릭터 경험치는 이겨야 들어온다.
-   * 그 밖의 판: 캐릭터 영구 경험치로 바로 쌓는다
-   */
+  /** 경험치 보석: 스테이지는 이겨야 캐릭터 경험치로 들어오고(모아 둔다), 그 밖의 판은 바로 쌓는다 */
   private onGem(gem: number) {
     const v = gem * this.xpMul;
     this.xpGained += v;
-    if (this.deferred) {
-      this.runXp += v;
-      while (this.runXp >= this.runNeed) {
-        this.runXp -= this.runNeed;
-        this.runLv++;
-        this.pendingUps++;
-      }
-      if (this.pendingUps > 0 && this.state === 'playing') this.showRunLevelUp();
-      return;
-    }
+    if (this.deferred) return;
     const ups = this.game.addXp(v);
     if (ups > 0) {
       this.levelUps += ups;
@@ -1007,70 +977,10 @@ export class ActionMode {
     }
   }
 
-  /** 판 안 레벨 업 선택지 세 개: 장착 스킬의 가지 하나 (체력이 낮으면 회복도) */
-  private runChoices() {
-    const opts: { icon: SkillDef | null; title: string; desc: string; apply: () => void }[] = [];
-    const pool: { s: EquippedSkill; b: keyof Tree }[] = [];
-    for (const sk of this.equipped) for (const b of ['dmg', 'spd', 'cnt'] as (keyof Tree)[]) pool.push({ s: sk, b });
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    const p = this.game.engine.player;
-    const lowHp = p.hp < p.maxHp * 0.6;
-    for (const { s: sk, b } of pool.slice(0, lowHp ? 2 : 3)) {
-      opts.push({
-        icon: sk.def, title: `${sk.def.name} ${RUN_UP_NAME[b]} +${RUN_UP[b]}`,
-        desc: b === 'dmg' ? '이번 판 동안 피해가 세진다' : b === 'spd' ? '이번 판 동안 더 자주 나간다' : '이번 판 동안 더 많이 나간다',
-        apply: () => {
-          sk.tree[b] += RUN_UP[b];
-          sk.weapon.resetCooldown?.();
-        },
-      });
-    }
-    if (lowHp || opts.length === 0) {
-      opts.push({
-        icon: null, title: '체력 40% 회복', desc: '지금 바로 회복',
-        apply: () => {
-          p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.4);
-        },
-      });
-    }
-    return opts;
-  }
-
-  /** 판 안 레벨 업: 멈추고 고르기 (AUTO면 알아서 고르고 계속) */
-  private showRunLevelUp() {
-    const eng = this.game.engine;
-    const p = eng.player;
-    eng.addSprite('pillar', p.x, p.y - 20, 34, 0.8, true);
-    sfx.levelUp();
-    const pick = (opt: ReturnType<ActionMode['runChoices']>[number]) => {
-      opt.apply();
-      this.pendingUps--;
-      eng.addText(p.x, p.y - 50, opt.title, '#ffe066', 15);
-    };
-    // AUTO거나 튜토리얼 중이면 알아서 고르고 계속
-    if (this.game.save.autoMove || this.game.save.tutorial >= 0) {
-      while (this.pendingUps > 0) {
-        const opts = this.runChoices();
-        const opt = opts[Math.floor(Math.random() * opts.length)];
-        pick(opt);
-        this.game.ui.toast(`판 레벨 ${this.runLv}! ${opt.title}`);
-      }
-      return;
-    }
-    this.state = 'paused';
-    this.game.joystick.release();
-    const next = () => {
-      const opts = this.runChoices();
-      this.game.ui.showRunLevelUp(this.runLv - this.pendingUps + 1, opts, (i) => {
-        pick(opts[i]);
-        if (this.pendingUps > 0) next();
-        else this.state = 'playing';
-      });
-    };
-    next();
+  /** 스테이지 중 스킬 칸에서 가지를 찍으면: 이번 판 스킬에도 바로 */
+  bumpRunSkill(id: SkillId, branch: keyof EquippedSkill['tree']) {
+    const sk = this.equipped.find((e) => e.def.id === id);
+    if (sk) sk.tree[branch]++;
   }
 
   /** 황금 몹: 크고 단단하고 도망친다, 부딪히면 아프다. 잡으면 골드·다이아·금 상자 (x, y 없으면 화면 안 가까이: 튜토리얼) */
