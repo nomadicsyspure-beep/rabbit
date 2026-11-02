@@ -8,8 +8,8 @@ import { chapterOf, subOf } from './balance';
 /** X-1·X-2: 이만큼 버티면 정예 / X-3: 이만큼 버티면 장 보스 */
 export const STAGE_SECONDS = 40;
 export const BOSS_STAGE_SECONDS = 30;
-/** 1-1은 맛보기로 짧게 */
-export const FIRST_STAGE_SECONDS = 25;
+/** 1-1은 튜토리얼 스테이지: 15초, 몹 적고 정예도 약하다 */
+export const FIRST_STAGE_SECONDS = 15;
 
 export interface ChapterBoss {
   name: string;

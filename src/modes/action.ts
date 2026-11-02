@@ -23,6 +23,8 @@ import { ScrollDirector } from './scroll';
 // 재료 던전은 반대로 몹이 녹아내리는 도파민 판.
 /** 아레나 별: 처음 딴 별 하나마다 다이아 */
 const ARENA_STAR_DIAMONDS = 10;
+/** 1-1 튜토리얼 정예 체력 (예전 정예 1800 × 0.02 정도: 멍때려도 잡힌다) */
+const TUTORIAL_ELITE_HP = 36;
 /** 중간 보스가 나오는 시각(초) */
 const MID_BOSS_AT = [13, 27];
 /** 재료 던전: 몹 체력·피해 배율 (녹아내리게), 몹 생성 배율, 피버 게이지 배율 */
@@ -765,12 +767,17 @@ export class ActionMode {
     this.bossSpawned = true;
     const { x, y } = this.spawnPos();
     const eng = this.game.engine;
-    // X-3: 장 보스 (장마다 색·패턴이 다르다) / X-1·X-2: 정예. 1-1 정예는 맛보기로 약하게
+    if (this.firstStage) {
+      // 1-1은 튜토리얼: 예전처럼 멍때려도 잡히는 약한 토끼 정예 (패턴 없이 쫓아오기만)
+      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: TUTORIAL_ELITE_HP, r: 24, speed: 40, dmg: 6 * this.ease, xp: 0, elite: true });
+      this.game.ui.toast('정예 몬스터 등장!');
+      return;
+    }
+    // X-3: 장 보스 (장마다 색·패턴이 다르다) / X-1·X-2: 정예
     const def = this.isBossStage ? chapterBoss(this.stage) : chapterElite(this.stage);
-    const k = this.firstStage ? 0.15 : 1;
     eng.spawnEnemy({
-      kind: 'boss', skin: def.skin, raid: true, elite: true, x, y, hp: def.hp * this.ease * k, r: def.r, speed: def.speed,
-      dmg: def.dmg * this.ease * (this.firstStage ? 0.4 : 1), xp: 0, t1: 1.6, pats: this.firstStage ? [0, 2] : def.pats, minion: def.minion, heat: def.heat,
+      kind: 'boss', skin: def.skin, raid: true, elite: true, x, y, hp: def.hp * this.ease, r: def.r, speed: def.speed,
+      dmg: def.dmg * this.ease, xp: 0, t1: 1.6, pats: def.pats, minion: def.minion, heat: def.heat,
     });
     this.game.ui.toast(`${def.name} 등장!`);
   }
