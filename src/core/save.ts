@@ -76,6 +76,8 @@ export interface SaveData {
   autoNext: boolean;
   /** 스테이지를 가로 모드로 (설정) */
   landscape: boolean;
+  /** 꾸미기: 빨간 후드 망토 입기 */
+  capeOn: boolean;
   /** 스킬 상자 천장: 상자마다 목표 등급 없이 연 횟수 */
   boxPity: Partial<Record<BoxId, number>>;
   /** 은 상자 무료 1회를 마지막으로 쓴 시각 (ms) */
@@ -130,6 +132,7 @@ export function newSave(): SaveData {
     skillTabSeen: { skills: [], points: 0 },
     autoNext: false,
     landscape: false,
+    capeOn: true,
     boxPity: {},
     freeBoxAt: 0,
     shards: 0,
@@ -218,6 +221,7 @@ export function loadSave(): SaveData {
       skillTabSeen: { skills: [...(data.skillTabSeen?.skills ?? [])], points: data.skillTabSeen?.points ?? 0 },
       autoNext: data.autoNext ?? false,
       landscape: data.landscape ?? false,
+      capeOn: data.capeOn ?? true,
       boxPity: { ...data.boxPity },
       freeBoxAt: data.freeBoxAt ?? 0,
       shards: data.shards ?? 0,

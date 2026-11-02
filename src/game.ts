@@ -571,7 +571,7 @@ export class Game {
   applyLook() {
     // 공짜 스킬을 주는 첫 유물이 옆에 둥둥
     const hand = this.equippedRelics.find((r) => r.def.bonusSkill);
-    this.engine.look = { hat: '', back: '', hand: hand?.def.id ?? '' };
+    this.engine.look = { hat: '', back: this.save.capeOn ? 'cape_red' : '', hand: hand?.def.id ?? '' };
   }
 
   /** 엔진에 지금 색을 알려 준다 (그리는 쪽이 읽는다) */
