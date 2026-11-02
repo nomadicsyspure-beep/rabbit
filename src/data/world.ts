@@ -1,7 +1,7 @@
 import type { EnemySkin } from '../battle/engine';
-import { BOSS_EVERY } from './balance';
+import { STAGES_PER_REGION } from './balance';
 
-// 지역(10스테이지마다).
+// 지역: 5장(스테이지 15개)마다 바뀐다.
 
 export type MatId = 'feather' | 'spore' | 'ice' | 'lava' | 'shadow' | 'skillbook' | 'key_silver' | 'key_gold';
 
@@ -46,10 +46,10 @@ export const REGIONS: Region[] = [
 ];
 
 /** 스테이지 → 지역 번호 (지역 5개를 계속 돈다) */
-export const regionIndex = (stage: number) => Math.floor((Math.max(1, stage) - 1) / BOSS_EVERY) % REGIONS.length;
+export const regionIndex = (stage: number) => Math.floor((Math.max(1, stage) - 1) / STAGES_PER_REGION) % REGIONS.length;
 export const regionOf = (stage: number) => REGIONS[regionIndex(stage)];
 /** 지역을 몇 바퀴 돌았나 (재료 양 등에 쓴다) */
-export const regionLap = (stage: number) => Math.floor((Math.max(1, stage) - 1) / (BOSS_EVERY * REGIONS.length));
+export const regionLap = (stage: number) => Math.floor((Math.max(1, stage) - 1) / (STAGES_PER_REGION * REGIONS.length));
 
 /** 스테이지 몹 외형 (일반 / 빠른 / 단단한) */
 export function stageSkins(stage: number): Record<'normal' | 'fast' | 'tank', EnemySkin> {

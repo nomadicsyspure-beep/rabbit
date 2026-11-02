@@ -127,6 +127,39 @@ export class AutoPilot implements Controller {
         ay += (dy / d) * 6;
       }
     }
+    // 날아오는 탄: 나를 향해 오는 탄이면 탄 길의 옆으로 비킨다 (서툰 사람 정도로만)
+    for (const bl of engine.bullets.items) {
+      if (!bl.active) continue;
+      const rx = p.x - bl.x;
+      const ry = p.y - bl.y;
+      const d = Math.hypot(rx, ry);
+      if (d > 110 || d < 1) continue;
+      const sp = Math.hypot(bl.vx, bl.vy) || 1;
+      const ux = bl.vx / sp;
+      const uy = bl.vy / sp;
+      const along = rx * ux + ry * uy;
+      if (along < 0) continue;
+      const side = rx * -uy + ry * ux;
+      if (Math.abs(side) > 26) continue;
+      const k = ((110 - d) / 110) * 2.2;
+      const sgn = side >= 0 ? 1 : -1;
+      ax += -uy * sgn * k;
+      ay += ux * sgn * k;
+    }
+    // 보스 레이저 길: 길 안에 있으면 옆으로 빠져나간다
+    for (const w of engine.warns) {
+      if (!w.dmg) continue;
+      const lx = w.x2 - w.x1;
+      const ly = w.y2 - w.y1;
+      const l = Math.hypot(lx, ly) || 1;
+      const t = ((p.x - w.x1) * lx + (p.y - w.y1) * ly) / l;
+      if (t < 0 || t > l) continue;
+      const side = ((p.x - w.x1) * -ly + (p.y - w.y1) * lx) / l;
+      if (Math.abs(side) > w.w / 2 + 16) continue;
+      const sgn = side >= 0 ? 1 : -1;
+      ax += (-ly / l) * sgn * 5;
+      ay += (lx / l) * sgn * 5;
+    }
     // 보물 상자가 최우선
     let chest: { x: number; y: number } | null = null;
     let best = 500 * 500;

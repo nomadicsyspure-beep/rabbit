@@ -14,6 +14,8 @@ export interface SaveData {
   gold: number;
   /** 직접 클리어한 최고 스테이지 (0 = 아직 없음). 방치 수입은 이 값으로 정해진다. */
   maxStage: number;
+  /** 스테이지 체계 버전: 2 = 장(1-1·1-2·1-3) 체계 */
+  stageFmt: number;
   levels: Record<StatId, number>;
   lastSeen: number;
   bossKills: number;
@@ -95,6 +97,7 @@ export function newSave(): SaveData {
     v: 4,
     gold: 0,
     maxStage: 0,
+    stageFmt: 2,
     levels: { atk: 1, hp: 1, aps: 1, spd: 1 },
     lastSeen: Date.now(),
     bossKills: 0,
@@ -156,6 +159,12 @@ export function loadSave(): SaveData {
     // v1은 방치 모드가 스테이지를 올렸다. 현재 스테이지 바로 전까지 깬 것으로 본다.
     if (data.v === 1) data.maxStage = Math.max(0, (data.stage ?? 1) - 1);
     else if (data.v !== 2 && data.v !== 3 && data.v !== 4) return newSave();
+    // 예전 스테이지(10개마다 마왕)를 장 체계(3개마다 보스, 훨씬 어려움)로: 예전 6스테이지 ≈ 1장
+    if ((data.stageFmt ?? 1) < 2) {
+      const conv = (n?: number) => 3 * Math.floor((n ?? 0) / 6);
+      data.maxStage = conv(data.maxStage);
+      data.bestStageEver = conv(data.bestStageEver);
+    }
     const base = newSave();
     const skills: SaveData['skills'] = { ...base.skills };
     for (const [id, v] of Object.entries(data.skills ?? {})) {
@@ -177,6 +186,7 @@ export function loadSave(): SaveData {
       ...base,
       gold: data.gold ?? 0,
       maxStage: data.maxStage ?? 0,
+      stageFmt: 2,
       levels: { ...base.levels, ...data.levels },
       lastSeen: data.lastSeen ?? base.lastSeen,
       bossKills: data.bossKills ?? 0,

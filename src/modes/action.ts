@@ -1,42 +1,55 @@
 import { RAID_BOSSES, RAID_BY_ID, type RaidBossDef } from '../data/raids';
 import { PLAY_PASS_XP, addDaily } from '../data/missions';
-import { CRIT_CHANCE, type Enemy, type EnemyKind, type Engine, type Weapon } from '../battle/engine';
+import { CRIT_CHANCE, type Enemy, type EnemyKind, type Engine, type MobSkill, type Weapon } from '../battle/engine';
 import type { SkillTree, WeaponStats } from '../battle/weapons';
 import { sfx } from '../audio/sfx';
 import { fmt } from '../core/format';
 import {
-  actionRatio, enemyGold, isBossStage, stageClearGold, stageEase, type ActionRatio,
+  STAGES_PER_REGION, actionRatio, chapterOf, enemyGold, isBossStage, stageClearGold, stageEase, stageLabel, subOf, type ActionRatio,
 } from '../data/balance';
+import { BOSS_STAGE_SECONDS, FIRST_STAGE_SECONDS, STAGE_SECONDS, chapterBoss, chapterElite } from '../data/chapters';
 import { CHEST_COLORS, CHEST_NAMES, rollChest, type ChestGrade } from '../data/items';
 import { regionOf, stageSkins, type MatId } from '../data/world';
 import { BOOSTERS } from '../data/craft';
 import { SKILL_BY_ID, createSkill, type SkillDef, type SkillId } from '../data/skills';
+import type { SkillTree as Tree } from '../battle/weapons';
 import type { Game } from '../game';
 import { ArenaDirector, type ArenaResult, type ArenaVariant } from './arena';
 import { ScrollDirector } from './scroll';
 
 // 액션 모드 고정 수치. 방치 수치는 ActionRatio(배율)로만 들어온다.
-// 스테이지는 30초: 시간이 다 되면 일반 스테이지는 정예 몬스터 / 보스 스테이지(10단위)는 마왕 보스. 중간에 중간 보스.
-// 스테이지 1은 튜토리얼처럼 15초, 몹 아주 적고 보스도 약하다
-const NORMAL_SECONDS = 30;
-const BOSS_STAGE_SECONDS = 30;
+// 스테이지는 장(1-1·1-2·1-3) 체계: X-1·X-2는 40초 버티면 정예, X-3은 30초 버티면 장 보스 (data/chapters.ts).
+// 스테이지는 탄막·패턴 피하기: 몹마다 미니 스킬(조준탄·부채꼴·돌진·사방탄·터짐)이 있고, 보스는 장마다 색·패턴이 다르다.
+// 스테이지는 못 깨면 아무 보상도 없다(골드·경험치·상자·다이아·열쇠·숙련도). 판 안에서는 경험치로 스킬 레벨 업.
+// 재료 던전은 반대로 몹이 녹아내리는 도파민 판.
 /** 아레나 별: 처음 딴 별 하나마다 다이아 */
 const ARENA_STAR_DIAMONDS = 10;
-const FIRST_STAGE_SECONDS = 15;
 /** 중간 보스가 나오는 시각(초) */
-const MID_BOSS_AT = [10, 20];
+const MID_BOSS_AT = [13, 27];
+/** 판 안 레벨 업: 필요 경험치 = RUN_XP_BASE + RUN_XP_STEP × 지금 판 레벨 */
+const RUN_XP_BASE = 25;
+const RUN_XP_STEP = 25;
+/** 스테이지는 탄막 판: 몹 수는 줄이고 하나하나 단단하게 */
+const STAGE_CROWD = 0.55;
+const STAGE_MOB_HP = 1.6;
+/** 판 안 레벨 업 선택지: 가지 하나 올리는 양 */
+const RUN_UP: Record<keyof Tree, number> = { dmg: 2, spd: 2, cnt: 1 };
+const RUN_UP_NAME: Record<keyof Tree, string> = { dmg: '피해', spd: '속도', cnt: '개수' };
+/** 재료 던전: 몹 체력·피해 배율 (녹아내리게), 몹 생성 배율, 피버 게이지 배율 */
+const MATERIAL_MOB_HP = 0.3;
+const MATERIAL_MOB_DMG = 0.5;
+const MATERIAL_SPAWN = 1.8;
+const MATERIAL_FEVER = 2;
 const BASE_POWER = 10;
 const BASE_HP = 150;
 const BASE_SPEED = 165;
 const BASE_MAGNET = 75;
 const MAX_ALIVE = 320;
-const ELITE_HP = 1800;
 /** 중간 보스 기본 체력 (일반 몹 배율 MOB_HP를 따로 곱한다) */
 const MID_BOSS_HP = 520;
-const BOSS_HP = 7000;
 /** 일반 몹 난이도 배율 (체력 / 부딪힐 때 피해) */
-const MOB_HP = 1.3;
-const MOB_DMG = 1.5;
+const MOB_HP = 1.4;
+const MOB_DMG = 1.8;
 /** 몹 수·구성이 최대로 짙어지기까지 걸리는 시간(초) */
 const RAMP_SEC = 30;
 /** 피버: 게이지(처치 수, 콤보와 상관없이 쌓임)가 FEVER_NEED만큼 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
@@ -118,6 +131,10 @@ export interface RunResult {
   mastery: { id: SkillId; before: number; after: number; points: number }[];
   /** 아레나 별 */
   arena?: ArenaResult;
+  /** 스테이지를 못 깨서 보상이 없다 */
+  noReward?: boolean;
+  /** 스테이지를 깨서 같이 받은 다이아 (판 중에 모아 둔 것) */
+  diamonds?: number;
 }
 
 export type RunState = 'playing' | 'paused' | 'ended';
@@ -137,7 +154,7 @@ export class ActionMode {
   raidBoss: RaidBossDef = RAID_BOSSES[0];
   stage = 1;
   /** 이번 판에서 보스가 나오기까지 버텨야 하는 시간 */
-  duration = NORMAL_SECONDS;
+  duration = STAGE_SECONDS;
   ratio: ActionRatio = { atk: 1, hp: 1 };
   time = 0;
   kills = 0;
@@ -194,6 +211,19 @@ export class ActionMode {
   private skinStage = 1;
   private phase2 = false;
   private nextElite = 0;
+
+  /** 스테이지 판: 이길 때만 보상을 준다 (그동안 모아 둔다) */
+  private deferred = false;
+  private pendDiamonds = 0;
+  private pendMats: Partial<Record<MatId, number>> = {};
+  /** 판 안 레벨: 경험치 보석으로 오르고, 오를 때마다 장착 스킬 하나를 골라 강하게 (이번 판만) */
+  runLv = 1;
+  runXp = 0;
+  get runNeed() {
+    return RUN_XP_BASE + RUN_XP_STEP * this.runLv;
+  }
+  /** 레벨 업 창이 떠 있는 동안 쌓인 레벨 업 수 */
+  private pendingUps = 0;
 
   /** 테스트 맵 진행: A 아레나 / B 스크롤 (그 밖의 판은 null) */
   test: ArenaDirector | null = null;
@@ -261,7 +291,7 @@ export class ActionMode {
     this.phase2 = false;
     this.nextElite = INFINITE_ELITE_SEC;
     this.duration = kind === 'material' ? MATERIAL_SECONDS : kind === 'raid' ? RAID_SECONDS : kind === 'infinite' ? Infinity
-      : stage === 1 ? FIRST_STAGE_SECONDS : isBossStage(stage) ? BOSS_STAGE_SECONDS : NORMAL_SECONDS;
+      : stage === 1 ? FIRST_STAGE_SECONDS : isBossStage(stage) ? BOSS_STAGE_SECONDS : STAGE_SECONDS;
     const save = this.game.save;
     const st = this.game.stats;
     const bonus = this.game.bonus;
@@ -311,6 +341,12 @@ export class ActionMode {
     this.chestT = kind === 'material' ? 1 : kind === 'raid' ? Infinity : CHEST_SEC * 0.6;
     this.bonusGold = 0;
     this.chests = [];
+    this.deferred = kind === 'stage';
+    this.pendDiamonds = 0;
+    this.pendMats = {};
+    this.runLv = 1;
+    this.runXp = 0;
+    this.pendingUps = 0;
 
     // 지역 바닥
     const region = regionOf(stage);
@@ -318,8 +354,8 @@ export class ActionMode {
     const intro: Record<RunKind, string> = {
       arena: '',
       scroll: '',
-      stage: region.name,
-      material: `재료 던전 · ${region.name}: 상자가 쏟아져요!`,
+      stage: `${stageLabel(stage)} · ${region.name}${isBossStage(stage) ? ' · 보스 스테이지!' : ''}`,
+      material: `재료 던전 · ${region.name}: 몹이 녹아내려요! 상자도 쏟아져요!`,
       raid: `보스 레이드: ${this.raidBoss.name}! 빨간 장판을 피해라!`,
       infinite: '무한 모드: 얼마나 버틸 수 있을까?',
     };
@@ -399,6 +435,7 @@ export class ActionMode {
       if (this.state !== 'playing' || this.winT >= 0) return;
     } else if (this.kind === 'stage') {
       if (!this.bossSpawned && this.time >= this.duration) this.spawnBoss();
+      if (this.isBossStage) this.checkPhase2();
     } else if (this.kind === 'material') {
       if (this.time >= this.duration) return this.finish(true);
     } else if (this.kind === 'raid') {
@@ -412,9 +449,9 @@ export class ActionMode {
     const peak = this.isBossStage ? 18 : 14;
     // 장착 스킬이 많을수록 더 많이 몰려온다 (쓸어 담을 게 끊기지 않게)
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
-    const kindRate = this.kind === 'raid' ? RAID_SPAWN : this.kind === 'infinite' ? 1 + this.time / 120 : this.test ? this.test.spawnMul : 1;
+    const kindRate = this.kind === 'raid' ? RAID_SPAWN : this.kind === 'infinite' ? 1 + this.time / 120 : this.kind === 'material' ? MATERIAL_SPAWN : this.test ? this.test.spawnMul : 1;
     const rate = (this.bossSpawned ? 6 : 8 + this.ramp * peak) * crowd * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1) * (0.5 + 0.5 * this.ease)
-      * (this.stageLike ? TRICKLE : 1) * (this.firstStage ? 0.5 : 1);
+      * (this.stageLike ? TRICKLE : 1) * (this.firstStage ? 0.5 : 1) * (this.kind === 'stage' ? STAGE_CROWD : 1);
 
     if (this.fever > 0) {
       this.fever -= dt;
@@ -476,14 +513,14 @@ export class ActionMode {
   private spawnPack() {
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.skinStage);
-    const total = Math.round((8 + 10 * this.ramp) * (this.firstStage ? 0.5 : 1));
+    const total = Math.round((8 + 10 * this.ramp) * (this.firstStage ? 0.5 : 1) * (this.kind === 'stage' ? 0.7 : 1));
     const p = this.game.engine.player;
     const mob = (x: number, y: number, i: number) => {
       const fast = i % 4 === 3;
       this.spawnMob({
         kind: fast ? 'fast' : 'normal', skin: fast ? skins.fast : skins.normal, x, y,
         hp: (fast ? 4 : 5) * s, r: fast ? 10 : 11, speed: fast ? 100 : 66, dmg: 3 * s, xp: 1,
-      });
+      }, 0.4);
     };
     const style = Math.random();
     if (style < 0.45) {
@@ -523,7 +560,7 @@ export class ActionMode {
     const pos = this.spawnPos();
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.skinStage);
-    this.spawnMob({ kind: 'tank', skin: skins.tank, x: pos.x, y: pos.y, hp: MID_BOSS_HP * s, r: 24, speed: 52, dmg: 14 * s, xp: 25, elite: true });
+    this.spawnMob({ kind: 'tank', skin: skins.tank, x: pos.x, y: pos.y, hp: MID_BOSS_HP * s, r: 24, speed: 52, dmg: 14 * s, xp: 25, elite: true, skill: this.kind === 'stage' ? 'nova' : '' });
     this.game.ui.toast('중간 보스 등장!');
   }
 
@@ -543,13 +580,13 @@ export class ActionMode {
     eng.addEffect('ring', boss.x, boss.y, 200, 0.7, '#ff4d6d');
     eng.addShake(8);
     sfx.fever();
-    this.game.ui.toast('2페이즈! 마왕이 분노했다!');
+    this.game.ui.toast(this.kind === 'stage' ? `2페이즈! ${chapterBoss(this.stage).name} 분노!` : '2페이즈! 마왕이 분노했다!');
   }
 
   /** 무한 모드: 1분마다 다음 지역(몹·바닥이 바뀌고 더 세짐), 정예가 주기적으로 */
   private updateInfinite() {
     const region = Math.min(4, Math.floor(this.time / INFINITE_REGION_SEC));
-    const skinStage = this.stage + region * 10;
+    const skinStage = this.stage + region * STAGES_PER_REGION;
     if (skinStage !== this.skinStage) {
       this.skinStage = skinStage;
       const r = regionOf(skinStage);
@@ -646,7 +683,7 @@ export class ActionMode {
     const p = eng.player;
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.skinStage);
-    const crowd = 1 + this.ramp;
+    const crowd = (1 + this.ramp) * (this.kind === 'stage' ? 0.6 : 1);
     const h = this.heading ?? Math.random() * Math.PI * 2;
     switch (wave) {
       case 'ring': {
@@ -714,26 +751,42 @@ export class ActionMode {
   }
 
   /** 일반 몹 생성: 난이도 배율(MOB_HP, MOB_DMG)을 적용한다 */
-  spawnMob(init: Parameters<Engine['spawnEnemy']>[0]) {
+  spawnMob(init: Parameters<Engine['spawnEnemy']>[0], skillRate = 1) {
     const ease = this.ease;
-    const e = this.game.engine.spawnEnemy({ ...init, hp: init.hp * MOB_HP * ease, dmg: (init.dmg ?? 1) * MOB_DMG * ease });
+    const mat = this.kind === 'material';
+    const hpK = mat ? MATERIAL_MOB_HP : this.kind === 'stage' && !init.elite ? STAGE_MOB_HP : 1;
+    const dmgK = mat ? MATERIAL_MOB_DMG : 1;
+    // 스테이지 몹은 미니 스킬 (웨이브·황금·구급상자 몹은 빼고)
+    const skill = init.skill ?? (init.tint || init.golden || init.skin === 'firstaid' ? '' : this.rollSkill(init.kind, skillRate));
+    const e = this.game.engine.spawnEnemy({ ...init, skill, hp: init.hp * MOB_HP * ease * hpK, dmg: (init.dmg ?? 1) * MOB_DMG * ease * dmgK });
     this.test?.decorate(e);
     return e;
+  }
+
+  /** 스테이지 몹 미니 스킬: 장이 높고 같은 장에서도 뒤 스테이지일수록 많이, 종류도 늘어난다 */
+  private rollSkill(kind: EnemyKind, rate: number): MobSkill {
+    if (this.kind !== 'stage' || this.firstStage) return '';
+    const ch = chapterOf(this.stage);
+    const chance = Math.min(0.6, 0.14 + 0.06 * (ch - 1) + 0.04 * (subOf(this.stage) - 1)) * rate;
+    if (Math.random() >= chance) return '';
+    const r = Math.random();
+    if (kind === 'fast') return ch >= 2 ? 'dash' : 'shot';
+    if (kind === 'tank') return ch >= 2 && r < 0.5 ? 'nova' : 'pop';
+    return ch >= 3 && r < 0.35 ? 'fan' : 'shot';
   }
 
   spawnBoss() {
     this.bossSpawned = true;
     const { x, y } = this.spawnPos();
     const eng = this.game.engine;
-    if (this.isBossStage) {
-      eng.spawnEnemy({ kind: 'boss', skin: 'devil', x, y, hp: BOSS_HP * this.ease, r: 32, speed: 52, dmg: 32 * this.ease, xp: 0, elite: true });
-      this.game.ui.toast('마왕 등장!');
-    } else {
-      // 스테이지 1은 멍때려도 잡히는 약한 보스
-      const k = this.firstStage ? 0.02 : this.ease;
-      eng.spawnEnemy({ kind: 'boss', skin: 'rabbit', x, y, hp: ELITE_HP * k, r: 24, speed: this.firstStage ? 40 : 58, dmg: (this.firstStage ? 6 : 24) * this.ease, xp: 0, elite: true });
-      this.game.ui.toast('정예 몬스터 등장!');
-    }
+    // X-3: 장 보스 (장마다 색·패턴이 다르다) / X-1·X-2: 정예. 1-1 정예는 맛보기로 약하게
+    const def = this.isBossStage ? chapterBoss(this.stage) : chapterElite(this.stage);
+    const k = this.firstStage ? 0.15 : 1;
+    eng.spawnEnemy({
+      kind: 'boss', skin: def.skin, raid: true, elite: true, x, y, hp: def.hp * this.ease * k, r: def.r, speed: def.speed,
+      dmg: def.dmg * this.ease * (this.firstStage ? 0.4 : 1), xp: 0, t1: 1.6, pats: this.firstStage ? [0, 2] : def.pats, minion: def.minion, heat: def.heat,
+    });
+    this.game.ui.toast(`${def.name} 등장!`);
   }
 
   /** 유물 발동 효과 (시간에 따라): 8초마다 보호막, 달리면 발자국 장판 */
@@ -802,7 +855,7 @@ export class ActionMode {
       const gold = enemyGold(this.stage) * GOLDEN_GOLD;
       this.bonusGold += gold;
       this.goldenKills++;
-      this.game.save.diamonds += GOLDEN_DIAMONDS;
+      this.giveDiamonds(GOLDEN_DIAMONDS);
       eng.addText(e.x, e.y - 50, `+${fmt(gold)} G`, '#ffe066', 24);
       eng.addText(e.x, e.y - 28, `💎 +${GOLDEN_DIAMONDS}`, '#9fe4ff', 18);
       eng.addEffect('ring', e.x, e.y, 120, 0.5, '#ffe066');
@@ -821,7 +874,7 @@ export class ActionMode {
       eng.vacuumGems();
     }
     // 피버 게이지: 다 차면 피버, 끝나면 다시 0부터
-    if (this.fever <= 0 && (this.feverGauge += this.feverMul) >= FEVER_NEED) this.startFever();
+    if (this.fever <= 0 && (this.feverGauge += this.feverMul * (this.kind === 'material' ? MATERIAL_FEVER : 1)) >= FEVER_NEED) this.startFever();
     // 중간 보스: 보상이 펑 (골드·다이아·은/금 상자)
     if (e.elite && e.kind !== 'boss') this.bossReward(e, MIDBOSS_GOLD, MIDBOSS_DIAMONDS, Math.random() < 0.3 ? 2 : 1, false);
     if (this.test) {
@@ -832,7 +885,7 @@ export class ActionMode {
     }
     if (e.kind === 'boss') {
       if (this.kind !== 'stage') return this.finish(true);
-      // 스테이지 보스: 크게 펑 (마왕 스테이지는 2배) + 금 상자는 바로 가방으로, 잠깐 보여 주고 결과 화면
+      // 스테이지 보스: 크게 펑 (X-3 장 보스는 2배) + 금 상자는 바로 가방으로, 잠깐 보여 주고 결과 화면
       const k = this.isBossStage ? 2 : 1;
       this.bossReward(e, STAGE_BOSS_GOLD * k, STAGE_BOSS_DIAMONDS * k, 2, true);
       this.winT = WIN_DELAY;
@@ -844,20 +897,20 @@ export class ActionMode {
     const eng = this.game.engine;
     const gold = enemyGold(this.stage) * goldMul;
     this.bonusGold += gold;
-    this.game.save.diamonds += diamonds;
+    this.giveDiamonds(diamonds);
     eng.addText(e.x, e.y - 60, `+${fmt(gold)} G`, '#ffe066', 28);
     eng.addText(e.x, e.y - 32, `💎 +${diamonds}`, '#9fe4ff', 20);
     eng.addEffect('ring', e.x, e.y, 160, 0.6, '#ffe066');
     eng.addEffect('ring', e.x, e.y, 90, 0.45, '#ffffff');
     eng.burst(e.x, e.y - 20, 40, ['#ffe066', '#ffb347', '#ffffff', '#9fe4ff'], 340, 0.9, 380, 4);
     eng.addShake(8);
-    // 열쇠: 중간 보스는 절반 확률로 은 열쇠, 스테이지 보스는 은 열쇠 + 금 열쇠 (마왕은 확정, 정예는 30%)
+    // 열쇠: 중간 보스는 절반 확률로 은 열쇠, 스테이지 보스는 은 열쇠 + 금 열쇠 (장 보스는 확정, 정예는 30%)
     const keys: [MatId, number][] = inBag
       ? [['key_silver', 1], ['key_gold', this.isBossStage || Math.random() < 0.3 ? 1 : 0]]
       : [['key_silver', Math.random() < 0.5 ? 1 : 0]];
     keys.forEach(([k, n], i) => {
       if (!n) return;
-      this.game.save.mats[k] = (this.game.save.mats[k] ?? 0) + n;
+      this.giveMat(k, n);
       eng.addText(e.x + (i ? 30 : -30), e.y - 110, `${k === 'key_gold' ? '🗝️ 금' : '🔑 은'} 열쇠!`, k === 'key_gold' ? '#ffd23f' : '#d8e4f0', 16);
     });
     if (inBag) {
@@ -916,10 +969,34 @@ export class ActionMode {
     sfx.chest();
   }
 
-  /** 경험치 보석: 캐릭터 영구 경험치로 바로 쌓는다 */
+  /** 다이아·재료: 스테이지는 이길 때 한꺼번에, 그 밖의 판은 바로 */
+  private giveDiamonds(n: number) {
+    if (this.deferred) this.pendDiamonds += n;
+    else this.game.save.diamonds += n;
+  }
+
+  private giveMat(k: MatId, n: number) {
+    if (this.deferred) this.pendMats[k] = (this.pendMats[k] ?? 0) + n;
+    else this.game.save.mats[k] = (this.game.save.mats[k] ?? 0) + n;
+  }
+
+  /**
+   * 경험치 보석. 스테이지: 판 안 레벨이 오르고(스킬 고르기), 캐릭터 경험치는 이겨야 들어온다.
+   * 그 밖의 판: 캐릭터 영구 경험치로 바로 쌓는다
+   */
   private onGem(gem: number) {
     const v = gem * this.xpMul;
     this.xpGained += v;
+    if (this.deferred) {
+      this.runXp += v;
+      while (this.runXp >= this.runNeed) {
+        this.runXp -= this.runNeed;
+        this.runLv++;
+        this.pendingUps++;
+      }
+      if (this.pendingUps > 0 && this.state === 'playing') this.showRunLevelUp();
+      return;
+    }
     const ups = this.game.addXp(v);
     if (ups > 0) {
       this.levelUps += ups;
@@ -928,6 +1005,72 @@ export class ActionMode {
       sfx.levelUp();
       this.game.ui.toast(`레벨 업! Lv ${this.game.save.level}`);
     }
+  }
+
+  /** 판 안 레벨 업 선택지 세 개: 장착 스킬의 가지 하나 (체력이 낮으면 회복도) */
+  private runChoices() {
+    const opts: { icon: SkillDef | null; title: string; desc: string; apply: () => void }[] = [];
+    const pool: { s: EquippedSkill; b: keyof Tree }[] = [];
+    for (const sk of this.equipped) for (const b of ['dmg', 'spd', 'cnt'] as (keyof Tree)[]) pool.push({ s: sk, b });
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    const p = this.game.engine.player;
+    const lowHp = p.hp < p.maxHp * 0.6;
+    for (const { s: sk, b } of pool.slice(0, lowHp ? 2 : 3)) {
+      opts.push({
+        icon: sk.def, title: `${sk.def.name} ${RUN_UP_NAME[b]} +${RUN_UP[b]}`,
+        desc: b === 'dmg' ? '이번 판 동안 피해가 세진다' : b === 'spd' ? '이번 판 동안 더 자주 나간다' : '이번 판 동안 더 많이 나간다',
+        apply: () => {
+          sk.tree[b] += RUN_UP[b];
+          sk.weapon.resetCooldown?.();
+        },
+      });
+    }
+    if (lowHp || opts.length === 0) {
+      opts.push({
+        icon: null, title: '체력 40% 회복', desc: '지금 바로 회복',
+        apply: () => {
+          p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.4);
+        },
+      });
+    }
+    return opts;
+  }
+
+  /** 판 안 레벨 업: 멈추고 고르기 (AUTO면 알아서 고르고 계속) */
+  private showRunLevelUp() {
+    const eng = this.game.engine;
+    const p = eng.player;
+    eng.addSprite('pillar', p.x, p.y - 20, 34, 0.8, true);
+    sfx.levelUp();
+    const pick = (opt: ReturnType<ActionMode['runChoices']>[number]) => {
+      opt.apply();
+      this.pendingUps--;
+      eng.addText(p.x, p.y - 50, opt.title, '#ffe066', 15);
+    };
+    // AUTO거나 튜토리얼 중이면 알아서 고르고 계속
+    if (this.game.save.autoMove || this.game.save.tutorial >= 0) {
+      while (this.pendingUps > 0) {
+        const opts = this.runChoices();
+        const opt = opts[Math.floor(Math.random() * opts.length)];
+        pick(opt);
+        this.game.ui.toast(`판 레벨 ${this.runLv}! ${opt.title}`);
+      }
+      return;
+    }
+    this.state = 'paused';
+    this.game.joystick.release();
+    const next = () => {
+      const opts = this.runChoices();
+      this.game.ui.showRunLevelUp(this.runLv - this.pendingUps + 1, opts, (i) => {
+        pick(opts[i]);
+        if (this.pendingUps > 0) next();
+        else this.state = 'playing';
+      });
+    };
+    next();
   }
 
   /** 황금 몹: 크고 단단하고 도망친다, 부딪히면 아프다. 잡으면 골드·다이아·금 상자 (x, y 없으면 화면 안 가까이: 튜토리얼) */
@@ -963,7 +1106,9 @@ export class ActionMode {
     const save = this.game.save;
     // 잡은 만큼 골드 + 이기면 클리어 보상
     // 피버 중 처치는 골드 2배
-    let gold = (this.kills + this.feverKills) * enemyGold(this.stage) * KILL_GOLD + this.bonusGold;
+    // 스테이지는 못 깨면 아무것도 없다 (골드·경험치·상자·다이아·열쇠·숙련도·패스)
+    const noReward = this.kind === 'stage' && !win;
+    let gold = noReward ? 0 : (this.kills + this.feverKills) * enemyGold(this.stage) * KILL_GOLD + this.bonusGold;
     if (win && this.kind === 'raid') gold += stageClearGold(this.stage) * 2;
     if (win && this.test) gold += stageClearGold(this.stage);
     // 아레나 별: 종류마다 최고 기록, 처음 딴 별마다 💎10
@@ -1002,8 +1147,17 @@ export class ActionMode {
     }
     const best = this.kind === 'infinite' && this.time > save.infiniteBest;
     if (best) save.infiniteBest = this.time;
+    // 스테이지를 깼으면 판 중에 모아 둔 경험치·다이아·열쇠를 이제 준다
+    let diamonds = 0;
+    if (this.deferred && win) {
+      diamonds = this.pendDiamonds;
+      save.diamonds += diamonds;
+      for (const [k, n] of Object.entries(this.pendMats)) save.mats[k as MatId] = (save.mats[k as MatId] ?? 0) + (n ?? 0);
+      this.levelUps = this.game.addXp(this.xpGained);
+    }
+    if (noReward) this.xpGained = 0;
     // 주운 상자는 가방에 넣는다 (가방 탭에서 하나씩 연다)
-    const chests = [...this.chests];
+    const chests = noReward ? [] : [...this.chests];
     for (const grade of chests) {
       const key = `${grade}:${this.stage}`;
       save.chestBag[key] = (save.chestBag[key] ?? 0) + 1;
@@ -1016,12 +1170,12 @@ export class ActionMode {
     addDaily(save, 'kills', this.kills);
     addDaily(save, 'plays');
     addDaily(save, 'fevers', this.fevers);
-    this.game.addPassXp(PLAY_PASS_XP + (win ? PLAY_PASS_XP : 0));
+    if (!noReward) this.game.addPassXp(PLAY_PASS_XP + (win ? PLAY_PASS_XP : 0));
     // 숙련도: 장착하고 싸운 시간만큼 (유물 공짜 스킬은 빼고)
-    const mastery = this.game.gainMastery(this.equipped.map((e) => e.def.id), Math.min(this.time, 180));
+    const mastery = noReward ? [] : this.game.gainMastery(this.equipped.map((e) => e.def.id), Math.min(this.time, 180));
     const result: RunResult = {
       win, time: this.time, kills: this.kills, bestCombo: this.bestCombo, xp: this.xpGained, levelUps: this.levelUps,
-      gold, stage: this.stage, chests, kind: this.kind, essence, best, mastery, arena,
+      gold, stage: this.stage, chests, kind: this.kind, essence, best, mastery, arena, noReward, diamonds,
     };
     this.game.ui.showResult(result, () => this.game.enterIdle());
   }

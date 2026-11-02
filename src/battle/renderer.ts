@@ -208,7 +208,21 @@ export class Renderer {
     const flame = SPRITES.fx['purple-flame'];
     for (const b of eng.bullets.items) {
       if (!b.active) continue;
-      if (isReady(flame)) {
+      if (b.mob) {
+        // 몹 탄: 주황 구슬 (보스 탄과 구분)
+        ctx.fillStyle = 'rgba(255,140,40,0.35)';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffb347';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff3d0';
+        ctx.beginPath();
+        ctx.arc(b.x - b.r * 0.3, b.y - b.r * 0.3, b.r * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (isReady(flame)) {
         ctx.drawImage(flame, b.x - 8, b.y - 11, 16, 19);
       } else {
         ctx.fillStyle = '#ff7aa8';
@@ -493,6 +507,26 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(e.x, e.y - e.r * 0.4, r, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (e.castT > 0) {
+      // 몹 미니 스킬 기 모으기: 빨간 고리가 조여 들고, 돌진이면 갈 길이 보인다
+      const ctx = this.ctx;
+      const k = Math.min(1, e.castT / 0.6);
+      ctx.strokeStyle = `rgba(255,70,50,${0.9 - k * 0.4})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y - e.r * 0.4, e.r * (1.1 + k * 1.2), 0, Math.PI * 2);
+      ctx.stroke();
+      if (e.skill === 'dash') {
+        ctx.strokeStyle = 'rgba(255,60,40,0.45)';
+        ctx.lineWidth = e.r * 1.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(e.x + e.dashX * 135, e.y + e.dashY * 135);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+      }
     }
     if (e.tint) {
       // 돌진(빨강)·포위(보라)·벽(파랑) 몹: 발밑에 색 원 테두리

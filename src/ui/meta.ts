@@ -8,6 +8,7 @@ import { sfx } from '../audio/sfx';
 import type { Game } from '../game';
 import { BOOSTERS, RECIPES, type BoosterId } from '../data/craft';
 import type { MatId } from '../data/world';
+import { stageLabel } from '../data/balance';
 import { COLLECTION_BONUS, REBIRTH_MIN_STAGE, REBIRTH_UPS, type RebirthUp } from '../game';
 import { chickPic, coin, h, holdRepeat, ibox } from './dom';
 
@@ -78,7 +79,7 @@ export function buildBagTab(panel: HTMLElement, game: Game, host: UIHost) {
   const slotEls = Array.from({ length: RELIC_SLOTS }, (_, i) => {
     const b = h('button', 'gear-slot');
     const tapSlot = () => {
-      if (!game.slotUnlocked(i)) return host.toast(`🔒 스테이지 ${SLOT_UNLOCK[i]}을 깨면 열려요`);
+      if (!game.slotUnlocked(i)) return host.toast(`🔒 스테이지 ${stageLabel(SLOT_UNLOCK[i])}을 깨면 열려요`);
       const id = game.save.relicSlots[i];
       if (id) showRelic(game, host, RELIC_BY_ID[id]);
       else showSlotPicker(game, host, i);
@@ -97,7 +98,7 @@ export function buildBagTab(panel: HTMLElement, game: Game, host: UIHost) {
         const id = s.relicSlots[i];
         const def = id ? RELIC_BY_ID[id] : null;
         if (!game.slotUnlocked(i)) {
-          b.replaceChildren(ibox('🔒', 'big empty'), h('span', 'tile-name', `스테이지 ${SLOT_UNLOCK[i]}`));
+          b.replaceChildren(ibox('🔒', 'big empty'), h('span', 'tile-name', `스테이지 ${stageLabel(SLOT_UNLOCK[i])}`));
         } else if (!def) {
           b.replaceChildren(ibox('➕', 'big empty'), h('span', 'tile-name', '빈 칸'));
         } else {
@@ -523,8 +524,8 @@ export function showRebirth(game: Game, host: UIHost) {
     info.replaceChildren(
       h('div', 'result-row', `환생 ${s.rebirth.count}번 · 환생 깃털 ${s.rebirth.feathers}개`),
       h('div', 'result-row', game.rebirthGain > 0
-        ? `지금 환생하면 깃털 +${game.rebirthGain} (최고 스테이지 ${s.maxStage})`
-        : `최고 스테이지 ${REBIRTH_MIN_STAGE}부터 환생할 수 있어요 (지금 ${s.maxStage})`),
+        ? `지금 환생하면 깃털 +${game.rebirthGain} (최고 스테이지 ${stageLabel(s.maxStage)})`
+        : `최고 스테이지 ${stageLabel(REBIRTH_MIN_STAGE)}부터 환생할 수 있어요 (지금 ${s.maxStage ? stageLabel(s.maxStage) : '없음'})`),
     );
     ups.replaceChildren(
       ...(Object.keys(REBIRTH_UPS) as RebirthUp[]).map((k) => {
@@ -555,7 +556,7 @@ export function showRebirth(game: Game, host: UIHost) {
         host.toast('환생했어요! 깃털로 영구 강화를 올려 보세요');
         host.closeModal();
         host.refresh();
-      } else host.toast(`최고 스테이지 ${REBIRTH_MIN_STAGE}부터 환생할 수 있어요`);
+      } else host.toast(`최고 스테이지 ${stageLabel(REBIRTH_MIN_STAGE)}부터 환생할 수 있어요`);
     }),
     host.button('닫기', 'primary', () => host.closeModal()),
   );

@@ -39,7 +39,7 @@ export const IDLE_KILLS_PER_SEC = 2.3;
 /** 도감 하나당 공격력·체력 +1% */
 export const COLLECTION_BONUS = 0.01;
 /** 환생 가능한 최고 스테이지 */
-export const REBIRTH_MIN_STAGE = 20;
+export const REBIRTH_MIN_STAGE = 15;
 /** 환생 깃털로 올리는 영구 강화 (레벨당) */
 export const REBIRTH_UPS = {
   atk: { name: '공격력', per: 0.1 },
@@ -446,7 +446,9 @@ export class Game {
   /** 지금 환생하면 받는 깃털 (최고 스테이지가 높을수록 많이) */
   get rebirthGain() {
     const m = this.save.maxStage;
-    return m < REBIRTH_MIN_STAGE ? 0 : Math.floor(m / 5 + (m * m) / 200);
+    // 장 체계: 스테이지 수가 예전보다 적으니 1.4배로 쳐서 예전과 비슷한 양
+    const mm = m * 1.4;
+    return m < REBIRTH_MIN_STAGE ? 0 : Math.floor(mm / 5 + (mm * mm) / 200);
   }
 
   /** 환생: 골드·최고 스테이지·능력치 강화가 처음으로. 스킬·유물·재료·다이아·레벨은 남는다 */
