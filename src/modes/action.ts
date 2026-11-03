@@ -23,6 +23,9 @@ import { ScrollDirector } from './scroll';
 // 재료 던전은 반대로 몹이 녹아내리는 도파민 판.
 /** 아레나 별: 처음 딴 별 하나마다 다이아 */
 const ARENA_STAR_DIAMONDS = 10;
+/** 스테이지 몹 수 배율 (계속 나오는 몹 / 무리 / 웨이브) */
+const STAGE_CROWD = 0.7;
+const STAGE_PACK = 0.8;
 /** 1-1 튜토리얼 정예 체력 (예전 정예 1800 × 0.02 정도: 멍때려도 잡힌다) */
 const TUTORIAL_ELITE_HP = 36;
 /** 중간 보스가 나오는 시각(초) */
@@ -45,7 +48,7 @@ const MOB_DMG = 1.5;
 /** 몹 수·구성이 최대로 짙어지기까지 걸리는 시간(초) */
 const RAMP_SEC = 30;
 /** 피버: 게이지(처치 수, 콤보와 상관없이 쌓임)가 FEVER_NEED만큼 차면 FEVER_SEC초 동안 장착 스킬 모든 가지 +FEVER_BONUS, 몹 생성 ×FEVER_SPAWN, 이동 속도 ×FEVER_MOVE */
-export const FEVER_NEED = 200;
+export const FEVER_NEED = 100;
 export const FEVER_SEC = 10;
 const FEVER_BONUS = 5;
 const FEVER_SPAWN = 2.5;
@@ -87,7 +90,7 @@ const WIN_DELAY = 1.3;
 /** 따로따로 하나씩 나오는 몹은 이만큼만 (나머지는 무리로) */
 const TRICKLE = 0.55;
 /** 몇 콤보마다 보석 싹쓸이 */
-const VACUUM_COMBO = 100;
+const VACUUM_COMBO = 50;
 
 /** 판 종류: 스테이지 / 재료 던전 / 보스 레이드 / 무한 모드 */
 export type RunKind = 'stage' | 'material' | 'raid' | 'infinite' | 'arena' | 'scroll';
@@ -432,7 +435,7 @@ export class ActionMode {
     const crowd = 1 + 0.2 * Math.max(0, this.equipped.length - 1);
     const kindRate = this.kind === 'raid' ? RAID_SPAWN : this.kind === 'infinite' ? 1 + this.time / 120 : this.kind === 'material' ? MATERIAL_SPAWN : this.test ? this.test.spawnMul : 1;
     const rate = (this.bossSpawned ? (this.kind === 'stage' ? 2.5 : 6) : 8 + this.ramp * peak) * crowd * kindRate * (this.fever > 0 ? FEVER_SPAWN : 1) * (0.5 + 0.5 * this.ease)
-      * (this.stageLike ? TRICKLE : 1) * (this.firstStage ? 0.5 : 1);
+      * (this.stageLike ? TRICKLE : 1) * (this.firstStage ? 0.5 : 1) * (this.kind === 'stage' ? STAGE_CROWD : 1);
 
     if (this.fever > 0) {
       this.fever -= dt;
@@ -494,7 +497,7 @@ export class ActionMode {
   private spawnPack() {
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.skinStage);
-    const total = Math.round((8 + 10 * this.ramp) * (this.firstStage ? 0.5 : 1));
+    const total = Math.round((8 + 10 * this.ramp) * (this.firstStage ? 0.5 : 1) * (this.kind === 'stage' ? STAGE_PACK : 1));
     const p = this.game.engine.player;
     const mob = (x: number, y: number, i: number) => {
       const fast = i % 4 === 3;
@@ -664,7 +667,7 @@ export class ActionMode {
     const p = eng.player;
     const s = 1 + (this.time / 60) * 0.6;
     const skins = stageSkins(this.skinStage);
-    const crowd = 1 + this.ramp;
+    const crowd = (1 + this.ramp) * (this.kind === 'stage' ? STAGE_PACK : 1);
     const h = this.heading ?? Math.random() * Math.PI * 2;
     switch (wave) {
       case 'ring': {
@@ -858,7 +861,7 @@ export class ActionMode {
       sfx.coin();
       this.game.ui.toast(`황금 몹 처치! 골드 폭죽 + 💎${GOLDEN_DIAMONDS} + 금 상자!`);
     }
-    // 100콤보마다 축하 연출 + 맵 전체 보석 싹쓸이
+    // 50콤보마다 축하 연출 + 맵 전체 보석 싹쓸이
     if (this.combo % VACUUM_COMBO === 0) {
       const p = eng.player;
       eng.addEffect('ring', p.x, p.y, 140, 0.45, '#ffe066');
